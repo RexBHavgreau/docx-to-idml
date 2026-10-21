@@ -14,7 +14,7 @@
 
 (function () {
 
-var SCRIPT_VERSION = "2";
+var SCRIPT_VERSION = "3";
 var log = [];
 var notes = [];          // problems inside the file being built
 
@@ -432,36 +432,38 @@ function primaryFrame(doc) {
     } catch (e) {
         note("no primary text frame on A-Parent: " + e.message);
     }
-    ensurePages(doc, 4);
-    var prev = null, story = null;
-    for (var i = 0; i < 4; i++) {
-        var page = doc.pages[i];
-        var src = page.side == PageSideOptions.LEFT_HAND ? verso : recto;
-        var f = null;
-        try {
-            f = src.override(page);
-        } catch (e2) {
-            note("could not override the master frame on page " + (i + 1) + ": " + e2.message);
-            f = frame(doc, page);
-        }
-        if (prev) {
-            try {
-                prev.nextTextFrame = f;
-            } catch (e4) {
-                note("could not thread page " + i + " to page " + (i + 1) + ": " + e4.message);
-            }
-        }
-        prev = f;
-    }
-    story = doc.pages[0].textFrames[0].parentStory;
+    // One page only: the text goes into page 1's frame (the one linked to the primary frame)
+    // and smart text reflow adds the pages it needs. No frames are made by the script.
+    var page1 = doc.pages[0];
+    var f1 = linkedFrame(page1, page1.side == PageSideOptions.LEFT_HAND ? verso : recto);
+    var story = f1.parentStory;
     add(story, "Text in the Primary Frame", st.h1);
-    // More text than four pages hold: InDesign should add pages (smart text reflow).
+    // About six pages of text: InDesign should add the pages (smart text reflow).
     add(story, filler(2600, 0), st.first);
     try {
         doc.recompose();
     } catch (e3) {}
-    note("pages after placing the text: " + doc.pages.length + "; overset: " + story.overflows +
+    note("pages after placing the text: " + doc.pages.length + " (started with 1); overset: " +
+         story.overflows + "; frames in the story: " + story.textContainers.length +
          "; primary frame on A-Parent: " + primaryId(mf));
+}
+
+// The page's frame that overrides the given master frame, overriding it if InDesign hasn't.
+function linkedFrame(page, masterFrame) {
+    for (var i = 0; i < page.textFrames.length; i++) {
+        var tf = page.textFrames[i];
+        try {
+            if (tf.overriddenMasterPageItem.id == masterFrame.id) {
+                return tf;
+            }
+        } catch (e) {}
+    }
+    try {
+        return masterFrame.override(page);
+    } catch (e2) {
+        note("could not override the master frame on page " + page.name + ": " + e2.message);
+        return page.textFrames.length ? page.textFrames[0] : null;
+    }
 }
 
 function primaryId(f) {
@@ -802,7 +804,7 @@ var FILES = [
 ];
 
 // Only the named files, if ONLY is not empty (e.g. ["05-primary-text-frame", "06-toc"]).
-var ONLY = ["05-primary-text-frame", "06-toc"];
+var ONLY = ["05-primary-text-frame"];
 
 function wanted(name) {
     if (!ONLY.length) {

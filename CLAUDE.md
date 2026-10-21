@@ -78,8 +78,9 @@ On Windows set `PYTHONUTF8=1`. `test_preflight` includes a LibreOffice round tri
 writes one.
 
 ## Not yet checked
-- `reference/make_reference_files.jsx` version 2 (fixes for 05 and 06; `ONLY` limits a run to
-  named files) not yet run in InDesign. Version 1 ran: 12 of 13 files OK. ExtendScript is
+- `reference/make_reference_files.jsx` version 3 (rebuilds only 05 from one page; `ONLY`
+  limits a run to named files) not yet run in InDesign. Versions 1 and 2 ran: all 13 files
+  made; 05 needs the v3 rebuild to be a clean reference. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
   with a byte-order mark.
 
