@@ -37,8 +37,10 @@ keep it up to date when decisions change.
 | `docx2idml/profile.py` | Profiles: defaults, save/load, export/import, `PROFILE_VERSION` + `MIGRATIONS` |
 | `docx2idml/book.py` | Input files: drop/folder collection, natural order, saved order |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / profile` |
+| `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
 | `reference/` | `make_reference_files.jsx` (builds the InDesign reference files), README with the Affinity checklist; reference IDMLs go in `reference/idml/` |
 | `idml-schema/` | Adobe's IDML schema for InDesign 2026 (21.6.0.57, DOM 21.5): `rnc/` as InDesign wrote it, `rng/` converted by `tools/prepare_schema.py` |
+| `tools/make_generated_files.py` | Step 3: the generator's versions of the reference files, in `reference/generated/` |
 | `tools/idml_check.py`, `tools/idml_inspect.py` | Development tools: structural check of an IDML package plus jing against the schema; summary of a package (masters, pages, overrides, sections, stories, styles) for comparing with references |
 | `tests/docx_builder.py` | Builds test .docx files from raw WordprocessingML; the test runner |
 
@@ -76,6 +78,7 @@ python tests/test_reader.py
 python tests/test_outline.py
 python tests/test_preflight.py
 python tests/test_idml_tools.py
+python tests/test_writer.py
 ```
 
 Run them all before pushing; CI (`.github/workflows/tests.yml`) runs them on Windows and Linux.
@@ -85,7 +88,10 @@ writes one.
 
 ## Not yet checked
 - Step 2: Affinity done (all files; footnotes settled as fn-m, rule and spacing as fn-o/p/q).
-  DesignCraft not yet. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
+  DesignCraft not yet.
+- Step 3: g01 (footnotes) validates and matches reference 01 in the inspector; not yet opened in
+  InDesign or Affinity. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
+  Kozuka, Arno); generating it from the fonts used is still to do. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
   with a byte-order mark.

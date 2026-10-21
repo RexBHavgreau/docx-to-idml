@@ -1,0 +1,100 @@
+"""The book as the IDML writer sees it: pages, masters, styles, stories and sections.
+
+Built from the Word manuscript (step 4) or by hand for the feature test files (step 3). Measures
+are in points. Style attributes use IDML's own names (PointSize, FirstLineIndent, Justification,
+FontStyle, Position...), so they pass straight into the file.
+"""
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class Style:
+    name: str
+    based_on: str = None          # another style's name; None = the root style
+    attrs: dict = field(default_factory=dict)   # e.g. {"PointSize": 11, "Justification": "LeftJustified"}
+    font: str = None              # font family, e.g. "Arno Pro"
+    leading: object = None        # points, or "Auto"
+    next_style: str = None        # paragraph styles only
+
+
+@dataclass
+class Run:
+    text: str = ""
+    style: str = None             # character style name; None = no character style
+    attrs: dict = field(default_factory=dict)   # local formatting, e.g. {"FontStyle": "Italic"}
+    footnote: list = None         # a footnote here: its paragraphs (list of Paragraph)
+
+
+@dataclass
+class Paragraph:
+    style: str
+    runs: list = field(default_factory=list)
+
+
+@dataclass
+class Story:
+    paragraphs: list
+    pages: list                   # page indexes (0-based) whose frames the story is threaded through
+    sink: float = 0               # extra top margin on the first page (chapter openers)
+
+
+@dataclass
+class Section:
+    page: int                     # first page index
+    marker: str = ""              # section marker (running heads)
+    numbering: str = "Arabic"     # Arabic, LowerRoman, UpperRoman
+    start: int = None             # restart numbering at this number; None = continue
+
+
+@dataclass
+class Master:
+    prefix: str = "A"
+    base: str = "Body"
+    based_on: str = None          # name of the parent master, e.g. "A-Body"
+
+    @property
+    def name(self):
+        return "%s-%s" % (self.prefix, self.base)
+
+
+@dataclass
+class Document:
+    width: float = 432            # 6 in
+    height: float = 648           # 9 in
+    margins: dict = field(default_factory=lambda: {"top": 54, "bottom": 63, "inside": 54,
+                                                   "outside": 63})
+    facing: bool = True
+    page_count: int = 1
+    page_masters: dict = field(default_factory=dict)   # page index -> master name (default: first)
+    masters: list = field(default_factory=lambda: [Master()])
+    paragraph_styles: list = field(default_factory=list)
+    character_styles: list = field(default_factory=list)
+    stories: list = field(default_factory=list)
+    sections: list = field(default_factory=lambda: [Section(0)])
+    footnote_style: str = "Footnote"
+    footnote_marker_style: str = "Footnote Reference"
+    footnote_separator: str = ". "
+    footnotes: dict = field(default_factory=dict)      # the profile's footnote settings
+    name: str = "Untitled"
+
+    def style(self, name, kind="paragraph"):
+        for s in (self.paragraph_styles if kind == "paragraph" else self.character_styles):
+            if s.name == name:
+                return s
+        return None
+
+    def resolved(self, name):
+        """A paragraph style's settings with those of the styles it's based on filled in."""
+        chain, seen = [], set()
+        s = self.style(name)
+        while s and s.name not in seen:
+            seen.add(s.name)
+            chain.append(s)
+            s = self.style(s.based_on) if s.based_on else None
+        attrs, font, leading = {}, None, None
+        for s in reversed(chain):
+            attrs.update(s.attrs)
+            font = s.font or font
+            leading = s.leading if s.leading is not None else leading
+        return attrs, font, leading

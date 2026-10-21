@@ -61,4 +61,6 @@ pip install -r requirements-dev.txt      # jing and trang for schema validation 
 python tools/idml_check.py file.idml      # structure, then Adobe's schema (jing)
 python tools/idml_inspect.py file.idml    # masters, pages, overrides, sections, stories, styles
 python tools/prepare_schema.py            # rebuild idml-schema/rng after an InDesign update
+python tools/make_base.py                 # rebuild the writer's base from reference 01
+python tools/make_generated_files.py      # the generator's feature files, reference/generated/
 ```
