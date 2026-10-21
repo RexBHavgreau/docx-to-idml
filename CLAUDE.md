@@ -118,8 +118,8 @@ writes one.
   decided). Beaux: all right in InDesign; contents placed by hand from the style in both programs
   (as intended); all right in Affinity except g07's table, which doesn't break across pages
   even with row heights (parked: tables uncommon; reference 07 does break, so compare again
-  later). g11 (images) validates and matches reference 11; not yet opened (its link path is this
-  machine's: a test of whether the programs find the image in Links/ beside the file). The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
+  later). g11 (images) right in both; with the linked path missing, both programs find the image
+  in the file's folder, else warn and leave a placeholder. Step 3 done. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
   Kozuka, Arno); generating it from the fonts used is still to do. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
