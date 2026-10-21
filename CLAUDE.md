@@ -57,7 +57,8 @@ keep it up to date when decisions change.
 - IDML: a parent-master item removed on a child master, or a master item removed on a page,
   is an `OverrideList` pair with `n` as the page item.
 - IDML: a page frame made from a master frame is linked on the `<Page>` element,
-  `OverrideList="<master item> <page item> ..."` (pairs), not on the frame.
+  `OverrideList="<master item> <page item> ..."` (pairs), not on the frame; the frame itself is
+  an ordinary `TextFrame` (reference file 05).
 - The two InDesign files from the brief (the Assumption article and its cut-down) are a real
   article: use them for analysis only; don't commit them.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
@@ -78,9 +79,9 @@ On Windows set `PYTHONUTF8=1`. `test_preflight` includes a LibreOffice round tri
 writes one.
 
 ## Not yet checked
-- `reference/make_reference_files.jsx` version 3 (rebuilds only 05 from one page; `ONLY`
-  limits a run to named files) not yet run in InDesign. Versions 1 and 2 ran: all 13 files
-  made; 05 needs the v3 rebuild to be a clean reference. ExtendScript is
+- Step 2: the reference files in Affinity (Beaux, with the table in `reference/README.md`)
+  and DesignCraft. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
+  are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
   with a byte-order mark.
 
