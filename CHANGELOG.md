@@ -5,6 +5,8 @@
 - Fonts are chosen from dropdowns of the fonts installed on the computer (you can still type a
   name, or leave the box blank to use Word's). The Hebrew and Greek lists show only fonts that
   have Hebrew or Greek letters.
+- Fixed: italics in footnotes were lost (the footnote settings written on each note run
+  overrode the Italic style), and so were the Greek and Hebrew fonts inside notes.
 
 ## 0.1.0 (October 21, 2026)
 

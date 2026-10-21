@@ -72,6 +72,8 @@ keep it up to date when decisions change.
   a run of their own (Affinity breaks single-run notes); the Footnote style's font, size,
   leading, indent and alignment also on every note run (Affinity otherwise lays the root style
   `[No paragraph style]` over note text). Style edits still reach every note in both programs.
+  Settings the run's own character style sets (Italic's face, Greek/Hebrew fonts) are left off
+  the run, or the local copy overrides the style (italics in notes were lost until 0.2.0).
 - designmap.xml must start with InDesign's `<?aid style="50" type="document" ...?>` line before
   `<Document>`; without it InDesign says it "may not support the file format". The schema
   doesn't require it; `idml_check.py` does. Write parts with `writer.serialize()` (whole

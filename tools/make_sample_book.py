@@ -93,8 +93,10 @@ def chapter_one():
         para("* * *", ppr='<w:jc w:val="center"/>'),
         para(filler(150, 7)),
     ]
-    notes = ["See the commentary on Leviticus for the priestly setting.",
-             "On the Greek of John's prologue, see the standard grammars.",
+    notes = [run("See the commentary on Leviticus in ") + i("The Anchor Bible")
+             + run(" for the priestly setting."),
+             run("On the Greek of John's prologue (") + run(JOHN[:20]) + run("), see ")
+             + i("A Grammar of New Testament Greek") + run("."),
              "This note is long enough to run onto a second page if it falls near the foot. "
              + filler(120, 8),
              "Ibid."]

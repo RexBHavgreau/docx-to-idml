@@ -665,10 +665,14 @@ class Writer:
                 psr.append(csr)
                 continue
             if note is not None:
+                # The Footnote style's settings on the run (for Affinity), except what the
+                # run's character style sets: a local setting would override it (italic in
+                # a note, the Greek and Hebrew fonts).
                 attrs, font, leading = note
-                merged = dict(attrs)
+                cs = self.doc.style(run.style, "character") if run.style else None
+                merged = {k: v for k, v in attrs.items() if not (cs and k in cs.attrs)}
                 merged.update(run.attrs)
-                csr = self._csr(run.style, merged, font, leading)
+                csr = self._csr(run.style, merged, None if cs and cs.font else font, leading)
             else:
                 csr = self._csr(run.style, run.attrs)
             if run.special:
