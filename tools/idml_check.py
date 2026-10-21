@@ -147,6 +147,12 @@ def check(path, schema=True):
         if dm is None:
             problems.append("designmap.xml is missing")
             return problems
+        # InDesign recognises the package by this instruction before designmap's root element;
+        # without it InDesign says it "may not support the file format" (the schema allows it).
+        head = z.read("designmap.xml")[:400].decode("utf-8", "replace")
+        if not re.search(r'<\?aid [^>]*type="document"', head):
+            problems.append('designmap.xml lacks <?aid ... type="document" ...?> before <Document>; '
+                            "InDesign won't open the file")
         problems += _check_references(dm, names)
         problems += _check_links(dm, roots)
         if schema and schema_available() is None and not any("well-formed" in p for p in problems):

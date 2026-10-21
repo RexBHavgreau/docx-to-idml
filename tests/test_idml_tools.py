@@ -26,6 +26,7 @@ def parts(**changes):
             '<rootfiles><rootfile full-path="designmap.xml" media-type="text/xml"/></rootfiles>'
             '</container>',
         "designmap.xml":
+            '<?aid style="50" type="document" readerVersion="6.0" featureSet="257" product="21.6(57)" ?>'
             '<Document %s Self="d" StoryList="u20">'
             '<idPkg:Preferences src="Resources/Preferences.xml"/>'
             '<idPkg:Styles src="Resources/Styles.xml"/>'
@@ -122,6 +123,14 @@ def test_reference_problems():
     assert "designmap.xml has DOMVersion 13.0 (must be 21.5)" in probs
     assert "Resources/Extra.xml is in the package but designmap.xml doesn't refer to it" in probs
     assert "designmap.xml refers to Stories/Story_u99.xml, which is not in the package" in probs
+
+
+def test_aid_instruction_required():
+    """InDesign won't open a package whose designmap lacks the <?aid?> instruction."""
+    p = parts()
+    p["designmap.xml"] = p["designmap.xml"].split("?>", 1)[1]
+    probs = check(schema=False, path=package("noaid.idml", p))
+    assert any("<?aid" in x for x in probs), probs
 
 
 def test_link_problems():

@@ -63,6 +63,10 @@ keep it up to date when decisions change.
   a run of their own (Affinity breaks single-run notes); the Footnote style's font, size,
   leading, indent and alignment also on every note run (Affinity otherwise lays the root style
   `[No paragraph style]` over note text). Style edits still reach every note in both programs.
+- designmap.xml must start with InDesign's `<?aid style="50" type="document" ...?>` line before
+  `<Document>`; without it InDesign says it "may not support the file format". The schema
+  doesn't require it; `idml_check.py` does. Write parts with `writer.serialize()` (whole
+  document, double-quoted XML declaration), never `tostring(root)`, which drops the line.
 - IDML sections, as InDesign writes them (g01's first version broke these and wouldn't open
   in InDesign, though it validated and opened in Affinity): the alternate layout's name
   (`AlternateLayout="Custom V"`) on the first section only, `""` on the others;
@@ -97,8 +101,9 @@ writes one.
 ## Not yet checked
 - Step 2: Affinity done (all files; footnotes settled as fn-m, rule and spacing as fn-o/p/q).
   DesignCraft not yet.
-- Step 3: g01 (footnotes) opens in Affinity and looks right; the first version would not open in
-  InDesign (sections, binding; fixed), the fixed one not yet tried in InDesign. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
+- Step 3: g01 (footnotes) opens in Affinity and looks right; InDesign wouldn't open it ("may not
+  support the file format"): the writer dropped designmap's `<?aid?>` line (fixed); not yet
+  retried in InDesign. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
   Kozuka, Arno); generating it from the fonts used is still to do. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8

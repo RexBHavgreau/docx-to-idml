@@ -35,6 +35,16 @@ def _parse(path):
     return etree.parse(path, etree.XMLParser(remove_blank_text=True)).getroot()
 
 
+HEADER = b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+
+
+def serialize(root):
+    """A part as InDesign writes it: the XML declaration, then the whole document, so the
+    <?aid ... type="document" ?> instruction before designmap.xml's root is kept (without it
+    InDesign doesn't recognise the file at all)."""
+    return HEADER + etree.tostring(root.getroottree(), encoding="UTF-8", xml_declaration=False)
+
+
 def _num(v):
     if isinstance(v, bool):
         return "true" if v else "false"
@@ -104,8 +114,7 @@ class Writer:
                          "XML/Tags.xml", "XML/BackingStory.xml"):
                 files.setdefault(name, _parse(os.path.join(BASE, *name.split("/"))))
             for name, root in files.items():
-                z.writestr(name, etree.tostring(root, xml_declaration=True, encoding="UTF-8",
-                                                standalone=True))
+                z.writestr(name, serialize(root))
         return path
 
     def _wrap(self, kind, el):

@@ -64,6 +64,13 @@ def test_sections_and_spreads_as_indesign_writes_them():
     assert (spreads[-1].get("PageCount"), spreads[-1].get("BindingLocation")) == ("1", "1")
 
 
+def test_designmap_keeps_aid_instruction():
+    path = write_idml(g01_footnotes(), os.path.join(TMP, "aid.idml"))
+    head = zipfile.ZipFile(path).read("designmap.xml")[:200]
+    assert head.startswith(b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>')
+    assert b'<?aid style="50" type="document"' in head
+
+
 def test_g01_validates():
     path = write_idml(g01_footnotes(), os.path.join(TMP, "g01.idml"))
     why = schema_available()
