@@ -14,7 +14,7 @@
 
 (function () {
 
-var SCRIPT_VERSION = "3";
+var SCRIPT_VERSION = "4";
 var log = [];
 var notes = [];          // problems inside the file being built
 
@@ -203,30 +203,41 @@ function flow(doc, pageIdxs, sink) {
 
 // Add a paragraph to a story. runs: a string, or a list of strings and
 // {t: text, c: characterStyle}, {fn: footnote text}, {sp: SpecialCharacters...}.
+// Text typed at the end of a story takes the formatting of the character before it (after a
+// footnote marker, the "Footnote Reference" style), so every run gets its character style set
+// explicitly, [None] for plain text. (Version 3 and earlier missed this: files 01, 08, 10, 12.)
+function append(target, text, cs) {
+    var a = target.characters.length;
+    target.insertionPoints[-1].contents = text;
+    if (target.characters.length > a) {
+        target.characters.itemByRange(a, target.characters.length - 1).appliedCharacterStyle = cs;
+    }
+}
+
+function noStyle(story) {
+    return story.parent.characterStyles[0];   // [None]
+}
+
 function add(story, runs, style) {
     if (typeof runs == "string") {
         runs = [runs];
     }
+    var none = noStyle(story);
     var start = story.characters.length;
     for (var i = 0; i < runs.length; i++) {
         var r = runs[i];
         if (typeof r == "string") {
-            story.insertionPoints[-1].contents = r;
+            append(story, r, none);
         } else if (r.fn !== undefined) {
             var fn = story.insertionPoints[-1].footnotes.add();
-            fn.insertionPoints[-1].contents = r.fn;
+            append(fn, r.fn, none);
         } else if (r.sp !== undefined) {
-            story.insertionPoints[-1].contents = r.sp;
+            append(story, r.sp, none);
         } else {
-            var a = story.characters.length;
-            story.insertionPoints[-1].contents = r.t;
-            if (r.c) {
-                story.characters.itemByRange(a, story.characters.length - 1)
-                    .appliedCharacterStyle = r.c;
-            }
+            append(story, r.t, r.c || none);
         }
     }
-    story.insertionPoints[-1].contents = "\r";
+    append(story, "\r", none);
     if (style) {
         story.characters[start].paragraphs[0].appliedParagraphStyle = style;
     }
@@ -300,10 +311,8 @@ function footnotes(doc) {
     add(s2, filler(200, 3), st.body);
     // Italic inside a footnote, by character style.
     var f = s1.footnotes[0];
-    var a = f.characters.length;
-    f.insertionPoints[-1].contents = "italic phrase";
-    f.characters.itemByRange(a, f.characters.length - 1).appliedCharacterStyle = it;
-    f.insertionPoints[-1].contents = " in it.";
+    append(f, "italic phrase", it);
+    append(f, " in it.", noStyle(s1));
     sectionProps(doc.sections.add(doc.pages[2]), {continueNumbering: true, marker: "Second Chapter"});
     sectionProps(doc.sections[0], {marker: "First Chapter"});
 }
@@ -804,7 +813,7 @@ var FILES = [
 ];
 
 // Only the named files, if ONLY is not empty (e.g. ["05-primary-text-frame", "06-toc"]).
-var ONLY = ["05-primary-text-frame"];
+var ONLY = ["01-footnotes", "08-opentype", "10-hebrew-greek", "12-character-styles"];
 
 function wanted(name) {
     if (!ONLY.length) {

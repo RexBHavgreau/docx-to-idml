@@ -79,7 +79,9 @@ On Windows set `PYTHONUTF8=1`. `test_preflight` includes a LibreOffice round tri
 writes one.
 
 ## Not yet checked
-- Step 2: Affinity done (compatibility table in PLAN.md); DesignCraft not yet. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
+- Step 2: Affinity done (compatibility table in PLAN.md) except 01, 08, 10, 12, which were
+  faulty (text after a styled run kept its character style); script v4 rebuilds them, not yet
+  run. DesignCraft not yet. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
   with a byte-order mark.
