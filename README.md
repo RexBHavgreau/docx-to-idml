@@ -51,4 +51,12 @@ Profiles are saved in `%APPDATA%\docx-to-idml\profiles` (on Linux and Mac,
 python tests/test_reader.py
 python tests/test_outline.py
 python tests/test_preflight.py    # includes a LibreOffice round trip when soffice is installed
+python tests/test_idml_tools.py
+```
+
+## Development tools
+
+```
+python tools/idml_check.py file.idml      # structure: zip, container, DOMVersion, references, links
+python tools/idml_inspect.py file.idml    # masters, pages, overrides, sections, stories, styles
 ```

@@ -23,3 +23,4 @@ jobs:
       - run: python tests/test_reader.py
       - run: python tests/test_outline.py
       - run: python tests/test_preflight.py
+      - run: python tests/test_idml_tools.py
