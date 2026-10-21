@@ -257,7 +257,7 @@ def _check_links(dm, roots):
                 if pairs[i] not in master_items:
                     problems.append("page %s overrides master item %s, which doesn't exist"
                                     % (pg.get("Name"), pairs[i]))
-                if pairs[i + 1] not in page_items:
+                if pairs[i + 1] != "n" and pairs[i + 1] not in page_items:   # n: removed
                     problems.append("page %s: overriding item %s is not on any spread"
                                     % (pg.get("Name"), pairs[i + 1]))
     for s in dm.iter("Section"):

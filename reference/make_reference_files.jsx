@@ -14,7 +14,7 @@
 
 (function () {
 
-var SCRIPT_VERSION = "1";
+var SCRIPT_VERSION = "2";
 var log = [];
 var notes = [];          // problems inside the file being built
 
@@ -411,14 +411,27 @@ function primaryFrame(doc) {
     setProps(doc.textPreferences, {smartTextReflow: true, addPages: E("AddPageOptions.END_OF_STORY"),
         limitToMasterTextFrames: true, deleteEmptyPages: true}, "text preferences");
     var a = doc.masterSpreads[0];
+    // A preset's "primary text frame" setting is ignored when a script creates the document,
+    // so the master frames are made here, threaded verso -> recto, and the verso one made
+    // primary (as in the earlier test file).
+    var verso = a.pages[0].textFrames.length ? a.pages[0].textFrames[0] : frame(doc, a.pages[0]);
+    var recto = a.pages[1].textFrames.length ? a.pages[1].textFrames[0] : frame(doc, a.pages[1]);
+    try {
+        verso.nextTextFrame = recto;
+    } catch (e0) {
+        note("could not thread the master frames: " + e0.message);
+    }
+    try {
+        a.primaryTextFrame = verso;
+    } catch (e1) {
+        note("could not make the master frame primary: " + e1.message);
+    }
     var mf = null;
     try {
         mf = a.primaryTextFrame;
     } catch (e) {
         note("no primary text frame on A-Parent: " + e.message);
     }
-    var verso = a.pages[0].textFrames.length ? a.pages[0].textFrames[0] : null;
-    var recto = a.pages[1].textFrames.length ? a.pages[1].textFrames[0] : null;
     ensurePages(doc, 4);
     var prev = null, story = null;
     for (var i = 0; i < 4; i++) {
@@ -460,7 +473,7 @@ function primaryId(f) {
 }
 
 function tableOfContents(doc) {
-    ensurePages(doc, 6);
+    ensurePages(doc, 7);
     var st = bodyStyles(doc);
     var tt = pstyle(doc, "Contents Title", {basedOn: st.h1});
     var a = area(doc, doc.pages[0]);
@@ -788,8 +801,26 @@ var FILES = [
      "One story per chapter; an overset chapter; a blank verso; openers on a B master."]
 ];
 
+// Only the named files, if ONLY is not empty (e.g. ["05-primary-text-frame", "06-toc"]).
+var ONLY = ["05-primary-text-frame", "06-toc"];
+
+function wanted(name) {
+    if (!ONLY.length) {
+        return true;
+    }
+    for (var w = 0; w < ONLY.length; w++) {
+        if (ONLY[w] == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
 for (var i = 0; i < FILES.length; i++) {
     var name = FILES[i][0];
+    if (!wanted(name)) {
+        continue;
+    }
     var doc = null;
     notes = [];
     try {

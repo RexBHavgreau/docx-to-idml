@@ -52,6 +52,10 @@ keep it up to date when decisions change.
   idPkg:Preferences, and many settings are child `<Properties>` elements, not attributes).
   Check the generator's output with `tools/idml_check.py`; jing needs Java and
   `pip install -r requirements-dev.txt`.
+- IDML composer names: `HL Composer` (Adobe Paragraph Composer), `HL Single` (Single-line),
+  `HL Composer Optyca` (World-Ready). They are InDesign's own, not plug-ins.
+- IDML: a parent-master item removed on a child master, or a master item removed on a page,
+  is an `OverrideList` pair with `n` as the page item.
 - IDML: a page frame made from a master frame is linked on the `<Page>` element,
   `OverrideList="<master item> <page item> ..."` (pairs), not on the frame.
 - The two InDesign files from the brief (the Assumption article and its cut-down) are a real
@@ -74,8 +78,9 @@ On Windows set `PYTHONUTF8=1`. `test_preflight` includes a LibreOffice round tri
 writes one.
 
 ## Not yet checked
-- `reference/make_reference_files.jsx` has only been run against a stand-in for InDesign (checks
-  the script's own logic, not InDesign's object model). ExtendScript is ES3: no let/const,
-  arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8 with a byte-order mark.
+- `reference/make_reference_files.jsx` version 2 (fixes for 05 and 06; `ONLY` limits a run to
+  named files) not yet run in InDesign. Version 1 ran: 12 of 13 files OK. ExtendScript is
+  ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
+  with a byte-order mark.
 
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).

@@ -101,10 +101,15 @@ def inspect(path):
                                                      "Oval", "Polygon", "Group"):
                 master_items[tf.get("Self")] = (ms.get("Name"), _local(tf.tag))
         pages = ms.findall("Page")
+        removed = []
+        for pg in pages:
+            pairs = (pg.get("OverrideList") or "").split()
+            removed += [pairs[i] for i in range(0, len(pairs) - 1, 2) if pairs[i + 1] == "n"]
         masters[ms.get("Self")] = OrderedDict([
             ("name", ms.get("Name")),
             ("pages", len(pages)),
             ("based_on", [p.get("AppliedMaster") for p in pages]),
+            ("parent_items_removed", removed),
             ("primary_text_frame", ms.get("PrimaryTextFrame")),
             ("text_frames", frames)])
     for m in masters.values():
@@ -131,7 +136,8 @@ def inspect(path):
             pages.append(OrderedDict([
                 ("name", pg.get("Name")), ("id", pg.get("Self")),
                 ("master", masters[pg.get("AppliedMaster")]["name"]
-                    if pg.get("AppliedMaster") in masters else pg.get("AppliedMaster")),
+                    if pg.get("AppliedMaster") in masters else
+                    None if pg.get("AppliedMaster") in (None, "n") else pg.get("AppliedMaster")),
                 ("side", "verso" if (pg.get("ItemTransform") or "").split()[4:5] and
                          float(pg.get("ItemTransform").split()[4]) < 0 else "recto"),
                 ("overrides", overrides)]))
@@ -379,15 +385,18 @@ def render(info):
     add("")
     add("Masters")
     for m in info["masters"]:
-        add("  %s (%d pages)%s, primary text frame: %s" % (
+        add("  %s (%d pages)%s, primary text frame: %s%s" % (
             m["name"], m["pages"], ", based on " + ", ".join(m["based_on"]) if m["based_on"] else "",
-            m["primary_text_frame"]))
+            m["primary_text_frame"],
+            ", removes parent items " + " ".join(m["parent_items_removed"])
+            if m["parent_items_removed"] else ""))
         for f in m["text_frames"]:
             add("    frame %s story %s prev %s next %s" % (f["id"], f["story"], f["prev"], f["next"]))
     add("")
     add("Pages")
     for p in info["pages"]:
-        ov = "; ".join("%s(%s) -> %s" % (o["master_item"], o["master"], o["page_item"])
+        ov = "; ".join("%s(%s) -> %s" % (o["master_item"], o["master"],
+                                         "removed" if o["page_item"] == "n" else o["page_item"])
                        for o in p["overrides"])
         add("  %-4s %-6s %-12s %s" % (p["name"], p["side"], p["master"] or "(none)",
                                      "overrides " + ov if ov else ""))

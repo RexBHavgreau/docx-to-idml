@@ -20,6 +20,10 @@ Garamond Pro, Times New Roman), Taamey David CLM for Hebrew, and logs which font
 that log**; the script has been checked for errors only outside InDesign, so a first run may
 need a fix.
 
+**Rerunning some files:** the script's `ONLY` list (near the end) names the files to build;
+leave it empty (`[]`) to build all. Version 2 is set to rebuild only 05 and 06, the two that
+failed in the first run.
+
 Look over each file in InDesign before going on. If one isn't right, fix it by hand, save,
 and export the IDML again (File > Export > InDesign Markup).
 

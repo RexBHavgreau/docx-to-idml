@@ -167,6 +167,18 @@ def test_schema():
     assert 'element "idPkg:Styles" not allowed here' in text, text
 
 
+def test_reference_files_valid():
+    """Every InDesign reference file passes: a check on the checker (skipped without Java)."""
+    import glob
+    files = sorted(glob.glob(os.path.join(ROOT, "reference", "idml", "*.idml")))
+    why = schema_available()
+    for f in files:
+        probs = check(f, schema=why is None)
+        assert probs == [], (os.path.basename(f), probs[:5])
+    if why:
+        print("     (structure only: %s)" % why)
+
+
 def test_inspect():
     info = inspect(package("ok2.idml", parts()))
     assert info["page"]["width"] == 432 and info["page"]["facing"] == "true"

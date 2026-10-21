@@ -204,7 +204,7 @@ A real 34-page article exported from InDesign 2026 (21.6) — Daugereau, *Assump
 | Heading fonts (Source Sans *Variable*; Segoe UI) | **Substituted with Arial.** Affinity did not match the variable font. The tool should warn about variable fonts and prefer static font families. |
 | Footnotes | **Kept**: placed at page foot with rule and numbering. But Affinity **kept each footnote whole** where InDesign split long ones across pages, which pushes text and changes page breaks. |
 | GREP styles (8 rules in the Footnote style applying a "No Break" character style) | **Damaged:** text matched by the GREP rules printed at a larger size and different font, i.e. lost the paragraph style's settings. The generator writes no GREP styles (Word has none), so this doesn't affect the tool, but it shows that partially-defined character styles can pick up defaults in Affinity; worth a test file. |
-| Line and page breaks | **Different on 28 of 34 pages.** Causes: the heading font substitution, unsplit footnotes, and a third-party composer in the styles (**"HL Composer Optyca"**, an InDesign plug-in) that neither Affinity nor a stock InDesign has. The generator should use only Adobe's built-in composers. |
+| Line and page breaks | **Different on 28 of 34 pages.** Causes: the heading font substitution and unsplit footnotes; Affinity also has its own line breaker. *(Corrected October 21: "HL Composer Optyca" in the styles is not a plug-in. It is InDesign's internal name for its own Adobe World-Ready Paragraph Composer, as reference file 10 shows; see "Reference files from InDesign" below.)* |
 | Text fit | **About 800 words didn't fit** on the 34 pages (most likely left as overset text at the end of the story, since it's one story with a fixed page count). InDesign's own copy ends mid-sentence too, so it was already slightly overset. This supports chapter-per-story threading plus a page buffer, and the instruction to check for overset text after opening in Affinity. |
 | Greek | **Kept** where it fit (the two missing Greek words are in the text that didn't fit) |
 
@@ -223,6 +223,19 @@ A 7-page cut-down of the same article ("Untitled-1"), with a primary frame added
   - **TOC:** came across with the right entries, but the entry lost its bold and the page number sits right after the text instead of at the tab position. Whether it stays updatable in Affinity is still to be checked in Affinity itself.
   - **Footnotes:** again kept whole in Affinity where InDesign splits them.
 - **TOC:** a generated table of contents on page 1. The `TOCStyle` (in Styles.xml) lists Heading 1 at level 1, tab before the page number, title "Contents". The TOC text is an ordinary story marked `AppliedTOCStyle="TOCStyle/$ID/DefaultTOCStyleName"`, with hyperlinks to the headings. Affinity result pending (whether the TOC stays updatable or becomes plain text).
+
+### Reference files from InDesign (October 21, 2026)
+`reference/make_reference_files.jsx` (version 1) ran in InDesign 21.6.0.57 with Arno Pro, Myriad Pro and Taamey David CLM. 12 of 13 files were made and are in `reference/idml/`; **all 12 validate** (structure and schema). 05 (primary text frame) came out without a primary frame and 06 (TOC) failed; script version 2 fixes both and rebuilds only those two.
+
+What InDesign writes, for the generator to copy:
+- **Composers** are stored under internal names: Adobe Paragraph Composer = `HL Composer`, Adobe Single-line Composer = `HL Single`, Adobe World-Ready Paragraph Composer = `HL Composer Optyca`. This InDesign's default (`[No paragraph style]`) is World-Ready.
+- **Footnotes:** the marker character style goes in `FootnoteOption FootnoteMarkerStyle` (01: "Footnote Reference", which defines only `Position`). `RestartNumbering="SectionRestart"` restarts at each section.
+- **Sections:** `PageNumberStyle` is a child property (`LowerRoman`, `Arabic`); a restart is `ContinueNumbering="false"` with `PageNumberStart="1"`. The section marker is `Marker`.
+- **Masters:** a master based on another has `AppliedMaster="<parent id>"` on each of its `<Page>`s. A parent item removed on the child is a pair with `n` in the child page's `OverrideList` (`"u117 n"`). A page with no master has `AppliedMaster="n"` (13, the blank verso).
+- **Page frames from master frames:** `OverrideList="<master item> <page item>"` pairs on the `<Page>`.
+- **Character styles** define only what they set (12: Italic defines `FontStyle` only; Small Caps `Capitalization`; No Break `NoBreak`).
+- **Hebrew (10):** direction and language now sit in the styles (`CharacterDirection`, `ParagraphDirection`, `AppliedLanguage` on "Hebrew" and "Hebrew Block"). Whether Affinity honors them there is the step 2 question.
+- **Images (11):** links are absolute `file:` URIs (`file:D:/Downloads/images/sample.jpg`); the inline image is an anchored `Rectangle` inside the story.
 
 ### Schema validation
 - Every IDML the tool writes (feature test files included) is **validated against Adobe's IDML schema** before it's handed over, catching structural errors without opening any outside program.
