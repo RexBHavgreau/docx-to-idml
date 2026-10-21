@@ -55,6 +55,11 @@ The main use is preparing books for **KDP print**, but the tool is not tied to o
 - **Style conflicts across files** (the same style name defined differently in two files) are reported in preflight. The style map applies by name, so one mapping covers every file.
 - Images, footnotes and section settings are collected from every file. Footnote numbering restarts per chapter by default.
 
+### Target programs (proposed October 21, 2026)
+- The user ticks the programs the book is for: **InDesign, Affinity, DesignCraft** (Scribus only if wanted; it would need its own pass through the reference files). Each ticked program gets its own file (`Book (InDesign).idml`, `Book (Affinity).idml`); none ticked gives one "any program" file with every workaround on. The choice is saved in the profile.
+- Differences come from one table of per-program workarounds, so each compatibility finding is one entry. Known so far: footnote formatting written directly on note text for Affinity and "any" (InDesign stays clean); the footnote number always in its own run; Hebrew warnings by program; fewer buffer pages for InDesign (smart text reflow adds pages), the full estimate plus buffer for the others; the TOC style written for InDesign and "any".
+- The cross-program rule still holds: every output works in every program; targets only add workarounds, never InDesign-only features.
+
 ### Preflight, style map and profiles
 - **Preflight** reads every input file and reports all paragraph and character styles in use, direct-formatting hotspots, and items version 1 doesn't carry over (text boxes, floating shapes, tracked changes, equations, unusual fields, XE index fields, endnotes). Nothing disappears silently.
 - **Style map:** Word style → IDML style. Defaults cover Word's built-ins (Normal, Heading 1–3, Quote, Footnote Text, Caption, etc.). Unknown styles are mapped by the user or fall back to body text with a warning.
