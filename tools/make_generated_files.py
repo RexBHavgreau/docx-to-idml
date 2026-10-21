@@ -500,9 +500,8 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     bad = 0
     jobs = [(name, build, None) for name, build in FILES if name != "g11-images"]
-    # Images as an export folder of their own with a Links folder (as decided); the second copy
-    # links relative to the IDML, to test whether the folder can then be moved.
-    jobs += [("g11-images", g11_images, False), ("g11-images-relative", g11_images, True)]
+    # Images as an export folder of its own with a Links folder, linked relative to the IDML.
+    jobs += [("g11-images", g11_images, True)]
     for name, build, relative in jobs:
         if relative is None:
             path = write_idml(build(), os.path.join(OUT, name + ".idml"))

@@ -82,10 +82,9 @@ keep it up to date when decisions change.
 - Tables: write every row's `SingleRowHeight` (an estimate; InDesign grows a short row).
   Without it Affinity can't break a table across frames and runs it off the page (g07).
 - An export is a folder of its own (`writer.export_book`): `<name>/<name>.idml` and
-  `<name>/Links/` with the images, linked there by full path (`file:D:/...` on Windows), as
-  InDesign writes links (decided October 21). After a move, both programs find an image only
-  if it's loose beside the IDML, so a moved folder needs relinking; relative links
-  (`file:Links/x.jpg`) are under test (g11-images-relative). Frames are cloned from reference 11.
+  `<name>/Links/` with the images, linked relative to the IDML (`file:Links/x.jpg`), so the
+  folder can be moved or sent on: both InDesign and Affinity find them (decided October 21).
+  Full paths (InDesign's own way) broke when the folder moved. Frames are cloned from reference 11.
   `tests/data/sample.jpg` is the test image (450 x 300 px, 150 ppi).
 - IDML: a page frame made from a master frame is linked on the `<Page>` element,
   `OverrideList="<master item> <page item> ..."` (pairs), not on the frame; the frame itself is

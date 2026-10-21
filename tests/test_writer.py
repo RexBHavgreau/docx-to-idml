@@ -309,22 +309,22 @@ def test_images():
         assert img.get("ItemTransform").startswith(scale + " 0 0 " + scale)
         assert img.find("Properties/GraphicBounds").get("Right") == "216"
         uri = img.find("Link").get("LinkResourceURI")
-        assert uri.startswith("file:") and uri.endswith("/Links/sample.jpg")
+        assert uri == "file:Links/sample.jpg"
     assert check(path, schema=schema_available() is None) == []
 
 
 def test_export_folder():
     """An export is a folder of its own: the IDML and a Links folder with the images, linked
-    there (decided October 21); relative links as a test option."""
+    relative to the IDML (decided October 21); full paths as an option."""
     path = export_book(gen.g11_images(), TMP, "My Book")
     folder = os.path.join(TMP, "My Book")
     assert path == os.path.join(folder, "My Book.idml")
     assert sorted(os.listdir(folder)) == ["Links", "My Book.idml"]
     assert os.listdir(os.path.join(folder, "Links")) == ["sample.jpg"]
-    rel = export_book(gen.g11_images(), TMP, "Relative", relative_links=True)
-    uris = {l.get("LinkResourceURI") for n in zipfile.ZipFile(rel).namelist() if n.endswith(".xml")
-            for l in etree.fromstring(zipfile.ZipFile(rel).read(n)).iter("Link")}
-    assert uris == {"file:Links/sample.jpg"}
+    full = export_book(gen.g11_images(), TMP, "Full", relative_links=False)
+    uris = {l.get("LinkResourceURI") for n in zipfile.ZipFile(full).namelist() if n.endswith(".xml")
+            for l in etree.fromstring(zipfile.ZipFile(full).read(n)).iter("Link")}
+    assert len(uris) == 1 and uris.pop().endswith("/Full/Links/sample.jpg")
 
 
 def test_text_details():
