@@ -27,6 +27,13 @@ version 4) is removed.
                         anywhere in the notes (in fn-i, note text after the Italic run fell back
                         to InDesign's default 12 pt Minion as overrides)
   fn-l-split-local-italic  i + d (italic in notes as local formatting, not a style)
+  fn-m-split-formatting i + c: every note has the style (number in its own run) and also carries
+                        the Footnote style's font, size and indent directly, since Affinity laid
+                        InDesign's defaults over note text even in k and l
+  fn-n-split-root-arno10  i, with the root style ([No paragraph style], which every style is
+                        based on) changed from Minion Pro 12 pt to Arno Pro 10 pt: a diagnostic.
+                        If the faulty note text turns Arno 10, Affinity is falling back to the
+                        root style
 """
 
 import os
@@ -125,6 +132,8 @@ def transform(story_xml, plain_callout=False, local_superscript=False, note_form
             if local_superscript:
                 csr.set("Position", "Superscript")
     for fn in root.iter("Footnote"):
+        if split is not None:        # before the formatting, so the new run gets it too
+            split_number(fn, split)
         for psr in fn.iter("ParagraphStyleRange"):
             if note_format:
                 attrs, props = note_format
@@ -132,8 +141,6 @@ def transform(story_xml, plain_callout=False, local_superscript=False, note_form
                     for k, v in attrs.items():
                         csr.set(k, v)
                     set_props(csr, props)
-        if split is not None:
-            split_number(fn, split)
         if note_break:
             last = list(fn.iter("CharacterStyleRange"))[-1]
             etree.SubElement(last, "Br")
@@ -146,6 +153,15 @@ def transform(story_xml, plain_callout=False, local_superscript=False, note_form
                 if csr.get("AppliedCharacterStyle") == "CharacterStyle/Italic":
                     csr.set("AppliedCharacterStyle", NONE)
                     csr.set("FontStyle", "Italic")
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def root_style(styles_xml, font, size):
+    root = etree.fromstring(styles_xml)
+    for ps in root.iter("ParagraphStyle"):
+        if ps.get("Self") == "ParagraphStyle/$ID/[No paragraph style]":
+            ps.set("PointSize", size)
+            ps.find("Properties/AppliedFont").text = font
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
@@ -170,6 +186,8 @@ VARIANTS = [
     ("fn-j-split-plain-callout", {"split": True, "plain_callout": True}, False),
     ("fn-k-split-no-italic", {"split": True, "note_no_italic": True}, False),
     ("fn-l-split-local-italic", {"split": True, "note_local_italic": True}, False),
+    ("fn-m-split-formatting", {"split": True, "note_format": True}, False),
+    ("fn-n-split-root-arno10", {"split": True, "root": ("Arno Pro", "10")}, False),
 ]
 
 
@@ -184,6 +202,7 @@ def main():
     for name, opts, plain_marker in VARIANTS:
         opts = dict(opts)
         renamed = opts.pop("rename", False)
+        new_root = opts.pop("root", None)
         if opts.get("note_format"):
             opts["note_format"] = fmt
         if opts.get("split"):
@@ -196,6 +215,8 @@ def main():
                     data = transform(data, **opts)
                 elif info.filename == "Resources/Preferences.xml" and plain_marker:
                     data = no_marker_style(data)
+                if new_root and info.filename == "Resources/Styles.xml":
+                    data = root_style(data, *new_root)
                 if renamed and info.filename.endswith(".xml"):
                     data = rename(data)
                 if info.filename == "mimetype":
