@@ -496,10 +496,18 @@ FILES = [("g01-footnotes", g01_footnotes), ("g02-section-marker-heads", g02_sect
 
 def main():
     from idml_check import check
+    from docx2idml.idml.writer import export_book
     os.makedirs(OUT, exist_ok=True)
     bad = 0
-    for name, build in FILES:
-        path = write_idml(build(), os.path.join(OUT, name + ".idml"))
+    jobs = [(name, build, None) for name, build in FILES if name != "g11-images"]
+    # Images as an export folder of their own with a Links folder (as decided); the second copy
+    # links relative to the IDML, to test whether the folder can then be moved.
+    jobs += [("g11-images", g11_images, False), ("g11-images-relative", g11_images, True)]
+    for name, build, relative in jobs:
+        if relative is None:
+            path = write_idml(build(), os.path.join(OUT, name + ".idml"))
+        else:
+            path = export_book(build(), OUT, name, relative_links=relative)
         probs = check(path)
         print("%s: %s" % (name, "OK" if not probs else "%d problem(s)" % len(probs)))
         for p in probs[:20]:

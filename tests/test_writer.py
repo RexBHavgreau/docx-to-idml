@@ -14,7 +14,7 @@ from lxml import etree
 
 from docx_builder import run_tests
 from docx2idml.idml.model import Document, Paragraph, Run, Section, Story, Style
-from docx2idml.idml.writer import Writer, roman, write_idml
+from docx2idml.idml.writer import Writer, export_book, roman, write_idml
 from idml_check import check, schema_available
 from idml_inspect import inspect
 import make_generated_files as gen
@@ -311,6 +311,20 @@ def test_images():
         uri = img.find("Link").get("LinkResourceURI")
         assert uri.startswith("file:") and uri.endswith("/Links/sample.jpg")
     assert check(path, schema=schema_available() is None) == []
+
+
+def test_export_folder():
+    """An export is a folder of its own: the IDML and a Links folder with the images, linked
+    there (decided October 21); relative links as a test option."""
+    path = export_book(gen.g11_images(), TMP, "My Book")
+    folder = os.path.join(TMP, "My Book")
+    assert path == os.path.join(folder, "My Book.idml")
+    assert sorted(os.listdir(folder)) == ["Links", "My Book.idml"]
+    assert os.listdir(os.path.join(folder, "Links")) == ["sample.jpg"]
+    rel = export_book(gen.g11_images(), TMP, "Relative", relative_links=True)
+    uris = {l.get("LinkResourceURI") for n in zipfile.ZipFile(rel).namelist() if n.endswith(".xml")
+            for l in etree.fromstring(zipfile.ZipFile(rel).read(n)).iter("Link")}
+    assert uris == {"file:Links/sample.jpg"}
 
 
 def test_text_details():

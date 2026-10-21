@@ -99,8 +99,9 @@ class Ids:
 
 
 class Writer:
-    def __init__(self, doc):
+    def __init__(self, doc, relative_links=False):
         self.doc = doc
+        self.relative_links = relative_links
         self.ids = Ids()
         self.snip = {el.tag: el for el in _parse(os.path.join(BASE, "snippets.xml"))}
         self.parts = {}           # package path -> root element
@@ -699,11 +700,13 @@ class Writer:
             self.linked[src] = dest
         return self.linked[src]
 
-    @staticmethod
-    def _uri(path):
-        """A file URI as InDesign writes it: file:D:/folder/file.jpg (Windows), file:/home/..."""
-        p = os.path.abspath(path).replace("\\", "/")
-        return "file:" + p
+    def _uri(self, path):
+        """A file URI as InDesign writes it: file:D:/folder/file.jpg (Windows), file:/home/...;
+        or, as a test, relative to the IDML: file:Links/file.jpg."""
+        if self.relative_links:
+            rel = os.path.relpath(path, os.path.dirname(self.links_dir))
+            return "file:" + rel.replace("\\", "/")
+        return "file:" + os.path.abspath(path).replace("\\", "/")
 
     def _image_rect(self, img, kind, x, y, wrap):
         """A frame holding a linked image, cloned from InDesign's (reference 11)."""
@@ -889,5 +892,15 @@ class Writer:
             pos += 1
 
 
-def write_idml(doc, path):
-    return Writer(doc).write(path)
+def write_idml(doc, path, relative_links=False):
+    """Write the IDML at path; linked images go to a Links folder beside it."""
+    return Writer(doc, relative_links).write(path)
+
+
+def export_book(doc, out_dir, name=None, relative_links=False):
+    """An export as decided (October 21): a folder of its own holding the IDML and a Links
+    folder with the images, the links pointing there. Returns the IDML's path."""
+    name = name or doc.name
+    folder = os.path.join(out_dir, name)
+    os.makedirs(folder, exist_ok=True)
+    return write_idml(doc, os.path.join(folder, name + ".idml"), relative_links)
