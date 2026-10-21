@@ -6,7 +6,6 @@ name: Build
 on:
   push:
     tags: ["v*"]
-    branches: ["claude/charming-ptolemy-orn5rc"]   # TEMPORARY: one check of the build
   workflow_dispatch:
 
 permissions:

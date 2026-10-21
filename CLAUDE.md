@@ -181,8 +181,9 @@ writes one.
 - Step 5: e01 with the layout: text flows right, text width fine, folios right (Beaux). Spare
   pages the text doesn't reach keep their folio (they are text pages). Bleed not yet checked.
 - Step 6: e01 with front matter and running heads: validates, not yet opened.
-- Step 7: the window tested here under Xvfb (Linux, Python 3.12), not yet on Windows; the .exe
-  and the updater not yet built or run on Windows (no release published yet).
+- Step 7: the window tested under Xvfb here and by its tests on GitHub's Windows runner; the
+  .exe builds there (about 19 MB, carries the base files) but hasn't been opened by hand. The
+  updater is tested with a fake GitHub only (no release published yet).
 - Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
   the No Break style and the local NoBreak attribute?
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).
