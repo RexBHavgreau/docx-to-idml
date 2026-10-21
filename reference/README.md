@@ -83,3 +83,24 @@ Put the `.idml` files (and `images/`) in `reference/idml/` in this repository. T
 standard the generator is compared against. Check each one with
 `python tools/idml_check.py reference/idml/*.idml` (structure and Adobe's schema), and
 summarize one with `python tools/idml_inspect.py`. The `.indd` and PDFs can stay on your machine.
+
+## Footnote variants (October 21)
+
+Affinity mishandles the footnotes in 01 even though the IDML is clean: body text after a
+callout shows "Footnote Reference", note 1 loses its formatting at the italic, and later notes
+lose the Footnote style. To find the structure Affinity reads correctly,
+`python tools/make_footnote_variants.py` makes six variants of 01 in `reference/variants/`,
+each changing one thing (all pass the schema):
+
+| File | What changes | Affinity: body text after callouts plain? | Note 1 right through the italic? | Notes 2-3 keep Footnote style or look right? | Notes |
+|---|---|---|---|---|---|
+| fn-0-base | Nothing (01 as InDesign wrote it) | | | | |
+| fn-a-plain-callout | Callout runs have no character style; the marker style is left to the footnote options | | | | |
+| fn-b-local-superscript | Callouts plain with local superscript; no marker style in the options (the Assumption article's pattern) | | | | |
+| fn-c-note-formatting | Note text also carries the Footnote style's settings (size, indent, font) directly | | | | |
+| fn-d-note-local-italic | Italic inside notes as local formatting, not the Italic style | | | | |
+| fn-e-all | b + c + d together | | | | |
+
+For each: open in Affinity, click into the body text after the first callout and look at the
+character style; click into notes 1, 2 and 3 and look at the paragraph style and size (9 pt);
+check that the callout numbers are superscript and the notes still restart at 1 in chapter two.

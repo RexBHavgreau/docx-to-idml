@@ -14,7 +14,7 @@
 
 (function () {
 
-var SCRIPT_VERSION = "4";
+var SCRIPT_VERSION = "5";
 var log = [];
 var notes = [];          // problems inside the file being built
 
@@ -210,7 +210,11 @@ function append(target, text, cs) {
     var a = target.characters.length;
     target.insertionPoints[-1].contents = text;
     if (target.characters.length > a) {
-        target.characters.itemByRange(a, target.characters.length - 1).appliedCharacterStyle = cs;
+        var range = target.characters.itemByRange(a, target.characters.length - 1);
+        range.appliedCharacterStyle = cs;
+        try {
+            range.clearOverrides(OverrideType.CHARACTER_ONLY);   // e.g. italic carried over
+        } catch (e) {}
     }
 }
 
@@ -813,7 +817,7 @@ var FILES = [
 ];
 
 // Only the named files, if ONLY is not empty (e.g. ["05-primary-text-frame", "06-toc"]).
-var ONLY = ["01-footnotes", "08-opentype", "10-hebrew-greek", "12-character-styles"];
+var ONLY = [];
 
 function wanted(name) {
     if (!ONLY.length) {

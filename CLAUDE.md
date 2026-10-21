@@ -79,9 +79,10 @@ On Windows set `PYTHONUTF8=1`. `test_preflight` includes a LibreOffice round tri
 writes one.
 
 ## Not yet checked
-- Step 2: Affinity done (compatibility table in PLAN.md) except 01, 08, 10, 12, which were
-  faulty (text after a styled run kept its character style); script v4 rebuilds them, not yet
-  run. DesignCraft not yet. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
+- Step 2: Affinity done (compatibility table in PLAN.md) except footnotes: Affinity mishandles
+  InDesign's footnote structure; the six variants in `reference/variants/`
+  (`tools/make_footnote_variants.py`) are waiting on Beaux's check. 08, 10, 12 rebuilt (v4)
+  and clean; their Affinity check is still to redo. DesignCraft not yet. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
   with a byte-order mark.
