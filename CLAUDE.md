@@ -69,6 +69,8 @@ keep it up to date when decisions change.
   document, double-quoted XML declaration), never `tostring(root)`, which drops the line.
 - `DocumentPreference PagesPerDocument` stays 1 (the new-document default InDesign writes); set
   to the real page count, InDesign adds that many pages at the start when opening the file.
+- In facing documents a page's side follows its number (odd = recto), as in InDesign; a recto
+  after a recto stands alone on its spread (reference 03). The writer works out spreads that way.
 - IDML sections, as InDesign writes them (g01's first version broke these and wouldn't open
   in InDesign, though it validated and opened in Affinity): the alternate layout's name
   (`AlternateLayout="Custom V"`) on the first section only, `""` on the others;
@@ -103,8 +105,9 @@ writes one.
 ## Not yet checked
 - Step 2: Affinity done (all files; footnotes settled as fn-m, rule and spacing as fn-o/p/q).
   DesignCraft not yet.
-- Step 3: g01 (footnotes) opens in Affinity and looks right; opens in InDesign since the `<?aid?>`
-  fix; InDesign added pages at the start (PagesPerDocument; fixed, not yet retried). The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
+- Step 3: g01 (footnotes) opens in Affinity and looks right; confirmed in InDesign and Affinity.
+  g02-g04 (running heads, roman/arabic sections, parent/child masters) validate and match
+  references 02-04 in the inspector; not yet opened in InDesign or Affinity. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
   Kozuka, Arno); generating it from the fonts used is still to do. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8

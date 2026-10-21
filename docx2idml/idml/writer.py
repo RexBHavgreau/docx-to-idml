@@ -26,6 +26,9 @@ NONE_CHAR = "CharacterStyle/$ID/[No character style]"
 ROOT_PARA = "$ID/[No paragraph style]"
 PAGE_GAP = 180                    # vertical space between spreads, as InDesign lays them out
 
+# Special characters: <?ACE n?> processing instructions.
+SPECIAL = {"page_number": "18", "section_marker": "19"}
+
 # Paragraph settings carried onto every run of footnote text (see the module docstring).
 NOTE_ATTRS = ("PointSize", "FirstLineIndent", "LeftIndent", "RightIndent", "Justification",
               "FontStyle")
@@ -222,7 +225,13 @@ class Writer:
         return self.doc.width - m["inside"] - m["outside"]
 
     def _is_recto(self, i):
-        return not self.doc.facing or i % 2 == 0
+        """In facing documents a page's side follows its number, as in InDesign: odd numbers
+        are rectos, so a section restarting at 1 after an odd page puts two rectos together."""
+        if not self.doc.facing:
+            return True
+        if not hasattr(self, "_numbers"):
+            self._numbers = [n for n, _sec in self._page_numbers()]
+        return self._numbers[i] % 2 == 1
 
     def _page_left(self, i):
         """x of the page's left edge in spread coordinates."""
@@ -231,14 +240,16 @@ class Writer:
         return 0 if self._is_recto(i) else -self.doc.width
 
     def _spreads(self):
+        """Pages grouped into spreads: a verso starts a spread, a recto ends one."""
         n = self.doc.page_count
         if not self.doc.facing:
             return [[i] for i in range(n)]
-        groups = [[0]]
-        i = 1
-        while i < n:
-            groups.append([i, i + 1] if i + 1 < n else [i])
-            i += 2
+        groups = []
+        for i in range(n):
+            if not groups or not self._is_recto(i) or self._is_recto(groups[-1][-1]):
+                groups.append([i])
+            else:
+                groups[-1].append(i)
         return groups
 
     def _page_numbers(self):
@@ -299,8 +310,12 @@ class Writer:
         mp.set("ColumnsPositions", "0 %s" % _num(self.measure))
         return page
 
-    def _frame_el(self, story_id, left, top, width, height):
+    def _frame_el(self, story_id, left, top, width, height, master=False, valign=None):
         f = copy.deepcopy(self.snip["TextFrame"])
+        if master:
+            f.set("AllowOverrides", "true")
+        if valign:
+            f.find("TextFramePreference").set("VerticalJustification", valign)
         fid = self.ids()
         f.set("Self", fid)
         f.set("ParentStory", story_id)
@@ -324,7 +339,9 @@ class Writer:
         out = {}
         for m in self.doc.masters:
             out[m.name] = self.ids()
-        for m in self.doc.masters:
+        frame_ids = {}            # (master name, frame key, side) -> frame id
+        self.master_stories = []  # (story id, paragraphs)
+        for m in self._parents_first():
             ms = etree.Element("MasterSpread", self.snip["MasterSpread"].attrib)
             mid = out[m.name]
             ms.set("Self", mid)
@@ -334,10 +351,47 @@ class Writer:
             ms.set("PageCount", "2" if self.doc.facing else "1")
             ms.set("PrimaryTextFrame", "n")
             parent = out.get(m.based_on) if m.based_on else None
-            positions = [-self.doc.width, 0] if self.doc.facing else [-self.doc.width / 2]
-            for x in positions:
-                ms.append(self._page_el(self.ids(), x, m.prefix, parent, "n", master_page=True))
+            if self.doc.facing:
+                sides = [("verso", -self.doc.width), ("recto", 0)]
+            else:
+                sides = [("recto", -self.doc.width / 2)]
+            pages = {}
+            for side, x in sides:
+                page = self._page_el(self.ids(), x, m.prefix, parent, "n", master_page=True)
+                pairs = []
+                for key in m.removes:
+                    pid = frame_ids.get((m.based_on, key, side))
+                    if pid:
+                        pairs += [pid, "n"]
+                page.set("OverrideList", " ".join(pairs))
+                ms.append(page)
+                pages[side] = x
+            for fr in m.frames:
+                x = pages.get(fr.side, pages.get("recto"))
+                top, left, bottom, right = fr.bounds
+                sid = self.ids()
+                f = self._frame_el(sid, x + left, -self.doc.height / 2 + top, right - left,
+                                   bottom - top, master=True, valign=fr.valign)
+                ms.append(f)
+                self.master_stories.append((sid, fr.paragraphs))
+                if fr.key:
+                    frame_ids[(m.name, fr.key, fr.side)] = f.get("Self")
             self.parts["MasterSpreads/MasterSpread_%s.xml" % mid] = self._wrap("MasterSpread", ms)
+        return out
+
+    def _parents_first(self):
+        done, out = set(), []
+        masters = {m.name: m for m in self.doc.masters}
+
+        def visit(m):
+            if m.name in done:
+                return
+            done.add(m.name)
+            if m.based_on in masters:
+                visit(masters[m.based_on])
+            out.append(m)
+        for m in self.doc.masters:
+            visit(m)
         return out
 
     def _write_spreads(self, masters):
@@ -391,15 +445,16 @@ class Writer:
 
     def _write_stories(self, frames):
         out = []
-        for k, story in enumerate(self.doc.stories):
+        todo = [(self.story_ids[k], story.paragraphs) for k, story in enumerate(self.doc.stories)]
+        for sid, paragraphs in self.master_stories + todo:
             st = etree.Element("Story", self.snip["Story"].attrib)
             for child in self.snip["Story"]:
                 st.append(copy.deepcopy(child))
-            st.set("Self", self.story_ids[k])
-            for n, para in enumerate(story.paragraphs):
-                st.append(self._paragraph(para, last=(n == len(story.paragraphs) - 1)))
-            self.parts["Stories/Story_%s.xml" % self.story_ids[k]] = self._wrap("Story", st)
-            out.append(self.story_ids[k])
+            st.set("Self", sid)
+            for n, para in enumerate(paragraphs):
+                st.append(self._paragraph(para, last=(n == len(paragraphs) - 1)))
+            self.parts["Stories/Story_%s.xml" % sid] = self._wrap("Story", st)
+            out.append(sid)
         return out
 
     def _csr(self, style, attrs=None, font=None, leading=None):
@@ -422,6 +477,8 @@ class Writer:
         number: write the footnote number first (a note's first paragraph)."""
         psr = etree.Element("ParagraphStyleRange",
                             AppliedParagraphStyle="ParagraphStyle/%s" % para.style)
+        for k, v in para.attrs.items():
+            psr.set(k, _num(v))
         if number:
             # The footnote number and separator in a run of their own.
             attrs, font, leading = note
@@ -446,7 +503,13 @@ class Writer:
                 csr = self._csr(run.style, merged, font, leading)
             else:
                 csr = self._csr(run.style, run.attrs)
-            self._content(csr, run.text)
+            if run.special:
+                c = etree.SubElement(csr, "Content")
+                pi = etree.ProcessingInstruction("ACE", SPECIAL[run.special])
+                pi.tail = run.text.replace("\n", "\u2028") if run.text else None
+                c.append(pi)
+            else:
+                self._content(csr, run.text)
             psr.append(csr)
         if not last:
             if not len(psr) or psr[-1].find("Footnote") is not None:

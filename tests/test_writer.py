@@ -17,7 +17,8 @@ from docx2idml.idml.model import Document, Paragraph, Run, Section, Story, Style
 from docx2idml.idml.writer import Writer, roman, write_idml
 from idml_check import check, schema_available
 from idml_inspect import inspect
-from make_generated_files import g01_footnotes
+from make_generated_files import (g01_footnotes, g02_section_marker_heads,
+                                  g03_section_numbering, g04_parent_child_masters)
 
 TMP = tempfile.mkdtemp()
 
@@ -35,6 +36,11 @@ def test_spreads():
     assert Writer(Document(page_count=5))._spreads() == [[0], [1, 2], [3, 4]]
     assert Writer(Document(page_count=4))._spreads() == [[0], [1, 2], [3]]
     assert Writer(Document(page_count=2, facing=False))._spreads() == [[0], [1]]
+    # As InDesign does it (reference 03): front matter ends on vii (recto), chapter 1 restarts
+    # at 1, also a recto, so it stands alone and page 2 starts the next spread.
+    doc = Document(page_count=9, sections=[Section(0, numbering="LowerRoman", start=1),
+                                           Section(7, start=1)])
+    assert Writer(doc)._spreads() == [[0], [1, 2], [3, 4], [5, 6], [7], [8]]
 
 
 def test_sections_and_spreads_as_indesign_writes_them():
@@ -143,6 +149,52 @@ def test_footnote_options_from_profile():
     assert (fo.get("RuleOn"), fo.get("ContinuingRuleOn"), fo.get("Spacer"), fo.get("RuleWidth"),
             fo.get("FootnoteMinimumFirstBaselineOffset")) == ("true", "false", "18", "50", "17")
     assert fo.find("Properties/RestartNumbering").text == "DontRestart"
+
+
+def test_g02_g03_g04_validate():
+    why = schema_available()
+    for build in (g02_section_marker_heads, g03_section_numbering, g04_parent_child_masters):
+        path = write_idml(build(), os.path.join(TMP, build.__name__ + ".idml"))
+        assert check(path, schema=why is None) == [], build.__name__
+
+
+def test_running_heads():
+    """g02: master frames carry the page number and section marker, as reference 02."""
+    info = inspect(write_idml(g02_section_marker_heads(), os.path.join(TMP, "g02.idml")))
+    assert [(m["name"], len(m["text_frames"])) for m in info["masters"]] == [("A-Body", 2)]
+    heads = sorted(str(s.get("special_characters")) for s in info["stories"]
+                   if s.get("special_characters"))
+    assert heads == ["{'current page number': 1, 'section marker': 1}",
+                     "{'current page number': 1}"]
+    assert [s["marker"] for s in info["sections"]] == [
+        "First Chapter", "Second Chapter", "A Third Chapter with a Much Longer Title Than the Others"]
+
+
+def test_masters_based_on_and_removed_items():
+    """g04: B-Opener based on A-Body removes A's heads (OverrideList "<id> n"), as reference 04;
+    master frames allow overrides."""
+    path = write_idml(g04_parent_child_masters(), os.path.join(TMP, "g04.idml"))
+    info = inspect(path)
+    ms = {m["name"]: m for m in info["masters"]}
+    assert ms["B-Opener"]["based_on"] == ["A-Body"]
+    a_ids = {f["id"] for f in ms["A-Body"]["text_frames"]}
+    assert set(ms["B-Opener"]["parent_items_removed"]) == a_ids and len(a_ids) == 2
+    assert [p["master"] for p in info["pages"]] == ["B-Opener", "A-Body", "A-Body", "A-Body",
+                                                    "B-Opener", "A-Body"]
+    z = zipfile.ZipFile(path)
+    for n in z.namelist():
+        if n.startswith("MasterSpreads/"):
+            for tf in etree.fromstring(z.read(n)).iter("TextFrame"):
+                assert tf.get("AllowOverrides") == "true"
+
+
+def test_no_master_and_roman_pages():
+    """g03: display and blank masters, roman front matter, chapter 1 alone on a recto."""
+    info = inspect(write_idml(g03_section_numbering(), os.path.join(TMP, "g03.idml")))
+    assert [(p["name"], p["side"]) for p in info["pages"]][5:] == [
+        ("vi", "verso"), ("vii", "recto"), ("1", "recto"), ("2", "verso")]
+    assert [(m["name"], m["based_on"]) for m in info["masters"]] == [
+        ("A-Body", None), ("C-Front", ["A-Body"]), ("D-Display", None), ("E-Blank", None)]
 
 
 def test_text_details():

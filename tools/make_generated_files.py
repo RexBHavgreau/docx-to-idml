@@ -15,7 +15,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-from docx2idml.idml.model import Document, Paragraph, Run, Section, Story, Style
+from docx2idml.idml.model import (Document, Frame, Master, Paragraph, Run, Section, Story,
+                                  Style)
 from docx2idml.idml.writer import write_idml
 from docx2idml.profile import default_profile
 
@@ -104,7 +105,114 @@ def g01_footnotes():
     return doc
 
 
-FILES = [("g01-footnotes", g01_footnotes)]
+def area(doc, side):
+    """The text area of a page, (top, left, bottom, right), in page coordinates. In facing
+    documents the inside margin is on the right of a verso and the left of a recto."""
+    m = doc.margins
+    left = m["outside"] if side == "verso" else m["inside"]
+    right = doc.width - (m["inside"] if side == "verso" else m["outside"])
+    return m["top"], left, doc.height - m["bottom"], right
+
+
+def head_frame(doc, side, runs, key="head", justification=None):
+    """A running head 27-13 pt above the text area, text at its foot (as the script's
+    headFrame)."""
+    top, left, _bottom, right = area(doc, side)
+    para = Paragraph("Running Head", runs,
+                     attrs={"Justification": justification} if justification else {})
+    return Frame(side, (top - 27, left, top - 13, right), [para], key=key, valign="BottomAlign")
+
+
+def folio_frame(doc, side, key="folio"):
+    """A folio 14-28 pt below the text area (as the script's folioFrame)."""
+    _top, left, bottom, right = area(doc, side)
+    return Frame(side, (bottom + 14, left, bottom + 28, right),
+                 [Paragraph("Folio", [Run(special="page_number")])], key=key)
+
+
+def g02_section_marker_heads():
+    """Running heads from section markers, as reference 02: recto head = section marker and
+    page number, verso head = page number and the book title; three sections."""
+    doc = Document(page_count=7, name="g02-section-marker-heads")
+    doc.paragraph_styles = body_styles()
+    doc.character_styles = [Style("Italic", attrs={"FontStyle": "Italic"})]
+    doc.footnotes = dict(default_profile()["footnotes"])
+    doc.masters = [Master("A", "Body", frames=[
+        head_frame(doc, "verso", [Run("  |  Reference Book", special="page_number")]),
+        head_frame(doc, "recto", [Run("  |  ", special="section_marker"),
+                                  Run(special="page_number")], justification="RightAlign")])]
+    chapters = [("First Chapter", [0, 1]), ("Second Chapter", [2, 3]),
+                ("A Third Chapter with a Much Longer Title Than the Others", [4, 5, 6])]
+    doc.stories, doc.sections = [], []
+    for i, (title, pages) in enumerate(chapters):
+        doc.stories.append(Story([Paragraph("Chapter Title", [Run(title)]),
+                                  Paragraph("Body First", [Run(filler(200 * len(pages), i))])],
+                                 pages, sink=72))
+        doc.sections.append(Section(pages[0], marker=title))
+    return doc
+
+
+def g03_section_numbering():
+    """Roman front matter, arabic from chapter 1, as reference 03: display pages (D) and blank
+    pages (E) with no folio; folios on A-Body and C-Front (based on A)."""
+    doc = Document(page_count=9, name="g03-section-numbering")
+    doc.paragraph_styles = body_styles() + [
+        Style("Folio", based_on="Running Head", attrs={"Justification": "CenterAlign"})]
+    doc.character_styles = [Style("Italic", attrs={"FontStyle": "Italic"})]
+    doc.footnotes = dict(default_profile()["footnotes"])
+    doc.masters = [Master("A", "Body", frames=[folio_frame(doc, "verso"),
+                                               folio_frame(doc, "recto")]),
+                   Master("C", "Front", based_on="A-Body"),
+                   Master("D", "Display"), Master("E", "Blank")]
+    plan = [("D-Display", "Reference Book"), ("E-Blank", ""),
+            ("D-Display", "Reference Book\rA Subtitle\rAuthor Name"),
+            ("D-Display", "Copyright \u00A9 2026 Author Name. All rights reserved."),
+            ("C-Front", "Contents"), ("E-Blank", ""), ("C-Front", "Preface"),
+            ("A-Body", "Chapter One"), ("A-Body", "")]
+    doc.stories = []
+    for i, (master, text) in enumerate(plan):
+        doc.page_masters[i] = master
+        if text:
+            lines = text.split("\r")
+            paras = [Paragraph("Chapter Title", [Run(lines[0])])]
+            paras += [Paragraph("Body", [Run(line)]) for line in lines[1:]]
+            if i >= 4:
+                paras.append(Paragraph("Body First", [Run(filler(120, i))]))
+            doc.stories.append(Story(paras, [i], sink=72))
+    doc.sections = [Section(0, marker="Front matter", numbering="LowerRoman", start=1),
+                    Section(7, marker="Chapter One", start=1)]
+    return doc
+
+
+def g04_parent_child_masters():
+    """B-Opener based on A-Body, as reference 04: it removes A's running heads and has its own
+    folio at the foot."""
+    doc = Document(page_count=6, name="g04-parent-child-masters")
+    doc.paragraph_styles = body_styles() + [
+        Style("Folio", based_on="Running Head", attrs={"Justification": "CenterAlign"})]
+    doc.character_styles = [Style("Italic", attrs={"FontStyle": "Italic"})]
+    doc.footnotes = dict(default_profile()["footnotes"])
+    a = Master("A", "Body", frames=[
+        head_frame(doc, "verso", [Run("  |  Reference Book", special="page_number")]),
+        head_frame(doc, "recto", [Run("Chapter Title  |  "), Run(special="page_number")],
+                   justification="RightAlign")])
+    b = Master("B", "Opener", based_on="A-Body", removes=["head"],
+               frames=[folio_frame(doc, "verso"), folio_frame(doc, "recto")])
+    doc.masters = [a, b]
+    for i, m in enumerate(["B-Opener", "A-Body", "A-Body", "A-Body", "B-Opener", "A-Body"]):
+        doc.page_masters[i] = m
+    doc.stories = [
+        Story([Paragraph("Chapter Title", [Run("Chapter Opener on B")]),
+               Paragraph("Body First", [Run(filler(1000, 0))])], [0, 1, 2, 3], sink=108),
+        Story([Paragraph("Chapter Title", [Run("Second Opener on B")]),
+               Paragraph("Body First", [Run(filler(450, 3))])], [4, 5], sink=108)]
+    doc.sections = [Section(0)]
+    return doc
+
+
+FILES = [("g01-footnotes", g01_footnotes), ("g02-section-marker-heads", g02_section_marker_heads),
+         ("g03-section-numbering", g03_section_numbering),
+         ("g04-parent-child-masters", g04_parent_child_masters)]
 
 
 def main():

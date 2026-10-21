@@ -24,12 +24,14 @@ class Run:
     style: str = None             # character style name; None = no character style
     attrs: dict = field(default_factory=dict)   # local formatting, e.g. {"FontStyle": "Italic"}
     footnote: list = None         # a footnote here: its paragraphs (list of Paragraph)
+    special: str = None           # "page_number" or "section_marker", before the text
 
 
 @dataclass
 class Paragraph:
     style: str
     runs: list = field(default_factory=list)
+    attrs: dict = field(default_factory=dict)   # local paragraph formatting, e.g. Justification
 
 
 @dataclass
@@ -48,10 +50,22 @@ class Section:
 
 
 @dataclass
+class Frame:
+    """A text frame on a master page (running head, folio)."""
+    side: str                     # "verso" or "recto" ("recto" for single pages)
+    bounds: tuple                 # (top, left, bottom, right) in page coordinates
+    paragraphs: list
+    key: str = None               # a name, so a child master can remove it
+    valign: str = None            # e.g. "BottomAlign"
+
+
+@dataclass
 class Master:
     prefix: str = "A"
     base: str = "Body"
     based_on: str = None          # name of the parent master, e.g. "A-Body"
+    frames: list = field(default_factory=list)
+    removes: list = field(default_factory=list)   # keys of the parent's frames not shown here
 
     @property
     def name(self):
