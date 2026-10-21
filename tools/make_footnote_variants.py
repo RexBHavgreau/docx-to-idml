@@ -34,6 +34,10 @@ version 4) is removed.
                         based on) changed from Minion Pro 12 pt to Arno Pro 10 pt: a diagnostic.
                         If the faulty note text turns Arno 10, Affinity is falling back to the
                         root style
+  fn-o-rule-spaced      m, with the rule on (first notes and continued notes), 12 pt of space
+                        above the notes and room between the rule and the note text
+  fn-p-space-only       m, no rules; only 12 pt of space between body text and notes
+  fn-q-continuation-rule  m, no rule above notes except notes continued from the previous page
 """
 
 import os
@@ -165,6 +169,25 @@ def root_style(styles_xml, font, size):
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+# Footnote options for the spacing variants: space above the notes (Spacer), the rule at the
+# top of the note area, the first baseline at least FootnoteMinimumFirstBaselineOffset below it.
+SPACING = {"Spacer": "12", "SpaceBetween": "3", "FootnoteFirstBaselineOffset": "LeadingOffset",
+           "RuleOffset": "0", "ContinuingRuleOffset": "0", "RuleWidth": "72",
+           "ContinuingRuleWidth": "315", "RuleLineWeight": "0.5",
+           "ContinuingRuleLineWeight": "0.5"}
+
+
+def footnote_options(prefs_xml, rule, continuing_rule, below_rule):
+    root = etree.fromstring(prefs_xml)
+    fo = root.find("FootnoteOption")
+    for k, v in SPACING.items():
+        fo.set(k, v)
+    fo.set("RuleOn", "true" if rule else "false")
+    fo.set("ContinuingRuleOn", "true" if continuing_rule else "false")
+    fo.set("FootnoteMinimumFirstBaselineOffset", below_rule)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
 def no_marker_style(prefs_xml):
     root = etree.fromstring(prefs_xml)
     fo = root.find("FootnoteOption")
@@ -188,6 +211,11 @@ VARIANTS = [
     ("fn-l-split-local-italic", {"split": True, "note_local_italic": True}, False),
     ("fn-m-split-formatting", {"split": True, "note_format": True}, False),
     ("fn-n-split-root-arno10", {"split": True, "root": ("Arno Pro", "10")}, False),
+    # (rule above first notes, rule above continued notes, first baseline below the top)
+    ("fn-o-rule-spaced", {"split": True, "note_format": True, "rules": (True, True, "16")}, False),
+    ("fn-p-space-only", {"split": True, "note_format": True, "rules": (False, False, "11")}, False),
+    ("fn-q-continuation-rule", {"split": True, "note_format": True,
+                                "rules": (False, True, "16")}, False),
 ]
 
 
@@ -203,6 +231,7 @@ def main():
         opts = dict(opts)
         renamed = opts.pop("rename", False)
         new_root = opts.pop("root", None)
+        rules = opts.pop("rules", None)
         if opts.get("note_format"):
             opts["note_format"] = fmt
         if opts.get("split"):
@@ -215,6 +244,8 @@ def main():
                     data = transform(data, **opts)
                 elif info.filename == "Resources/Preferences.xml" and plain_marker:
                     data = no_marker_style(data)
+                if rules and info.filename == "Resources/Preferences.xml":
+                    data = footnote_options(data, *rules)
                 if new_root and info.filename == "Resources/Styles.xml":
                     data = root_style(data, *new_root)
                 if renamed and info.filename.endswith(".xml"):

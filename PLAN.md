@@ -145,7 +145,7 @@ A stage of its own: detect what's present, generate what's missing, order it and
 ### Defaults the user can switch off
 - Paragraph composer, optical margin alignment, hyphenation per language (InDesign has no Latin dictionary).
 - OpenType small caps, ligatures, old-style figures where the font supports them; balanced ragged lines for headings.
-- Footnote rule and spacing; widow/orphan control.
+- Footnote rule (default off), a rule above continued notes (default on), and the spaces above the notes, below a rule and between notes; widow/orphan control.
 - Each depends on the target program keeping the setting; ones that don't survive are simply lost, never broken.
 
 ## Compatibility testing
@@ -218,7 +218,9 @@ Beaux confirmed the same footnote fault in an IDML exported from a real InDesign
 - the Footnote style's font, size, leading, indent and alignment also written on every run of note text (Affinity otherwise lays the root style over note text);
 - italic and other character formatting in notes as usual.
 
-~~**Open: footnote text in Affinity.**~~ Settled by the decision above. Options: (a) also write the Footnote style's settings (font, size, leading, indent) directly on the footnote text, so it looks right in Affinity even without the style (InDesign would show the style with overrides); (b) leave it to the user to apply the Footnote style to the notes in Affinity in one step, if Affinity allows that; (c) (a) only when the profile says the book is for Affinity.
+~~**Open: footnote text in Affinity.**~~ Settled by the decision above.
+
+**Footnote rule and spacing (Beaux, October 21):** in 01 the note text sits right under the rule (all spacing at its minimum). Wanted: the rule switchable on or off; space above and below the rule; with no rule, only space between body text and notes; and optionally a rule only above notes continued from the previous page. IDML has each as its own setting in `FootnoteOption`: `RuleOn` (rule above the notes), `ContinuingRuleOn` (rule above continued notes, own width), `Spacer` (minimum space before the first note), `FootnoteFirstBaselineOffset` + `FootnoteMinimumFirstBaselineOffset` (rule to first baseline), `SpaceBetween`. Profile version 2 has a `footnotes` section: numbering, rule (default off), continuation_rule (default on), space_above (12 pt), space_below_rule (6 pt), space_between (3 pt). Variants fn-o (both rules, spaced), fn-p (space only) and fn-q (continuation rule only) test how InDesign and Affinity render these settings. Options: (a) also write the Footnote style's settings (font, size, leading, indent) directly on the footnote text, so it looks right in Affinity even without the style (InDesign would show the style with overrides); (b) leave it to the user to apply the Footnote style to the notes in Affinity in one step, if Affinity allows that; (c) (a) only when the profile says the book is for Affinity.
 
 Beaux's reminders, already in the plan: chapter opener pages carry no running heads (02 had them only on the test's A master), and blank pages carry nothing, neither heads nor folio (E-Blank).
 

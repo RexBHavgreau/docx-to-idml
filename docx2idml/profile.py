@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import APP_NAME
 
-PROFILE_VERSION = 1
+PROFILE_VERSION = 2
 
 DEFAULT_PROFILE = {
     "profile_version": PROFILE_VERSION,
@@ -44,7 +44,14 @@ DEFAULT_PROFILE = {
         "suppress_on_blanks": True,
     },
     "chapters_open": "recto",          # recto or next_page
-    "footnote_numbering": "per_chapter",   # per_chapter or continuous
+    "footnotes": {
+        "numbering": "per_chapter",    # per_chapter or continuous
+        "rule": False,                 # rule above the notes on each page
+        "continuation_rule": True,     # rule above a note continued from the previous page
+        "space_above": 12,             # points between the body text and the notes (or rule)
+        "space_below_rule": 6,         # points between a rule and the note text
+        "space_between": 3,            # points between notes
+    },
     "endnotes": "convert",             # convert to footnotes, or ask
     "front_matter": {"language": "en", "contents_depth": "chapters"},
     "notices": [],                     # the user's own notice library: {"name", "text"}
@@ -57,7 +64,6 @@ DEFAULT_PROFILE = {
         "oldstyle_figures": True,
         "balance_ragged_headings": True,
         "widow_orphan_control": True,
-        "footnote_rule": True,
     },
 }
 
@@ -100,7 +106,18 @@ def _from_0(data):
     return data
 
 
-MIGRATIONS = {0: _from_0}   # version n -> function that upgrades it to n + 1
+def _from_1(data):
+    """Version 1: footnote numbering at the top level and the rule under typography."""
+    fn = data.setdefault("footnotes", {})
+    if "footnote_numbering" in data:
+        fn.setdefault("numbering", data.pop("footnote_numbering"))
+    typo = data.get("typography")
+    if isinstance(typo, dict) and "footnote_rule" in typo:
+        fn.setdefault("rule", typo.pop("footnote_rule"))
+    return data
+
+
+MIGRATIONS = {0: _from_0, 1: _from_1}   # version n -> function that upgrades it to n + 1
 
 
 def migrate(data):

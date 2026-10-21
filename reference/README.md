@@ -124,3 +124,15 @@ shown, and a change to the document-wide footnote style reaching all notes.
 text) works in Affinity and InDesign, and editing the Footnote style reaches every note in both.
 The generator writes footnotes that way. fn-n confirmed the cause of the rest: Affinity lays the
 root style `[No paragraph style]` over note text.
+
+### Footnote rule and spacing
+
+| File | Settings | InDesign | Affinity |
+|---|---|---|---|
+| fn-o-rule-spaced | Rule above the notes and above continued notes; 12 pt above the notes; first baseline at least 16 pt below the rule | | |
+| fn-p-space-only | No rules; 12 pt between body text and notes | | |
+| fn-q-continuation-rule | Rule only above the note continued onto page 2; 12 pt above the notes | | |
+
+Check: the space between body text and rule (or notes), the space between rule and note text,
+whether the continuation rule appears only on page 2 (the long note 3 runs over), and whether
+Affinity shows the same.
