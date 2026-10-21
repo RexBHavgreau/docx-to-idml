@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from docx_builder import run_tests
-from idml_check import check
+from idml_check import check, schema_available
 from idml_inspect import inspect
 
 TMP = tempfile.mkdtemp()
@@ -97,18 +97,18 @@ def package(name, files, mimetype_first=True, stored=True):
 
 
 def test_sound_package():
-    assert check(package("ok.idml", parts())) == []
+    assert check(schema=False, path=package("ok.idml", parts())) == []
 
 
 def test_zip_problems():
-    assert check(package("m1.idml", parts(), mimetype_first=False))[0] == \
+    assert check(schema=False, path=package("m1.idml", parts(), mimetype_first=False))[0] == \
         "mimetype is not the first entry"
-    assert check(package("m2.idml", parts(), stored=False)) == \
+    assert check(schema=False, path=package("m2.idml", parts(), stored=False)) == \
         ["mimetype is compressed; it must be stored"]
     junk = os.path.join(TMP, "junk.idml")
     with open(junk, "w") as f:
         f.write("x")
-    assert check(junk)[0].startswith("not a zip package")
+    assert check(junk, schema=False)[0].startswith("not a zip package")
 
 
 def test_reference_problems():
@@ -118,7 +118,7 @@ def test_reference_problems():
     p["designmap.xml"] = p["designmap.xml"].replace(
         '<idPkg:Story src="Stories/Story_u20.xml"/>',
         '<idPkg:Story src="Stories/Story_u20.xml"/><idPkg:Story src="Stories/Story_u99.xml"/>')
-    probs = check(package("refs.idml", p))
+    probs = check(schema=False, path=package("refs.idml", p))
     assert "designmap.xml has DOMVersion 13.0 (must be 21.5)" in probs
     assert "Resources/Extra.xml is in the package but designmap.xml doesn't refer to it" in probs
     assert "designmap.xml refers to Stories/Story_u99.xml, which is not in the package" in probs
@@ -134,7 +134,7 @@ def test_link_problems():
     p["MasterSpreads/MasterSpread_u10.xml"] = p["MasterSpreads/MasterSpread_u10.xml"].replace(
         'PrimaryTextFrame="u11"', 'PrimaryTextFrame="u44"')
     p["designmap.xml"] = p["designmap.xml"].replace('PageStart="u32"', 'PageStart="u39"')
-    probs = check(package("links.idml", p))
+    probs = check(schema=False, path=package("links.idml", p))
     expected = [
         "Spreads/Spread_u30.xml: frame u33 threads to u35, which doesn't exist",
         "Spreads/Spread_u30.xml: page 1 uses master u77, which doesn't exist",
@@ -146,7 +146,25 @@ def test_link_problems():
         assert e in probs, (e, probs)
     p2 = parts()
     p2["Stories/Story_u20.xml"] = p2["Stories/Story_u20.xml"].replace("<Content>", "<Content")
-    assert any("not well-formed" in x for x in check(package("bad.idml", p2)))
+    assert any("not well-formed" in x for x in check(schema=False, path=package("bad.idml", p2)))
+
+
+def test_schema():
+    """jing catches the faults found in the first hand-built IDML (skipped without Java)."""
+    why = schema_available()
+    if why:
+        print("     (schema not checked: %s)" % why)
+        return
+    p = parts()
+    p["designmap.xml"] = p["designmap.xml"].replace('DOMVersion="21.5"', 'DOMVersion="13.0"')
+    p["designmap.xml"] = p["designmap.xml"].replace(
+        'PageNumberStart="1"/>', 'PageNumberStart="1" PageNumberStyle="Arabic"/>')
+    probs = check(package("schema.idml", p))
+    text = "\n".join(probs)
+    assert 'value of attribute "DOMVersion" is invalid; must be equal to "21.5"' in text, text
+    assert 'attribute "PageNumberStyle" not allowed here' in text, text
+    # Elements must come in the schema's order: Styles before Preferences in designmap.
+    assert 'element "idPkg:Styles" not allowed here' in text, text
 
 
 def test_inspect():

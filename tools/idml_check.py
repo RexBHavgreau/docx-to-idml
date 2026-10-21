@@ -6,12 +6,18 @@ Checks: the zip (mimetype first, stored, right content), META-INF/container.xml,
 well formed, DOMVersion 21.5 in every part, designmap.xml's references and the package's files
 matching both ways, the StoryList against the stories, and the links between parts (frames to
 stories, threading both ways, pages to masters, master overrides, sections to pages, primary
-text frames). Validation against Adobe's schema (jing) is added when the schema is in
-idml-schema/. Development tool; not part of the shipped program.
+text frames). Then every part is validated against Adobe's schema with jing, when Java, the
+jingtrang package and idml-schema/rng/ (made by tools/prepare_schema.py) are present;
+--no-schema skips it. Development tool; not part of the shipped program.
 """
 
+import os
 import posixpath
+import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import zipfile
 
 from lxml import etree
@@ -22,8 +28,80 @@ DOM_VERSION = "21.5"
 CONTAINER = "urn:oasis:names:tc:opendocument:xmlns:container"
 
 
-def check(path):
-    """Return a list of problems (empty when the package is sound)."""
+SCHEMA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "idml-schema", "rng")
+
+# Package part -> schema (relative to SCHEMA_DIR). META-INF parts have no schema.
+SCHEMAS = [(r"^designmap\.xml$", "designmap.rng"),
+           (r"^MasterSpreads/[^/]+\.xml$", "MasterSpreads/MasterSpread.rng"),
+           (r"^Spreads/[^/]+\.xml$", "Spreads/Spread.rng"),
+           (r"^Stories/[^/]+\.xml$", "Stories/Story.rng"),
+           (r"^Resources/(Fonts|Graphic|Preferences|Styles)\.xml$", r"Resources/\1.rng"),
+           (r"^XML/(BackingStory|Mapping|Tags)\.xml$", r"XML/\1.rng")]
+
+
+def schema_available():
+    """None when jing can run, else the reason it can't."""
+    if not os.path.isdir(SCHEMA_DIR):
+        return "no converted schema in idml-schema/rng (run tools/prepare_schema.py)"
+    if not shutil.which("java"):
+        return "Java is not installed"
+    try:
+        import jingtrang  # noqa: F401
+    except ImportError:
+        return "the jingtrang package is not installed (pip install jingtrang)"
+    return None
+
+
+def schema_for(part):
+    for pattern, schema in SCHEMAS:
+        m = re.match(pattern, part)
+        if m:
+            return m.expand(schema)
+    return None
+
+
+def validate_schema(z):
+    """Validate every part with jing. Returns problems as 'part:line:col: message'."""
+    import jingtrang
+    jar = os.path.join(os.path.dirname(jingtrang.__file__), "jing.jar")
+    problems = []
+    groups = {}
+    for n in z.namelist():
+        if n == "mimetype" or n.startswith("META-INF/") or n.endswith("/"):
+            continue
+        schema = schema_for(n)
+        if schema is None:
+            problems.append("%s: no schema for this part" % n)
+        else:
+            groups.setdefault(schema, []).append(n)
+    work = tempfile.mkdtemp()
+    try:
+        for schema, members in sorted(groups.items()):
+            files = []
+            for n in members:
+                dest = os.path.join(work, *n.split("/"))
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with open(dest, "wb") as f:
+                    f.write(z.read(n))
+                files.append(dest)
+            r = subprocess.run(["java", "-jar", jar, os.path.join(SCHEMA_DIR, schema)] + files,
+                               capture_output=True, text=True, encoding="utf-8", errors="replace")
+            for line in (r.stdout + r.stderr).splitlines():
+                line = line.strip()
+                if not line or line.startswith("Picked up JAVA_TOOL_OPTIONS"):
+                    continue
+                if line.startswith(work):
+                    line = line[len(work) + 1:].replace(os.sep, "/")
+                problems.append(line)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return problems
+
+
+def check(path, schema=True):
+    """Return a list of problems (empty when the package is sound). schema: also validate
+    against Adobe's schema when it is available."""
     problems = []
     try:
         z = zipfile.ZipFile(path)
@@ -71,6 +149,8 @@ def check(path):
             return problems
         problems += _check_references(dm, names)
         problems += _check_links(dm, roots)
+        if schema and schema_available() is None and not any("well-formed" in p for p in problems):
+            problems += validate_schema(z)
     return problems
 
 
@@ -197,9 +277,14 @@ def main(argv=None):
     if not args:
         print(__doc__)
         return 2
+    use_schema = "--no-schema" not in args
+    args = [a for a in args if a != "--no-schema"]
+    why = schema_available()
+    if use_schema and why:
+        print("Schema not checked: " + why)
     bad = 0
     for path in args:
-        problems = check(path)
+        problems = check(path, use_schema)
         name = posixpath.basename(path.replace("\\", "/"))
         if problems:
             bad += 1
@@ -207,7 +292,8 @@ def main(argv=None):
             for p in problems:
                 print("  - " + p)
         else:
-            print("%s: OK (structure; schema not checked)" % name)
+            print("%s: OK%s" % (name, "" if use_schema and not why else
+                                 " (structure only; schema not checked)"))
     return 1 if bad else 0
 
 

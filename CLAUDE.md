@@ -38,7 +38,8 @@ keep it up to date when decisions change.
 | `docx2idml/book.py` | Input files: drop/folder collection, natural order, saved order |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / profile` |
 | `reference/` | `make_reference_files.jsx` (builds the InDesign reference files), README with the Affinity checklist; reference IDMLs go in `reference/idml/` |
-| `tools/idml_check.py`, `tools/idml_inspect.py` | Development tools: structural check of an IDML package; summary of a package (masters, pages, overrides, sections, stories, styles) for comparing with references |
+| `idml-schema/` | Adobe's IDML schema for InDesign 2026 (21.6.0.57, DOM 21.5): `rnc/` as InDesign wrote it, `rng/` converted by `tools/prepare_schema.py` |
+| `tools/idml_check.py`, `tools/idml_inspect.py` | Development tools: structural check of an IDML package plus jing against the schema; summary of a package (masters, pages, overrides, sections, stories, styles) for comparing with references |
 | `tests/docx_builder.py` | Builds test .docx files from raw WordprocessingML; the test runner |
 
 ## Conventions
@@ -47,6 +48,10 @@ keep it up to date when decisions change.
   `profile.py`, so saved profiles are upgraded, not lost.
 - In Word, a section's `w:type` says how *that* section starts; it sits in the sectPr that ends
   the section.
+- The schema is strict about element order (e.g. in designmap.xml, idPkg:Styles comes before
+  idPkg:Preferences, and many settings are child `<Properties>` elements, not attributes).
+  Check the generator's output with `tools/idml_check.py`; jing needs Java and
+  `pip install -r requirements-dev.txt`.
 - IDML: a page frame made from a master frame is linked on the `<Page>` element,
   `OverrideList="<master item> <page item> ..."` (pairs), not on the frame.
 - The two InDesign files from the brief (the Assumption article and its cut-down) are a real

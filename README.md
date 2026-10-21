@@ -57,6 +57,8 @@ python tests/test_idml_tools.py
 ## Development tools
 
 ```
-python tools/idml_check.py file.idml      # structure: zip, container, DOMVersion, references, links
+pip install -r requirements-dev.txt      # jing and trang for schema validation (needs Java)
+python tools/idml_check.py file.idml      # structure, then Adobe's schema (jing)
 python tools/idml_inspect.py file.idml    # masters, pages, overrides, sections, stories, styles
+python tools/prepare_schema.py            # rebuild idml-schema/rng after an InDesign update
 ```

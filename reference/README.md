@@ -76,5 +76,6 @@ DesignCraft is checked later by script (its CLI exports each page as PNG).
 ## Keeping them
 
 Put the `.idml` files (and `images/`) in `reference/idml/` in this repository. They are the
-standard the generator is compared against, and the test suite validates them against the
-schema as a check on the validator itself. The `.indd` and PDFs can stay on your machine.
+standard the generator is compared against. Check each one with
+`python tools/idml_check.py reference/idml/*.idml` (structure and Adobe's schema), and
+summarize one with `python tools/idml_inspect.py`. The `.indd` and PDFs can stay on your machine.
