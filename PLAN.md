@@ -120,7 +120,7 @@ A stage of its own: detect what's present, generate what's missing, order it and
 - **Order** (Chicago): half-title, (series page / frontispiece), title, copyright, dedication, epigraph, contents, foreword, preface, acknowledgments.
 - **Half-title and title page:** generated if missing, prefilled from the detected title, subtitle and author; input fields when detection fails.
 - **Copyright page:** generated if missing. Fields: copyright line (year, holder, all rights reserved), publisher name and address, edition/printing line, ISBNs (print, ebook), optional credits, country of printing, catalog data. A **notice library** (Bible versions, works quoted by permission) the user maintains in the profile and ticks per book; the tool ships no authoritative notice wording. English or Spanish boilerplate. Author detection: title page text first, user input with the detected name prefilled (`docProps/core.xml` creator is unreliable; it is usually whoever made the file).
-- **Contents:** offered when none is detected. Page numbers don't exist until layout, so the tool reserves the contents page(s) (estimated from entry count and lines per page) with a placeholder frame, and the user inserts the TOC with the layout program's own feature. Depth option: chapters only, or chapters plus first-level sections. An existing Word TOC field is replaced, not imported (its page numbers would be wrong). Whether an IDML TOC style survives in Affinity/DesignCraft is a test item; if it does, the tool also writes one.
+- **Contents:** offered when none is detected. Page numbers don't exist until layout, so the tool reserves the contents page(s) (estimated from entry count and lines per page) with a placeholder frame, and the user inserts the TOC with the layout program's own feature. Depth option: chapters only, or chapters plus first-level sections. An existing Word TOC field is replaced, not imported (its page numbers would be wrong). *Step 2 result:* a generated TOC does not survive in Affinity (formatting inconsistent, page numbers wrong or missing, no levels, can't be updated). So the tool writes **no generated contents**, only the reserved pages; it does write the TOC style (harmless in Affinity) so an InDesign user can generate the contents in one step.
 - **Pagination:** front matter is one roman section starting at i. Display pages (half-title, title, copyright, dedication) are **counted but not folioed** (D/E masters), so the first visible folio falls on contents or preface. Chapter 1 starts a new section at arabic 1.
 - **Recto rules:** title page, dedication, contents, preface and chapter 1 open on a recto. **Chapters open on a recto by default**; the profile can switch to "next page". Blank versos (E-Blank) are inserted as needed.
 
@@ -132,7 +132,7 @@ A stage of its own: detect what's present, generate what's missing, order it and
 - **Left out in version 1** (and listed in preflight): text boxes and floating shapes, tracked changes, equations, unusual field codes.
 
 ### Threading
-- **Each chapter is its own threaded story** starting on a B-Chapter opener page. Overflow stays in its chapter; a short chapter leaves at most a page or two to delete. All three programs can auto-flow an overset story.
+- **Each chapter is its own threaded story** starting on a B-Chapter opener page. Overflow stays in its chapter; a short chapter leaves at most a page or two to delete. InDesign adds pages for an overset story by itself (smart text reflow, reference file 05); **Affinity does not**, even in its own files (step 2), so the page-count estimate and buffer must leave every chapter fitting without help.
 - Initial page counts come from the page-count estimate (or Word's `<Pages>` count in `docProps/app.xml`, scaled to the new trim), with a small buffer.
 
 ### Defaults the user can switch off
@@ -165,6 +165,27 @@ DesignCraft is pre-alpha (0.8.0), with IDML support checked against synthetic fi
 - **DesignCraft:** automated. Its CLI can open an IDML and export each page as PNG, giving the headless check Scribus couldn't.
 
 The results form a **compatibility table** that decides each fallback.
+
+### Compatibility table (step 2, October 21, 2026)
+The 13 reference files from InDesign, opened in the current Affinity app by Beaux (details in `reference/README.md`). DesignCraft still to check.
+
+| Feature (file) | Affinity | Decision |
+|---|---|---|
+| Footnotes (01) | **Works**: at the page foot, numbering restarts per section, a long note splits. The footnote text loses its paragraph style | Use footnotes as planned; footnote style question open (see below) |
+| Section-marker running heads (02) | **Works** | Recto heads from section markers, one section per chapter, as planned |
+| Roman/arabic sections, display pages without folio (03) | **Works** (pages placed oddly in Affinity's layout view; content right) | As planned |
+| Parent/child masters (04) | **Works**: B-Opener stays based on A-Body, heads removed, folio dropped | B-Opener based on A-Body; no per-chapter master fallback needed |
+| Primary text frame, page added for overset (05) | **Pages and threading kept; Affinity adds no pages** (not even in native files) | Keep the primary frame (InDesign reflows), but write enough pages for each chapter from the estimate plus a buffer |
+| Generated TOC (06) | **Lost in practice**: formatting inconsistent, page numbers wrong or missing, no levels, not updatable | No generated contents; reserved pages plus the TOC style |
+| Table (07) | **Partly**: styles and merged cells kept; the header row is not repeated on the next page (InDesign repeats it) | Write header rows as InDesign does; nothing to fix for Affinity; long tables rare in Word books |
+| OpenType features, composers, hyphenation, optical margins (08) | **Works** | Write them as planned (user can switch off) |
+| Baseline grid (09) | **Works** | As planned (off by default) |
+| Hebrew (10) | **Fails** (reversed), as expected; style-level direction doesn't help | Unchanged: books with Hebrew go to InDesign |
+| Images, inline and with wrap (11) | **Works** | Inline anchored images for Word's inline pictures |
+| Partly defined character styles (12) | **Works**: each keeps the paragraph's font and size | Character styles define only what they change |
+| Story per chapter, overset, blank verso (13) | **Works** | As planned |
+
+Beaux's reminders, already in the plan: chapter opener pages carry no running heads (02 had them only on the test's A master), and blank pages carry nothing, neither heads nor folio (E-Blank).
 
 ### Method: InDesign as the reference
 Affinity is known to open InDesign-exported IDML (tested). But opening a file isn't the same as keeping every feature, and InDesign writes far more explicit IDML than a generator does, so Affinity may depend on attributes InDesign always writes but the schema treats as optional. Testing is therefore split into two questions:
@@ -266,7 +287,7 @@ A hand-built IDML was generated for a bilingual Latin/Spanish edition (Augustine
 
 0. **Reader and preflight:** parse one or several .docx files, build the outline, report styles and unsupported items; style map and profile format. *(Under way, October 21, 2026: `python -m docx2idml preflight`. Not yet tried on a real manuscript from Word.)*
 1. **Schema and reference files:** ~~obtain the IDML schema and set up validation~~ (done October 21, 2026); make the InDesign reference export for each feature (list above), and validate those too, as a check on the validator itself. *(October 21, 2026: `tools/idml_check.py` checks a package's structure (zip, container, DOMVersion, designmap references both ways, StoryList, threading, masters, overrides, sections) and passes both InDesign files; `tools/idml_inspect.py` summarizes a package for comparing generated files with references. `reference/make_reference_files.jsx` builds all 13 reference files in InDesign and exports IDML, PDF and INDD; `reference/README.md` has the list and the Affinity checklist for step 2. The schema is in the repository and validation works. **Step 1 done (October 21): all 13 reference files made in InDesign and validated.**)*
-2. **Check the reference files** in Affinity (user) and DesignCraft (CLI); record the compatibility table and choose fallbacks.
+2. **Check the reference files** in Affinity (user) and DesignCraft (CLI); record the compatibility table and choose fallbacks. *(Affinity done October 21; see the compatibility table. DesignCraft pending.)*
 3. **Generated test files:** build each feature with the generator, validate it, compare it against the reference, and confirm it in Affinity.
 4. **Exporter core:** styles, content, footnotes, Hebrew/Greek character styles.
 5. **Geometry and pagination:** trim, margin and measure calculation, page-count estimate, masters, sections, chapter-per-story threading, recto rules.
