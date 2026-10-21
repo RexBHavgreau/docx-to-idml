@@ -206,9 +206,10 @@ writes one.
 - Step 5: e01 with the layout: text flows right, text width fine, folios right (Beaux). Spare
   pages the text doesn't reach keep their folio (they are text pages). Bleed not yet checked.
 - Step 6: e01 with front matter and running heads: validates, not yet opened.
-- Step 7: the window tested under Xvfb here and by its tests on GitHub's Windows runner; the
-  .exe builds there (about 19 MB, carries the base files) but hasn't been opened by hand. The
-  updater is tested with a fake GitHub only (no release published yet).
+- Step 7: the window tested under Xvfb here and by its tests on GitHub's Windows runner.
+  Released: v0.2.0 (October 21, the first release with the .exe, docx-to-idml-0.2.0.exe,
+  built by the tag's workflow from main). The updater's real run (0.2.0 finding a later
+  release, download, digest, old-copy cleanup) waits for the next release.
 - Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
   the No Break style and the local NoBreak attribute?
 - 0.2.0 additions not yet opened: StartParagraph NextOddPage on Chapter Title (does Affinity
