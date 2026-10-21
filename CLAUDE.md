@@ -72,6 +72,8 @@ keep it up to date when decisions change.
   a run of their own (Affinity breaks single-run notes); the Footnote style's font, size,
   leading, indent and alignment also on every note run (Affinity otherwise lays the root style
   `[No paragraph style]` over note text). Style edits still reach every note in both programs.
+  Settings the run's own character style sets (Italic's face, Greek/Hebrew fonts) are left off
+  the run, or the local copy overrides the style (italics in notes were lost until 0.2.0).
 - designmap.xml must start with InDesign's `<?aid style="50" type="document" ...?>` line before
   `<Document>`; without it InDesign says it "may not support the file format". The schema
   doesn't require it; `idml_check.py` does. Write parts with `writer.serialize()` (whole
@@ -110,7 +112,8 @@ keep it up to date when decisions change.
 - Layout (step 5): masters A-Body, B-Opener, C-Front each have their own primary text frames
   (and a folio for now); D-Display and E-Blank are empty. Each unit is a story and a section;
   display and front units are LowerRoman from i, the first chapter or part restarts Arabic 1.
-  A chapter's estimate gets one spare page; blank versos before recto openers get E-Blank.
+  Spare pages per chapter as the profile says (default none); blank versos before recto
+  openers get E-Blank.
 - Keeps (October 21): widow/orphan control is KeepLinesTogether="true" with KeepFirstLines and
   KeepLastLines 2 (InDesign ignores the line counts without KeepLinesTogether); headings keep
   all their lines together and with the next paragraph; no hyphen in a paragraph's last word
@@ -128,6 +131,27 @@ keep it up to date when decisions change.
   none unless the profile's suppress toggles are off. Verso "part": one copy of A-Body per part
   (P1-Body...), not a child master, so linked page frames point at its own primary frames. Book
   settings (`Book.settings`): "front" (see frontmatter.py) and "short_titles".
+- Bibliographies (0.2.0): Body paragraphs are set in Bibliography from a heading whose title is
+  a bibliography title (outline `_BACK`) at any level until the next heading of the same or a
+  higher level, a new unit or a new file. Outline: text before a file's first chapter heading
+  is a unit of its own (titled by a Title-style line, else its first line) when it has a title
+  line, headings or more than 150 words; in the first file, a short opening without headings
+  is the title page; a stray line or two in a later file stays with the previous unit. In a
+  chapter, Title/Subtitle/Author lines are set as Chapter Title, Chapter Subtitle, Chapter Author.
+- Composer (0.2.0): the book's styles use the World-Ready composer (`HL Composer Optyca`) by
+  default; the Adobe Paragraph Composer (`HL Composer`) reversed Hebrew in InDesign (Beaux).
+  Profile `paragraph_composer` off = single-line (`HL Single`), unless the book has Hebrew.
+- Style template (0.2.0, `docx2idml/template.py`, profile `styles_template`): an IDML's
+  paragraph and character styles replace the tool's by name (model level, so note runs and
+  estimates use them); its other styles are added; attributes referring to swatches beyond
+  InDesign's standard ones, lists, styles, and nested/GREP styles are dropped and reported.
+  Its Body/Chapter Title/Footnote fonts count as chosen fonts; World-Ready kept if Hebrew.
+- Spare pages: profile `page.spare_pages` 0 (default, Beaux), 1 or 2. Chapter Title has
+  StartParagraph NextOddPage (NextPage for chapters on the next page); Chapter Subtitle resets
+  it to Anywhere. Profile version 4.
+- Font fields in the window are editable dropdowns of the installed families
+  (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
+  character map, once, cached); read in a background thread at startup.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
@@ -137,7 +161,8 @@ keep it up to date when decisions change.
   top of `CHANGELOG.md`. Pushing a tag `vX.Y.Z` (matching `__version__`) runs
   `.github/workflows/build.yml` on Windows: tests, the .exe, a check that it carries the IDML
   base files, and a GitHub Release with the .exe (its SHA-256 digest is what the updater
-  checks). **Ask Beaux before tagging.**
+  checks). **Ask Beaux before tagging.** Tag the merge commit on `main` (after the branch is
+  merged): v0.1.0 was put on an older commit without the workflow, so nothing was built.
 
 ## Tests
 
@@ -186,4 +211,7 @@ writes one.
   updater is tested with a fake GitHub only (no release published yet).
 - Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
   the No Break style and the local NoBreak attribute?
+- 0.2.0 additions not yet opened: StartParagraph NextOddPage on Chapter Title (does Affinity
+  keep it, and does InDesign leave a title already at the top of a recto where it is?); a
+  style template's styles in InDesign and Affinity.
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).

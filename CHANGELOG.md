@@ -1,6 +1,31 @@
 # Changelog
 
-## 0.1.0 (not yet released)
+## 0.2.0 (October 21, 2026)
+
+- Fonts are chosen from dropdowns of the fonts installed on the computer (you can still type a
+  name, or leave the box blank to use Word's). The Hebrew and Greek lists show only fonts that
+  have Hebrew or Greek letters.
+- Styles from an IDML file (Layout profile > Type): the template's paragraph and character
+  styles replace the tool's of the same name, and its other styles are added. Settings that
+  point at things the export doesn't carry (most colour swatches, lists, nested and GREP
+  styles) are left out and listed in the report.
+- Spare pages after each chapter are a setting: none (the default), one, or two.
+- Chapter titles are set to start on the next odd page (the next page when chapters open on
+  the next page), so the rule holds if chapters are joined into one story in InDesign.
+- Fixed: Hebrew could come out reversed in InDesign: the styles used the Adobe Paragraph
+  Composer. They now use the World-Ready Composer (the same paragraph composer, with
+  right-to-left support), so Hebrew sets right everywhere, including Hebrew added later in
+  InDesign. The profile's single-line option is ignored when the book has Hebrew.
+- Fixed: after a bibliography, the rest of the book was set in the Bibliography style.
+  Bibliography styling now runs from a heading titled Bibliography (Works Cited, References...)
+  at any level to the next heading of the same or higher level, so a bibliography can end a
+  chapter. A file whose text starts before its first chapter heading (an article with a title
+  line, headings or a page or more of text) is a unit of its own, not added to the previous
+  file's last unit; a title line opening a chapter is set as its Chapter Title.
+- Fixed: italics in footnotes were lost (the footnote settings written on each note run
+  overrode the Italic style), and so were the Greek and Hebrew fonts inside notes.
+
+## 0.1.0 (October 21, 2026)
 
 First version with a window and an .exe.
 

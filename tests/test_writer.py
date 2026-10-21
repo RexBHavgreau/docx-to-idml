@@ -136,6 +136,28 @@ def test_footnote_structure():
     italic = [r for fn in notes for r in fn.iter("CharacterStyleRange")
               if r.get("AppliedCharacterStyle") == "CharacterStyle/Italic"]
     assert len(italic) == 1
+    assert italic[0].get("FontStyle") is None      # the Italic style's own face shows
+
+
+def test_note_runs_keep_character_style_settings():
+    """The Footnote style's settings go on note runs, but not those the run's character style
+    sets: written locally they would override it (italic lost in notes)."""
+    doc = g01_footnotes()
+    doc.style("Footnote").attrs["FontStyle"] = "Regular"     # as the exporter's Footnote
+    doc.character_styles.append(Style("Greek", font="SBL Greek",
+                                      attrs={"AppliedLanguage": "$ID/Greek"}))
+    doc.stories[0].paragraphs[1].runs[1].footnote[0].runs.append(Run(" \u03bb\u03cc\u03b3\u03bf\u03c2", "Greek"))
+    path = write_idml(doc, os.path.join(TMP, "g01n.idml"))
+    z = zipfile.ZipFile(path)
+    runs = [r for n in z.namelist() if n.startswith("Stories/")
+            for fn in etree.fromstring(z.read(n)).iter("Footnote")
+            for r in fn.iter("CharacterStyleRange")]
+    by = {r.get("AppliedCharacterStyle"): r for r in runs}
+    italic, greek = by["CharacterStyle/Italic"], by["CharacterStyle/Greek"]
+    assert italic.get("FontStyle") is None and italic.get("PointSize") == "9"
+    assert greek.find("Properties/AppliedFont") is None and greek.get("FontStyle") == "Regular"
+    plain = [r for r in runs if r.get("AppliedCharacterStyle") == "CharacterStyle/$ID/[No character style]"]
+    assert all(r.get("FontStyle") == "Regular" for r in plain)
 
 
 def test_footnote_options_from_profile():

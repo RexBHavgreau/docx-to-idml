@@ -228,11 +228,21 @@ def build_outline(docs, stylemap=None):
             elif m.role == "author" and not out.author:
                 out.author, out.author_source = text, "style %s in %s" % (m.word, doc.name)
 
-        boundaries = [h[0] for h in heads] + [len(fo.paras)]
+        boundaries = [h[0] for h in heads] + [len(fo.paras)] if heads else [len(fo.paras)]
         lead = fo.paras[:boundaries[0]]
         lead_text = [p for p in lead if p.text.strip() and fo.usable(p)]
         if lead_text:
-            if not out.units:
+            titled = any(fo.mapping(p).role in ("book_title", "subtitle") for p in lead_text)
+            if out.units and not titled and _is_title_page(fo, lead_text):
+                # A stray line or two before a later file's first heading stays with the
+                # previous unit.
+                prev = out.units[-1]
+                _fill(prev, fo, lead)
+                out.notes.append("%s starts with %s of text before its first heading; %s "
+                                 "kept with the previous unit (\"%s\")."
+                                 % (doc.name, plural(len(lead_text), "paragraph"),
+                                    "it is" if len(lead_text) == 1 else "they are", prev.title))
+            elif not out.units and _is_title_page(fo, lead_text):
                 is_title = any(fo.mapping(p).role in ("book_title", "subtitle") for p in lead)
                 unit = Unit("display", "title page" if is_title else "opening",
                             "(title page)" if is_title else "(text before the first heading)",
@@ -241,12 +251,23 @@ def build_outline(docs, stylemap=None):
                 _fill(unit, fo, lead)
                 _scan_opening(out, lead)
             else:
-                prev = out.units[-1]
-                _fill(prev, fo, lead)
-                out.notes.append("%s starts with %s of text before its first heading; %s "
-                                 "kept with the previous unit (\"%s\")."
-                                 % (doc.name, plural(len(lead_text), "paragraph"),
-                                    "it is" if len(lead_text) == 1 else "they are", prev.title))
+                # Text before a file's first chapter heading with a title, headings or more
+                # than a page's worth (an article's title and body, say) is a unit of its own,
+                # not added to the previous file's last unit (which may be a bibliography).
+                first = _lead_title(fo, lead_text)
+                title = " ".join(first.text.split())
+                kind, typ = classify(title, chapter_seen)
+                if kind == "chapter":
+                    chapter_seen = True
+                unit = Unit(kind, typ, title, doc.name, lead_text[0].index,
+                            "start of file (%s)" % ("title style" if fo.mapping(first).role ==
+                                                    "book_title" else "first line"))
+                _fill(unit, fo, lead)
+                out.units.append(unit)
+                if out.units[0] is not unit:
+                    out.notes.append("%s starts with %s before its first chapter heading; "
+                                     "they begin a unit of their own (\"%s\")."
+                                     % (doc.name, plural(len(lead_text), "paragraph"), title))
         if not heads:
             continue
         for i, (idx, role, by) in enumerate(heads):
@@ -272,6 +293,25 @@ def build_outline(docs, stylemap=None):
                 break
     _check_outline(out)
     return out
+
+
+def _is_title_page(fo, lead_text):
+    """Text before the book's first chapter heading is a title page when it is short and has
+    no headings; otherwise (an article's title and body, say) it is a unit of its own."""
+    if any(fo.mapping(p).role in ("heading", "chapter", "part") for p in lead_text):
+        return False
+    words = sum(_word_count(p.text) for p in lead_text
+                if fo.mapping(p).role not in ("book_title", "subtitle", "author"))
+    return words <= 150
+
+
+def _lead_title(fo, lead_text):
+    """The paragraph that titles a unit made from text before a file's first chapter heading:
+    a title-style line, else the first line."""
+    for p in lead_text:
+        if fo.mapping(p).role in ("book_title", "chapter", "part"):
+            return p
+    return lead_text[0]
 
 
 def _fill(unit, fo, paras):

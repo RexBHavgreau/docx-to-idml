@@ -14,7 +14,7 @@ from docx_builder import (NUMBERING, endnote_ref, footnote_ref, image, make_docx
                           run, run_tests, table)
 from docx2idml.content import Numbering, read_content
 from docx2idml.docx_reader import read_docx
-from docx2idml.export import Exporter, export, segments
+from docx2idml.export import ExportError, Exporter, export, segments
 from docx2idml.profile import default_profile
 
 TMP = tempfile.mkdtemp()
@@ -250,6 +250,7 @@ def test_pagination_and_bleed():
     from idml_check import check
     prof = default_profile()
     prof["page"]["bleed"] = True
+    prof["page"]["spare_pages"] = 1
     ex = Exporter(_files(), prof)
     try:
         doc = ex.build()
@@ -304,6 +305,9 @@ def test_no_runt():
         body = doc.style("Body").attrs
         assert body["KeepLinesTogether"] is True and body["KeepFirstLines"] == 2
         assert body["HyphenateLastWord"] is False
+        # World-Ready composer by default (Hebrew sets right everywhere).
+        assert body["Composer"] == "HL Composer Optyca"
+        assert doc.style("Footnote").attrs["Composer"] == "HL Composer Optyca"
     finally:
         ex.cleanup()
 
@@ -349,6 +353,7 @@ def test_short_title_flagged_and_part_heads():
     from docx2idml.export import Block
     prof = default_profile()
     prof["running_heads"]["verso"] = "part"
+    prof["page"]["spare_pages"] = 1
     ex = Exporter(_files(), prof)
     try:
         ex.build()
@@ -360,6 +365,119 @@ def test_short_title_flagged_and_part_heads():
         ex._paginate([part, ch])
         assert "P1-Body" in [m.name for m in ex.doc.masters]
         assert "P1-Body" in ex.doc.page_masters.values()
+    finally:
+        ex.cleanup()
+
+
+def test_single_line_composer_gives_way_to_hebrew():
+    prof = default_profile()
+    prof["typography"]["paragraph_composer"] = False
+    ex = Exporter(_files(), prof)              # chapter one has Hebrew
+    try:
+        doc = ex.build()
+        assert doc.style("Body").attrs["Composer"] == "HL Composer Optyca"
+        assert sum("World-Ready" in line for line in ex.report) == 1
+    finally:
+        ex.cleanup()
+    path = make_docx(os.path.join(TMP, "latin.docx"), [para("Chapter", "Heading1"),
+                                                         para("English only.")])
+    ex = Exporter([path], prof)
+    try:
+        assert ex.build().style("Body").attrs["Composer"] == "HL Single"
+    finally:
+        ex.cleanup()
+
+
+def test_spare_pages_and_odd_page_start():
+    counts = {}
+    for spare in (0, 1, 2):
+        prof = default_profile()
+        prof["page"]["spare_pages"] = spare
+        ex = Exporter(_files(), prof)
+        try:
+            doc = ex.build()
+            counts[spare] = [len(st.pages) for st in doc.stories]
+            assert all(st.pages[0] % 2 == 0 for st in doc.stories[GENERATED:])
+            assert doc.style("Chapter Title").attrs["StartParagraph"] == "NextOddPage"
+        finally:
+            ex.cleanup()
+    # Chapters, preface-like units and the bibliography grow by the spare pages; display pages
+    # and the reserved contents don't.
+    assert [b - a for a, b in zip(counts[0], counts[1])] == [0, 0, 0, 0, 1, 1, 1]
+    assert [b - a for a, b in zip(counts[0], counts[2])] == [0, 0, 0, 0, 2, 2, 2]
+    prof = default_profile()
+    prof["chapters_open"] = "next_page"
+    ex = Exporter(_files(), prof)
+    try:
+        doc = ex.build()
+        assert doc.style("Chapter Title").attrs["StartParagraph"] == "NextPage"
+        assert doc.style("Chapter Subtitle") is None or \
+            doc.style("Chapter Subtitle").attrs["StartParagraph"] == "Anywhere"
+    finally:
+        ex.cleanup()
+
+
+def test_styles_from_template():
+    """The styles of an IDML InDesign wrote (reference 12) replace the tool's of the same name;
+    its other styles are added; the result validates."""
+    from idml_check import check
+    template = os.path.join(ROOT, "reference", "idml", "12-character-styles.idml")
+    prof = default_profile()
+    prof["styles_template"] = template
+    ex = Exporter(_files(), prof)
+    try:
+        doc = ex.build()
+        body = doc.style("Body")
+        assert body.font == "Arno Pro" and body.leading == 14 and body.attrs["PointSize"] == 11
+        assert body.attrs["FirstLineIndent"] == 18
+        assert body.attrs["Composer"] == "HL Composer Optyca"     # the book has Hebrew
+        assert doc.style("Sans Heading").based_on == "Heading A"  # added from the template
+        assert doc.style("Chapter Title").attrs["PointSize"] == 20
+        assert doc.style("Italic", "character").attrs == {"FontStyle": "Italic"}
+        assert doc.style("Footnote") is not None                  # not in the template: the tool's
+        assert not any(line.startswith("Body font") for line in ex.report)
+        assert any(line.startswith("Styles from 12-character-styles.idml") for line in ex.report)
+        assert any("World-Ready" in line for line in ex.report)
+        from docx2idml.idml.writer import write_idml
+        assert not check(write_idml(doc, os.path.join(TMP, "tpl.idml")))
+    finally:
+        ex.cleanup()
+    prof["styles_template"] = os.path.join(TMP, "missing.idml")
+    try:
+        Exporter(_files(), prof)
+        assert False, "a missing template must stop the export"
+    except ExportError as e:
+        assert "can't be read as an IDML file" in str(e)
+
+
+def test_two_papers_with_bibliographies():
+    """Two articles not prepared as a book: each a Title, Heading 2 sections and a
+    bibliography. Each paper is a unit of its own; bibliography styling stops at the end of
+    its section, not at the end of the book."""
+    long = "The prophets use the covenant formula in many settings and with many changes. " * 12
+    a = make_docx(os.path.join(TMP, "Paper A.docx"), [
+        para("Paper One", "Title"), para("Introduction", "Heading2"), para(long), para(long),
+        para("Bibliography", "Heading1"), para("Author, A. A Book. 2020."),
+        para("Writer, B. Another Book. 2018.")])
+    b = make_docx(os.path.join(TMP, "Paper B.docx"), [
+        para("Paper Two", "Title"), para("Introduction", "Heading2"), para(long),
+        para("Works Cited", "Heading2"), para("Smith, C. A Third Book. 2019."),
+        para("Afterword", "Heading2"), para("Text after the bibliography section.")])
+    ex = Exporter([a, b], default_profile())
+    try:
+        ex.build()
+        units = [(u.kind, u.title) for u in ex.outline.units]
+        assert units == [("chapter", "Paper One"), ("back", "Bibliography"),
+                         ("chapter", "Paper Two")], units
+        styles = {}
+        for st in ex.doc.stories[GENERATED:]:
+            for p in st.paragraphs:
+                styles.setdefault("".join(r.text for r in p.runs)[:20], p.style)
+        assert styles["Paper One"] == "Chapter Title" and styles["Paper Two"] == "Chapter Title"
+        assert styles["Author, A. A Book. 2"] == "Bibliography"
+        assert styles["Smith, C. A Third Bo"] == "Bibliography"
+        assert styles["Text after the bibli"] == "Body First"
+        assert styles["The prophets use the"] == "Body First"
     finally:
         ex.cleanup()
 

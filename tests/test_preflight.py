@@ -141,7 +141,8 @@ def test_profiles():
     assert up1["footnotes"]["continuation_rule"] is True and up1["footnotes"]["space_above"] == 12
     assert "footnote_numbering" not in up1 and "footnote_rule" not in up1["typography"]
     assert up1["typography"]["ligatures"] is False
-    assert up1["typography"]["last_line_min_chars"] == 10 and up1["profile_version"] == 3
+    assert up1["typography"]["last_line_min_chars"] == 10 and up1["profile_version"] == profiles.PROFILE_VERSION
+    assert up1["page"]["spare_pages"] == 0 and up1["styles_template"] is None
     newer = os.path.join(TMP, "newer.json")
     with open(newer, "w") as f:
         json.dump({"profile_version": 999}, f)

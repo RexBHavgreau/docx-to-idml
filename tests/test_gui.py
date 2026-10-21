@@ -129,6 +129,31 @@ def test_profile_save_and_settings():
     assert appsettings.load()["profile"] == "Series A"
 
 
+def test_font_dropdowns():
+    from docx2idml import fonts
+    app, root = _app()
+    try:
+        end = time.time() + 60
+        while app.font_lists is None and time.time() < end:
+            root.update()
+            time.sleep(0.02)
+        assert app.font_lists is not None, "fonts not read"
+        installed = fonts.families()
+        form = app.profile_forms[1]
+        boxes = {script: box for box, script in form.font_boxes}
+        assert list(boxes[None]["values"]) == installed
+        for script in ("hebrew", "greek"):
+            assert set(app.font_lists[script]) <= set(installed)
+        if installed:
+            form.vars[("fonts", "body")][0].set(installed[0])
+        form.vars[("fonts", "notes")][0].set("(reading the installed fonts...)")
+        app._forms_to_profile()
+        assert app.profile["fonts"]["body"] == (installed[0] if installed else None)
+        assert app.profile["fonts"]["notes"] is None
+    finally:
+        app.quit(force=True)
+
+
 if __name__ == "__main__":
     if not HAVE_TK:
         sys.exit(0)

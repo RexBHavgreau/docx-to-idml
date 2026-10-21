@@ -35,8 +35,9 @@ from .docx_reader import is_greek, is_hebrew, read_docx
 from .idml.images import image_info
 from .idml.model import (CellStyle, Document, Frame, Image, Master, Paragraph, Run, Section,
                          Story, Style, Table, TableStyle, TOCStyle)
-from .outline import Unit, build_outline
+from .outline import _BACK, Unit, build_outline, title_key
 from .stylemap import StyleMap, norm
+from .template import TemplateError, apply_template, read_template
 
 BLEED = 9                   # 0.125 in, KDP's bleed
 TRIMS = {"5x8": (5, 8), "5.25x8": (5.25, 8), "5.5x8.5": (5.5, 8.5), "6x9": (6, 9),
@@ -169,6 +170,13 @@ class Exporter:
         self.paths = [str(p) for p in paths]
         self.profile = profile or profiles.default_profile()
         self.settings = settings or {}
+        self.tpl = None
+        path = self.profile.get("styles_template")
+        if path:
+            try:
+                self.tpl = read_template(path)
+            except TemplateError as e:
+                raise ExportError(str(e)) from None
         self.sm = StyleMap.from_profile(self.profile)
         self.report = []
         self.tmp = None
@@ -282,7 +290,12 @@ class Exporter:
         return None
 
     def _fonts(self):
-        pf = self.profile["fonts"]
+        pf = dict(self.profile["fonts"])
+        # A style template's fonts count as chosen (the profile's own still win).
+        for role, style in (("body", "Body"), ("headings", "Chapter Title"),
+                            ("notes", "Footnote")):
+            if not pf.get(role) and self._template_font(style):
+                pf[role] = self._template_font(style)
         body = pf.get("body") or self._word_font({"normal"}) or "Minion Pro"
         if not pf.get("body"):
             note = " (a Word template default; choose a book font in the profile)" \
@@ -318,6 +331,22 @@ class Exporter:
 
     # ---- styles ----
 
+    def _composer(self, typo):
+        """The World-Ready composer (InDesign's "HL Composer Optyca") by default: the paragraph
+        composer with right-to-left support, so Hebrew is set right in every style, including
+        Hebrew added later in InDesign; Latin and Greek text set the same. Single-line only if
+        the profile asks for it and the book has no Hebrew."""
+        if typo["paragraph_composer"]:
+            return "HL Composer Optyca"
+        if any(d.scripts["hebrew"].chars for d in self.docs):
+            if not getattr(self, "_composer_noted", False):
+                self.report.append("The book has Hebrew, so the World-Ready composer is used "
+                                   "although the profile asks for the single-line composer "
+                                   "(Hebrew needs it).")
+                self._composer_noted = True
+            return "HL Composer Optyca"
+        return "HL Single"
+
     def _leading(self, size):
         lead = self.profile.get("leading") or {}
         v, unit = lead.get("value"), lead.get("unit", "pt")
@@ -339,7 +368,7 @@ class Exporter:
         lang = LANGUAGES.get(self.profile["front_matter"].get("language"), LANGUAGES["en"])
         body = {"FontStyle": "Regular", "PointSize": size, "FirstLineIndent": indent,
                 "Justification": "LeftJustified", "Hyphenation": bool(typo["hyphenation"]),
-                "Composer": "HL Composer" if typo["paragraph_composer"] else "HL Single",
+                "Composer": self._composer(typo),
                 "AppliedLanguage": lang, "Ligatures": bool(typo["ligatures"])}
         if typo["oldstyle_figures"]:
             body["OTFFigureStyle"] = "ProportionalOldstyle"
@@ -356,13 +385,19 @@ class Exporter:
         head = {"FirstLineIndent": 0, "Hyphenation": False, "KeepWithNext": 2,
                 "KeepLinesTogether": True, "KeepAllLinesTogether": True}
         note_size, note_lead = size - 2, _half((size - 2) * 1.22)
+        # Chapter titles start a page: the next odd page when chapters open on a recto. Each
+        # chapter is a story of its own on its recto already; this keeps the rule if chapters
+        # are joined into one story in InDesign.
+        start = "NextOddPage" if self.profile.get("chapters_open", "recto") == "recto" \
+            else "NextPage"
         hang = [("LeftAlign", 18, "")]
         S = Style
         self.doc.paragraph_styles = [
             S("Body", font=f["body"], leading=lead, attrs=body),
             S("Body First", "Body", {"FirstLineIndent": 0}),
             S("Chapter Title", "Body", dict(head, PointSize=_half(size * 1.8),
-                                             Justification="CenterAlign", SpaceAfter=lead * 2),
+                                             Justification="CenterAlign", SpaceAfter=lead * 2,
+                                             StartParagraph=start),
               font=f["headings"], leading=_half(size * 2.2), next_style="Body First", props=balance),
             S("Part Title", "Chapter Title", {"PointSize": _half(size * 2.2)},
               leading=_half(size * 2.6), next_style="Body First"),
@@ -377,6 +412,14 @@ class Exporter:
             S("Book Title", "Body", dict(head, PointSize=_half(size * 2.4),
                                           Justification="CenterAlign", SpaceAfter=lead),
               font=f["display"], leading=_half(size * 2.8), props=balance),
+            S("Chapter Subtitle", "Chapter Title", {"PointSize": _half(size * 1.3),
+                                                    "FontStyle": "Italic",
+                                                    "StartParagraph": "Anywhere",
+                                                    "SpaceAfter": lead * 2},
+              leading=_half(size * 1.7), next_style="Body First"),
+            S("Chapter Author", "Chapter Subtitle", {"FontStyle": "Regular",
+                                                     "PointSize": size + 1},
+              leading=_half(size * 1.5), next_style="Body First"),
             S("Book Subtitle", "Book Title", {"PointSize": _half(size * 1.4),
                                               "FontStyle": "Italic"}, leading=_half(size * 1.8)),
             S("Author", "Book Title", {"PointSize": _half(size * 1.3), "SpaceBefore": lead * 2},
@@ -439,6 +482,13 @@ class Exporter:
                                              "LeftBorderStrokeWeight": 0,
                                              "RightBorderStrokeWeight": 0})]
         self.builtin = {s.name for s in self.doc.paragraph_styles}
+        if self.tpl:
+            apply_template(self.doc.paragraph_styles, self.tpl[0])
+            self._keep_world_ready()
+            attrs, _font, leading = self.doc.resolved("Body")
+            self.body_size = attrs.get("PointSize", self.body_size)
+            if isinstance(leading, (int, float)):
+                self.body_lead = leading
 
     def _resolved_attrs(self, name):
         attrs, _font, _lead = self.doc.resolved(name)
@@ -554,14 +604,70 @@ class Exporter:
         self.used_char[name] = st
         return st.attrs
 
+    def _template_font(self, name):
+        """The font a template style ends up with (through its based-on styles), or None."""
+        if not self.tpl:
+            return None
+        seen = set()
+        st = self.tpl[0].get(name)
+        while st is not None and st.name not in seen:
+            seen.add(st.name)
+            if st.font:
+                return st.font
+            st = self.tpl[0].get(st.based_on) if st.based_on else None
+        return None
+
+    def _keep_world_ready(self):
+        """A template's composer gives way to World-Ready when the book has Hebrew."""
+        if not any(d.scripts["hebrew"].chars for d in self.docs):
+            return
+        changed = False
+        for s in self.doc.paragraph_styles:
+            if s.attrs.get("Composer") not in (None, "HL Composer Optyca"):
+                s.attrs["Composer"] = "HL Composer Optyca"
+                changed = True
+        if changed and not getattr(self, "_tpl_composer_noted", False):
+            self.report.append("The template's styles use another composer; the book has "
+                               "Hebrew, so they use the World-Ready composer instead (Hebrew "
+                               "needs it).")
+            self._tpl_composer_noted = True
+
+    def _template_styles(self):
+        """The template's styles over the book's (custom ones too), and its other styles
+        added for use by hand. Reported."""
+        tp, tc, notes = self.tpl
+        replaced = set(apply_template(self.doc.paragraph_styles, tp))
+        self._keep_world_ready()
+        chars = list(self.doc.character_styles)
+        replaced |= set(apply_template(chars, tc))
+        self.doc.character_styles = chars
+        have_p = {s.name for s in self.doc.paragraph_styles}
+        have_c = {s.name for s in chars}
+        added = [n for n in tp if n not in have_p] + [n for n in tc if n not in have_c]
+        for n in tp:
+            if n not in have_p:
+                self.doc.paragraph_styles.append(tp[n])
+        for n in tc:
+            if n not in have_c:
+                self.doc.character_styles.append(tc[n])
+        own = sorted((have_p | have_c) - replaced)
+        self.report.append("Styles from %s: %d of the book's styles taken from it; %d more "
+                           "added for use by hand; the tool's own kept for %s." % (
+                               os.path.basename(self.profile["styles_template"]), len(replaced),
+                               len(added), ", ".join(own) if own else "none"))
+        self.report += notes
+        return set(tp)
+
     def _finish_styles(self):
         self._char_style("Footnote Reference")
         order = list(CHAR_STYLES) + ["Hebrew", "Greek"]
         self.doc.character_styles = sorted(
             self.used_char.values(),
             key=lambda s: (order.index(s.name) if s.name in order else len(order), s.name))
-        # Only the styles the book uses, plus the ones every book has.
+        tpl_names = self._template_styles() if self.tpl else set()
+        # Only the styles the book uses, plus the ones every book has (and the template's).
         used = set(self.para_used) | {"Body", "Body First", "Footnote", "Folio", "Running Head"}
+        used |= tpl_names
         for st in self.doc.stories:
             used |= {p.style for p in st.paragraphs}
         if self.doc.toc_styles:
@@ -777,8 +883,26 @@ class Exporter:
             self._custom_paragraph_style(m, docx, sid)
         return m
 
-    def _paragraphs(self, cp, docx, unit, prev_role, first):
-        """Model paragraphs for one content paragraph (an image splits it), with its role."""
+    def _bibliography_state(self, cp, docx, bib):
+        """Bibliography styling runs from a heading titled Bibliography (Works Cited,
+        References...) at any level to the next heading of the same or a higher level, so a
+        bibliography ending a chapter doesn't spill into what follows."""
+        if cp.table is not None:
+            return bib
+        m = self._mapping(docx, cp.style_id)
+        if m.role in ("chapter", "part", "book_title"):
+            level = 0
+        elif m.role == "heading":
+            level = max(1, m.level)
+        else:
+            return bib
+        if _BACK.get(title_key(cp.text)) == "bibliography":
+            return level
+        return bib if bib is not None and level > bib else None
+
+    def _paragraphs(self, cp, docx, unit, prev_role, first, bib=False):
+        """Model paragraphs for one content paragraph (an image splits it), with its role.
+        bib: the paragraph is in a bibliography section (body text set as entries)."""
         if cp.table is not None:
             return [Paragraph("Table", [Run(table=self._table(cp.table, docx))])], "table"
         m = self._mapping(docx, cp.style_id)
@@ -789,6 +913,12 @@ class Exporter:
         if m.role == "part" or (unit is not None and unit.kind == "part" and first and
                                 m.role == "chapter"):
             style = "Part Title"
+        elif unit is not None and unit.kind != "display" and \
+                m.role in ("book_title", "subtitle", "author"):
+            # A title line opening a chapter (an article's title, say) titles that chapter,
+            # not the book's title page.
+            style = {"book_title": "Chapter Title", "subtitle": "Chapter Subtitle",
+                     "author": "Chapter Author"}[m.role]
         if cp.label:
             if m.role in ("chapter", "part", "heading"):
                 runs.insert(0, _label_run(cp.label + " "))
@@ -796,7 +926,7 @@ class Exporter:
                 if style in ("Body", "List"):
                     style = "List Bullet" if cp.list_format == "bullet" else "List Number"
                 runs.insert(0, _label_run(cp.label + (cp.label_suffix or "\t")))
-        if style == "Body" and unit is not None and unit.type == "bibliography":
+        if style == "Body" and bib:
             style = "Bibliography"
         if style == "Body" and (first or prev_role in HEAD_ROLES):
             style = "Body First"
@@ -881,12 +1011,13 @@ class Exporter:
             content = read_content(docx)
             starts = {u.start: u for u in units_by_file.get(docx.name, [])}
             prev_role, first = None, True
+            bib = None              # level of the bibliography heading we're under, if any
             for cp in content:
                 if cp.index in starts:
                     unit = starts.pop(cp.index)
                     current = [unit, []]
                     stories.append(current)
-                    prev_role, first = None, True
+                    prev_role, first, bib = None, True, None
                 if current is None:
                     # Text before the first unit (the outline found none for it).
                     current = [None, []]
@@ -894,7 +1025,9 @@ class Exporter:
                 if cp.index >= 0 and cp.index < len(docx.paragraphs) and \
                         docx.paragraphs[cp.index].in_toc_field and cp.table is None:
                     continue
-                paras, role = self._paragraphs(cp, docx, current[0], prev_role, first)
+                bib = self._bibliography_state(cp, docx, bib)
+                paras, role = self._paragraphs(cp, docx, current[0], prev_role, first,
+                                               bib is not None)
                 if paras:
                     current[1].extend(paras)
                     prev_role, first = role, False
@@ -1055,7 +1188,8 @@ class Exporter:
             kind = b.kind
             if b.sink is None:
                 b.sink = 0 if kind in ("display", "part") else sink
-            spare = b.spare if b.spare is not None else (0 if kind in ("display", "part") else 1)
+            spare = b.spare if b.spare is not None else \
+                (0 if kind in ("display", "part") else self._spare())
             est = b.pages or self._estimate(b.paras, b.sink)
             items.append((kind, est, spare, b.opens))
         placed, count, masters, first_body = layout.plan_pages(
@@ -1107,17 +1241,33 @@ class Exporter:
         est = sum(i[1] for i in items)
         blanks = sum(1 for v in masters.values() if v == "E-Blank")
         g, m = self.geo, doc.margins
-        self.report.append(
-            "%d pages: about %d of text, %d blank verso%s, and a page to spare after each "
-            "chapter (where it stays empty, delete it with the blank page after it, or give "
-            "it the E-Blank master, so chapters keep their sides)."
-            % (doc.page_count, est, blanks, "" if blanks == 1 else "s"))
+        spare = self._spare()
+        self.report.append("%d pages: about %d of text, %d blank verso%s." % (
+            doc.page_count, est, blanks, "" if blanks == 1 else "s"))
+        if spare == 1:
+            self.report.append("Each chapter ends with a spare page. Where it stays empty, delete "
+                               "it together with the blank page after it, or give it the E-Blank "
+                               "master, so chapters keep their sides.")
+        elif spare == 2:
+            self.report.append("Each chapter ends with two spare pages. Delete unused ones two at "
+                               "a time, so chapters keep their sides.")
+        else:
+            self.report.append("No spare pages: InDesign adds pages to a chapter whose text runs "
+                               "over (then check that later chapters still open on a recto); "
+                               "Affinity doesn't, so in Affinity add pages to a chapter whose "
+                               "text runs over, two at a time.")
         self.report.append(
             "Margins (in): top %.3g, bottom %.3g, inside %.3g, outside %.3g; text %d lines of "
             "%g pt, about %d characters per line."
             % (m["top"] / 72, m["bottom"] / 72, m["inside"] / 72, m["outside"] / 72, g.lines,
                self.body_lead, round(g.cpl)))
         return doc.page_count
+
+    def _spare(self):
+        try:
+            return max(0, min(2, int(self.profile["page"].get("spare_pages") or 0)))
+        except (TypeError, ValueError):
+            return 0
 
     def _too_long(self, text):
         attrs = self._resolved_attrs("Running Head")
