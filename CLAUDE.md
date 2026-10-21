@@ -56,6 +56,9 @@ keep it up to date when decisions change.
   `HL Composer Optyca` (World-Ready). They are InDesign's own, not plug-ins.
 - IDML: a parent-master item removed on a child master, or a master item removed on a page,
   is an `OverrideList` pair with `n` as the page item.
+- Affinity reads a footnote properly only if its paragraph has two or more CharacterStyleRanges
+  (single-run notes lose their style and settings). Workaround under test (fn-i): the number
+  `<?ACE 4?>` and separator in a run of their own.
 - IDML: a page frame made from a master frame is linked on the `<Page>` element,
   `OverrideList="<master item> <page item> ..."` (pairs), not on the frame; the frame itself is
   an ordinary `TextFrame` (reference file 05).
@@ -80,8 +83,8 @@ writes one.
 
 ## Not yet checked
 - Step 2: Affinity done (compatibility table in PLAN.md) except footnotes: Affinity mishandles
-  InDesign's footnote structure; the six variants in `reference/variants/`
-  (`tools/make_footnote_variants.py`) are waiting on Beaux's check. 08, 10, 12 rebuilt (v4)
+  single-run footnotes (see Conventions); variants fn-i and fn-j in `reference/variants/`
+  (`tools/make_footnote_variants.py`) test the workaround, waiting on Beaux's check. 08, 10, 12 rebuilt (v4)
   and clean; their Affinity check is still to redo. DesignCraft not yet. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8

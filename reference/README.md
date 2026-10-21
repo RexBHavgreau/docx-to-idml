@@ -89,7 +89,7 @@ summarize one with `python tools/idml_inspect.py`. The `.indd` and PDFs can stay
 Affinity mishandles the footnotes in 01 even though the IDML is clean: body text after a
 callout shows "Footnote Reference", note 1 loses its formatting at the italic, and later notes
 lose the Footnote style. To find the structure Affinity reads correctly,
-`python tools/make_footnote_variants.py` makes nine variants of 01 in `reference/variants/`,
+`python tools/make_footnote_variants.py` makes eleven variants of 01 in `reference/variants/`,
 each changing one thing (all pass the schema):
 
 | File | What changes | Affinity: body text after callouts plain? | Note 1 right through the italic? | Notes 2-3 keep Footnote style or look right? | Notes |
@@ -103,7 +103,15 @@ each changing one thing (all pass the schema):
 | fn-f-note-break | Each note paragraph ends with a paragraph break (InDesign writes none) | | | | |
 | fn-g-renamed-styles | Note styles renamed "Note Text" and "Note Callout" (in case Affinity's own "Footnote" style takes over) | | | | |
 | fn-h-renamed-break | f + g together | | | | |
+| fn-i-split-number | The footnote number and separator in a text run of their own, so every note has at least two runs | | | | |
+| fn-j-split-plain-callout | i + callout runs with no character style | | | | |
 
 For each: open in Affinity, click into the body text after the first callout and look at the
 character style; click into notes 1, 2 and 3 and look at the paragraph style and size (9 pt);
 check that the callout numbers are superscript and the notes still restart at 1 in chapter two.
+
+**Finding (October 21):** in both 01 and the Assumption article, Affinity read a note as a proper
+footnote (settings available, style applied) only when the note's text had two or more text
+runs (e.g. it contained italic); notes written as a single run were broken. fn-i and fn-j test
+the workaround: the number in its own run. Check every note: settings available, Footnote style
+shown, and a change to the document-wide footnote style reaching all notes.

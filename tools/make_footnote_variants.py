@@ -19,6 +19,10 @@ version 4) is removed.
   fn-g-renamed-styles   the note styles renamed "Note Text" and "Note Callout", in case
                         Affinity's own notes style named "Footnote" takes over
   fn-h-renamed-break    f + g
+  fn-i-split-number     the footnote number (and the separator after it) in its own text run,
+                        so every note has at least two runs: Affinity read only notes with
+                        two or more runs as proper footnotes (October 21)
+  fn-j-split-plain-callout  i + a (callout runs with no character style)
 """
 
 import os
@@ -78,8 +82,35 @@ def rename(xml):
     return text.encode("utf-8")
 
 
+def split_number(fn, separator):
+    """Put the footnote number <?ACE 4?> and the separator after it in a run of their own."""
+    for psr in fn.findall("ParagraphStyleRange"):
+        for csr in psr.findall("CharacterStyleRange"):
+            for content in csr.findall("Content"):
+                pis = [k for k in content if isinstance(k, etree._ProcessingInstruction)
+                       and (k.text or "").strip() == "4"]
+                if not pis or content.text:
+                    continue
+                pi = pis[0]
+                tail = pi.tail or ""
+                head = separator if separator and tail.startswith(separator) else ""
+                rest = tail[len(head):]
+                if not rest and content.getnext() is None and csr.getnext() is not None:
+                    return   # already on its own
+                pi.tail = head
+                new = etree.Element("CharacterStyleRange", csr.attrib)
+                c2 = etree.SubElement(new, "Content")
+                c2.text = rest
+                for sib in list(content.itersiblings()):
+                    new.append(sib)
+                if not rest:
+                    new.remove(c2)
+                csr.addnext(new)
+                return
+
+
 def transform(story_xml, plain_callout=False, local_superscript=False, note_format=None,
-              note_local_italic=False, note_break=False):
+              note_local_italic=False, note_break=False, split=None):
     root = etree.fromstring(story_xml)
     for csr in root.iter("CharacterStyleRange"):
         # The stray local italic after the Italic run in note 1.
@@ -97,6 +128,8 @@ def transform(story_xml, plain_callout=False, local_superscript=False, note_form
                     for k, v in attrs.items():
                         csr.set(k, v)
                     set_props(csr, props)
+        if split is not None:
+            split_number(fn, split)
         if note_break:
             last = list(fn.iter("CharacterStyleRange"))[-1]
             etree.SubElement(last, "Br")
@@ -125,6 +158,8 @@ VARIANTS = [
     ("fn-f-note-break", {"note_break": True}, False),
     ("fn-g-renamed-styles", {"rename": True}, False),
     ("fn-h-renamed-break", {"rename": True, "note_break": True}, False),
+    ("fn-i-split-number", {"split": True}, False),
+    ("fn-j-split-plain-callout", {"split": True, "plain_callout": True}, False),
 ]
 
 
@@ -133,12 +168,16 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     src = zipfile.ZipFile(SRC)
     fmt = footnote_style_settings(src.read("Resources/Styles.xml"))
+    separator = etree.fromstring(src.read("Resources/Preferences.xml")).find(
+        "FootnoteOption").get("SeparatorText") or ""
     bad = 0
     for name, opts, plain_marker in VARIANTS:
         opts = dict(opts)
         renamed = opts.pop("rename", False)
         if opts.get("note_format"):
             opts["note_format"] = fmt
+        if opts.get("split"):
+            opts["split"] = separator
         path = os.path.join(OUT, name + ".idml")
         with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
             for info in src.infolist():
