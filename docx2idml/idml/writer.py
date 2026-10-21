@@ -11,6 +11,7 @@ every run of note text.
 """
 
 import copy
+import math
 import os
 import re
 import uuid
@@ -663,23 +664,69 @@ class Writer:
             etree.SubElement(psr[-1], "Br")
         return psr
 
+    def _cell_insets(self, t, header):
+        """(top, left, bottom, right) text insets of the table style's header or body cells."""
+        ts = next((x for x in self.doc.table_styles if x.name == t.style), None)
+        name = ts and (ts.header_cell_style if header else ts.body_cell_style)
+        cs = next((x for x in self.doc.cell_styles if x.name == name), None)
+        a = cs.attrs if cs else {}
+        return tuple(a.get("Text%sInset" % k, 4) for k in ("Top", "Left", "Bottom", "Right"))
+
+    def _row_height(self, t, r, insets):
+        """An estimate of a row's height, which InDesign writes as SingleRowHeight and Affinity
+        needs to break a table across frames. InDesign grows a row that is too short. From
+        reference 07: one line = insets + about 0.68 of the type size; each more line adds the
+        leading; characters average about half the type size in width."""
+        top, left, bottom, right = insets
+        best = 0
+        for c, paras in enumerate(t.rows[r]):
+            if not paras:
+                continue
+            span = t.spans.get((r, c), 1)
+            width = sum(t.widths[c:c + span]) - left - right
+            lines, size, leading = 0, 10, 12
+            for para in paras:
+                attrs, _font, lead = self.doc.resolved(para.style)
+                size = float(attrs.get("PointSize", 12))
+                leading = lead if isinstance(lead, (int, float)) else size * 1.2
+                chars = sum(len(run.text) for run in para.runs)
+                per_line = max(1, int(width / (size * 0.5)))
+                lines += max(1, math.ceil(chars / per_line))
+            best = max(best, top + bottom + size * 0.68 + leading * (lines - 1))
+        return best or 12
+
     def _table(self, t):
-        """A table as InDesign writes it: rows, columns, then cells row by row, named
-        "column:row"; a cell covered by a span to its left is left out."""
+        """A table as InDesign writes it: rows (with heights), columns, then cells row by row,
+        named "column:row"; a cell covered by a span to its left is left out. Insets come from
+        the table style's cell styles, as InDesign repeats them on rows, columns and cells."""
         tid = self.ids()
         ncols = len(t.widths)
         el = etree.Element("Table", Self=tid, HeaderRowCount=str(t.header_rows),
                            FooterRowCount="0", NumHeaderColumns="0",
-                           HeaderColumnsPosition="HeaderColumnsLeft",
+                           HeaderColumnsPosition="HeaderColumnsLeft", TextTopInset="4",
+                           TextLeftInset="4", TextBottomInset="4", TextRightInset="4",
+                           ClipContentToTextCell="false",
                            BodyRowCount=str(len(t.rows) - t.header_rows), ColumnCount=str(ncols),
                            TableDirection="LeftToRightDirection")
         if t.style:
             el.set("AppliedTableStyle", "TableStyle/%s" % t.style)
+
+        def insets(target, ins):
+            for k, v in zip(("TextTopInset", "TextLeftInset", "TextBottomInset",
+                             "TextRightInset"), ins):
+                target.set(k, _num(v))
+            target.set("ClipContentToTextCell", "false")
+
         for r in range(len(t.rows)):
-            etree.SubElement(el, "Row", Self="%sRow%x" % (tid, r), Name=str(r))
+            ins = self._cell_insets(t, r < t.header_rows)
+            row = etree.SubElement(el, "Row", Self="%sRow%x" % (tid, r), Name=str(r))
+            insets(row, ins)
+            row.set("SingleRowHeight", _num(round(self._row_height(t, r, ins), 2)))
         for c, w in enumerate(t.widths):
-            etree.SubElement(el, "Column", Self="%sColumn%x" % (tid, c), Name=str(c),
-                             SingleColumnWidth=_num(w))
+            col = etree.SubElement(el, "Column", Self="%sColumn%x" % (tid, c), Name=str(c),
+                                   ColumnType="BodyColumn")
+            insets(col, self._cell_insets(t, False))
+            col.set("SingleColumnWidth", _num(w))
         for r, row in enumerate(t.rows):
             for c in range(ncols):
                 paras = row[c] if c < len(row) else []
@@ -688,9 +735,10 @@ class Writer:
                 cell = etree.SubElement(el, "Cell", Self="%si%x" % (tid, r * ncols + c),
                                         Name="%d:%d" % (c, r), RowSpan="1",
                                         ColumnSpan=str(t.spans.get((r, c), 1)),
-                                        CellType="TextTypeCell",
-                                        AppliedCellStyle="CellStyle/$ID/[None]",
-                                        AppliedCellStylePriority="0")
+                                        ColumnType="BodyColumn", CellType="TextTypeCell")
+                insets(cell, self._cell_insets(t, r < t.header_rows))
+                cell.set("AppliedCellStyle", "CellStyle/$ID/[None]")
+                cell.set("AppliedCellStylePriority", "0")
                 for n, para in enumerate(paras):
                     cell.append(self._paragraph(para, last=(n == len(paras) - 1)))
         return el

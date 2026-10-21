@@ -241,6 +241,11 @@ def test_table():
     assert [c.get("Name") for c in merged] == ["2:5"]
     assert "3:5" not in [c.get("Name") for c in cells]
     assert table.get("AppliedTableStyle") == "TableStyle/Book Table"
+    # Row heights, which Affinity needs to break a table across frames (it ran off the page
+    # without them); estimated within a point of InDesign's for reference 07.
+    heights = [float(r.get("SingleRowHeight")) for r in table.findall("Row")]
+    assert abs(heights[0] - 12.44) < 1 and abs(heights[7] - 48.44) < 1
+    assert abs(sum(heights) - 690.1) < 10
     graphic = parts["Resources/Graphic.xml"]
     grey = [c for c in graphic.iter("Color") if c.get("Name") == "Table Grey"][0]
     assert grey.get("ColorValue") == "0 0 0 12"

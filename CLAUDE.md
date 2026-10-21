@@ -79,6 +79,8 @@ keep it up to date when decisions change.
   starts with a recto, 1 when it starts with a verso (a lone last verso too). Each page carries a
   `Descriptor` (prefix, numbering style, continue numbering, include prefix, number, number,
   marker). Validating against the schema is not enough: compare with the reference files.
+- Tables: write every row's `SingleRowHeight` (an estimate; InDesign grows a short row).
+  Without it Affinity can't break a table across frames and runs it off the page (g07).
 - IDML: a page frame made from a master frame is linked on the `<Page>` element,
   `OverrideList="<master item> <page item> ..."` (pairs), not on the frame; the frame itself is
   an ordinary `TextFrame` (reference file 05).
@@ -110,7 +112,9 @@ writes one.
   table, OpenType, baseline grid, Hebrew/Greek, character styles, chapter stories) validate and
   match their references in the inspector (masters named A-Body where InDesign defaults to
   A-Parent; g06 writes the contents style and a reserved page, no generated contents, as
-  decided); not yet opened in InDesign or Affinity. g11 (images) not yet written. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
+  decided). Beaux: all right in InDesign; contents placed by hand from the style in both programs
+  (as intended); g07's table ran off the page in Affinity (no row heights; fixed, not yet
+  retried). Affinity results for the others not yet reported. g11 (images) not yet written. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
   Kozuka, Arno); generating it from the fonts used is still to do. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
