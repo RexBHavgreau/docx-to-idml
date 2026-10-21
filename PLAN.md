@@ -1,0 +1,283 @@
+# DOCX → IDML book tool — project brief
+
+*Status: step 0 (reader and preflight) under way in this repository (October 21, 2026); see "Build order". Working name: undecided ("IDML Wizard" is a candidate). This brief replaces the October 2026 version, which planned the exporter as a stage of a separate manuscript-prep tool. The earlier contents of this repository (a React/TypeScript concept test made with Qwen Code) were replaced; they remain in git history.*
+
+## Goal
+
+Take a Word book manuscript (one file or several) and produce an IDML file that opens in **InDesign**, **Affinity Publisher** or **DesignCraft** with most of the book already laid out: page geometry, masters, styles, front matter, running heads and pagination. The book should look like it does in Word, but better.
+
+The main use is preparing books for **KDP print**, but the tool is not tied to one publisher or house style. All conventions are user settings saved in profiles.
+
+## Core decisions
+
+### Standalone tool
+- The converter is its **own tool**, not part of the earlier manuscript-prep tool.
+- Python; CLI first, then a **Tkinter** GUI (themed ttk widgets) built into a single EXE with PyInstaller.
+- **Why Tkinter:** it keeps the EXE small (roughly 25–35 MB, against 100+ MB for PySide6/Qt, whose library is most of that size). The setup screens are forms and tables, which Tkinter handles well, and the rest of the plan is unchanged.
+- **Considered and set aside:** a browser-based single HTML file (lightest, but limited access to installed fonts and fragile profile storage), Tauri (5–15 MB, but the tool's logic would move to JavaScript or Rust), and C# on .NET Framework (tiny, but a new language and no built-in RELAX NG validation).
+- Runs fully offline; needs no Python, InDesign, Affinity or DesignCraft installed. Fonts are checked on the machine running the tool (system and per-user font folders). An unsigned EXE triggers a SmartScreen warning on first run; a Mac version would need a separate build made on a Mac.
+
+### Updates (as with Indicat)
+- **Versioned filename:** each release EXE carries its version, e.g. `IdmlWizard-0.3.0.exe` (working name). The version is also embedded in the EXE's file properties.
+- **Releases on GitHub**, in a repository of its own on the same account as Indicat. The tool checks the latest release through GitHub's public releases API; no server of its own is needed. This is the same flow as Indicat's updater (check GitHub, alert the user, download to the same folder on yes), keeping it as easy as possible for the user. The checksum, open-new-version and old-copy cleanup steps below are additions beyond Indicat that run without extra effort from the user.
+- **When it checks:** at startup at most once a day (can be turned off in settings), plus a "Check for updates" menu item. With no connection, it fails silently on startup and says so only on a manual check.
+- **When a newer version exists:** shows the version number and the release notes, and offers to download it.
+- **Download:** to the **same folder as the running EXE**. Because the new file has a different name, nothing is overwritten and the running copy is untouched. The download goes to a temporary name first, is checked against the release's SHA-256 checksum, then renamed. The tool then offers to open the new version and close itself.
+- **Old versions:** on first launch, a new version looks for older `IdmlWizard-*.exe` files in its folder and offers to delete them (a running EXE can't delete itself, so cleanup happens from the new one).
+- **Folder not writable** (e.g. under Program Files): the tool says so and offers the Downloads folder instead.
+- **Settings and profiles survive updates** because they live in the tool's settings folder, not beside the EXE.
+- Each new unsigned EXE triggers Windows SmartScreen again on its first run.
+
+### Reading Word
+- Word is read by parsing its XML directly with lxml (python-docx doesn't expose sections, headers, footnotes or fields well enough).
+
+### Cross-program rule
+- **Nothing that works only in InDesign.** Every feature must work in InDesign, Affinity Publisher and DesignCraft, or have a fallback that does. No InDesign-only .jsx finisher, no InDesign-only text variables.
+- **IDML is the single output.** InDesign opens it natively; Affinity imports it (one way, saved as .afpub); DesignCraft reads and writes it.
+- **The IDML must be complete without any script:** page count, threading, masters and sections are all set in the file itself.
+
+### Input: one file or several
+- The user can select **one .docx or several** (for authors who send each chapter as its own document) and merge them into one IDML.
+- **File order is the user's choice.** Selected files appear in a list, first sorted by natural filename order (so "Chapter 2" comes before "Chapter 10") as a starting point. The user then arranges them:
+  - drag a file up or down in the list, or use **Move up / Move down** buttons (and Move to top / bottom)
+  - **Add** more files or **Remove** one without starting over
+  - a **Sort by filename** button to return to the natural order
+  - each row shows the filename and the first heading detected in it (e.g. "Chapter 3: The Covenant"), so the order can be checked by content, not just by filename
+- The outline, running-head table and page-count estimate update whenever the order changes.
+- The chosen order is saved with the book's settings, so a re-export after corrections keeps it. If a file has been replaced by a corrected version with the same name, it keeps its place.
+- **Drag and drop from File Explorer** (standard, not optional):
+  - drop .docx files onto the list to add them, placed where they're dropped; dropping onto the empty window starts a new book with them
+  - drop a **folder** to add all the .docx files in it, in natural filename order
+  - other file types, Word's temporary lock files (`~$….docx`) and files already in the list are skipped, with a short note saying which and why
+  - the Add button and file dialog remain for anyone who prefers them
+- Reordering within the list uses Tkinter's own Treeview. Dropping from Explorer uses **tkinterdnd2** (the tkdnd extension, about 1 MB), which has to be bundled explicitly in the PyInstaller build (`--collect-all tkinterdnd2`).
+- Each file can contain one or more chapters, or front/back matter (preface, bibliography). The outline is built across all files.
+- **Style conflicts across files** (the same style name defined differently in two files) are reported in preflight. The style map applies by name, so one mapping covers every file.
+- Images, footnotes and section settings are collected from every file. Footnote numbering restarts per chapter by default.
+
+### Preflight, style map and profiles
+- **Preflight** reads every input file and reports all paragraph and character styles in use, direct-formatting hotspots, and items version 1 doesn't carry over (text boxes, floating shapes, tracked changes, equations, unusual fields, XE index fields, endnotes). Nothing disappears silently.
+- **Style map:** Word style → IDML style. Defaults cover Word's built-ins (Normal, Heading 1–3, Quote, Footnote Text, Caption, etc.). Unknown styles are mapped by the user or fall back to body text with a warning.
+- **Profiles** save everything the user sets (style map, trim, margins, fonts, leading, head pattern, notice library, front-matter defaults) so the next book in a series is one click.
+  - Defaults are neutral, not tied to any one publisher.
+  - Stored in the tool's settings folder, with Export/Import buttons for sharing or keeping a profile beside a series' manuscripts.
+  - Each profile file carries a version number; newer releases of the tool upgrade old profiles instead of discarding them.
+
+### Page geometry
+- **Trim size:** pick from standard sizes (5×8, 5.25×8, 5.5×8.5, 6×9, 7×10, 8.5×11, A5) or enter a custom size.
+- **Facing pages** with inside/outside margins.
+- **Bleed off by default**; a toggle adds 0.125″ and applies KDP's with-bleed outside minimum.
+- No printer selector. KDP's requirements are the built-in assumption, stored as editable data so other printers can be added later.
+
+### Margins and measure
+Calculated, then shown as editable values:
+1. **Measure:** text width set for 60–70 characters per line (aim ~65), calculated from the actual body font file (fontTools), weighting average character width by letter frequency, or by measuring sample paragraphs from the manuscript.
+2. **Margins** take the remaining width and height, split by proportion (inner smaller than outer, bottom larger than top), with room for running heads and folios.
+3. **Floors:** every margin at least **0.5″**; the gutter also at least **KDP's minimum for the estimated page count**.
+4. If the floors leave too little width, the measure gives way within 60–70 first; beyond that, the tool reports the problem and suggests a smaller size or a larger trim.
+- **Page-count estimate:** words → characters per line → lines per page, plus pages added by structure (front matter, chapter openers, blank versos from recto rules). Pick the gutter band, recompute, repeat until stable. The report shows the estimated count, the KDP band, a warning near a band boundary, and a note for very short books (KDP minimum, even-page rounding).
+- **User overrides:** any margin can be changed; the page count is re-estimated, with a warning (not a block) if the gutter drops below KDP's band minimum. Wider margins are always safe for printers with lower minimums.
+- **Very large trims** with small type: the tool suggests a larger size or two columns.
+
+### Leading
+- Entered in **points by default**; the user can switch to a multiple or percent. Converted to points at export (IDML stores leading in points).
+- From Word: "Exactly" carries over as-is; "Multiple" and "At least" are converted to points from the font size and shown in the box for rounding.
+- Beside the box, **suggested tight / standard / open ranges** for the current size (at 11 pt, roughly 12.5–13 / 13.5–14 / 14.5–15), shifted for the font's x-height and the measure, with a one-line explanation when they shift.
+- **Baseline grid off by default**; the user can turn it on (it uses the leading value as its increment).
+
+### Fonts
+- Chosen by **role**: Body, Headings, Notes, Display, and script fonts for **Hebrew** and **Greek**. Each style inherits its role's font; per-style overrides for exceptions.
+- **Prefilled from Word.** If the body font looks like a template default (Calibri, Times New Roman), the tool notes it and offers the profile's house fonts.
+- **Checks:** the font is installed; it has the faces the manuscript uses (italic, bold, bold italic); true OpenType small caps (otherwise scaled capitals, with a warning); Hebrew coverage including vowel points and cantillation, Greek polytonic coverage.
+- **Hebrew needs InDesign.** Affinity does not support Hebrew (confirmed; in testing it set imported Hebrew left to right with letters reversed). When preflight finds Hebrew, the tool says plainly that the book must be laid out in InDesign, not Affinity. The Hebrew character style still carries font, language and right-to-left direction, so InDesign handles it correctly. Add a Hebrew test to the DesignCraft checks.
+- **Hebrew and Greek runs** are detected by Unicode range (Word keeps right-to-left fonts in a separate slot) and wrapped in "Hebrew" and "Greek" character styles that set font, language and, for Hebrew, right-to-left direction.
+- Changing the body font reruns the measure, margin and leading calculations.
+
+### Masters
+A standard set is **generated every time**, with settings taken from Word where present (`w:sectPr`, header/footer distances) and from the profile otherwise:
+
+| Master | Use | Contents |
+|---|---|---|
+| A-Body (facing) | Regular text pages | Running heads, folios, primary text frame |
+| B-Chapter opener | First page of each chapter | Based on A; no running head; drop folio; sunk text frame |
+| C-Front matter | Contents, preface, etc. | Based on A; roman folios |
+| D-Display | Half-title, title, copyright, dedication | No folio or heads |
+| E-Blank | Intentional blank versos | Nothing |
+| F-Back matter (optional) | Bibliography | As A, adjustable |
+
+Masters are applied by rule: chapter starts get B, front-matter pages C, display pages D, inserted blanks E.
+
+### Running heads
+- **Detection** builds an outline from (in order of trust) the style map, Word section breaks and existing STYLEREF headers, then fallback cues (outline levels, a TOC field, known front/back-matter titles). Units are classified as front matter, part, chapter or back matter. The manuscript doesn't need running heads set up in Word.
+- **Setup step:** a global pattern (verso: book title / part / chapter / author / custom; recto: chapter title / custom), toggles to suppress heads on openers, display pages and blanks, and a per-unit table with editable verso and recto fields prefilled from detected titles. **Titles too long for the measure are flagged** so short titles can be written.
+- Choices save to the profile so a re-export after corrections doesn't ask again.
+- **Mechanism (confirmed in Affinity 3.3.0, October 21, 2026; DesignCraft pending):** one IDML section per chapter (`ContinueNumbering="true"`) with the recto short title in the section **marker**; the A-Body recto head is the Section Marker character. If Affinity maps this to its Section Name field and DesignCraft keeps it, one master serves every chapter.
+- **Fallback:** one child master per chapter (based on A-Body) carrying the heads as static text.
+- Section-level recto heads (changing with H2s) are **out**: they require InDesign-only text variables.
+
+### Front matter
+A stage of its own: detect what's present, generate what's missing, order it and paginate it.
+- **Order** (Chicago): half-title, (series page / frontispiece), title, copyright, dedication, epigraph, contents, foreword, preface, acknowledgments.
+- **Half-title and title page:** generated if missing, prefilled from the detected title, subtitle and author; input fields when detection fails.
+- **Copyright page:** generated if missing. Fields: copyright line (year, holder, all rights reserved), publisher name and address, edition/printing line, ISBNs (print, ebook), optional credits, country of printing, catalog data. A **notice library** (Bible versions, works quoted by permission) the user maintains in the profile and ticks per book; the tool ships no authoritative notice wording. English or Spanish boilerplate. Author detection: title page text first, user input with the detected name prefilled (`docProps/core.xml` creator is unreliable; it is usually whoever made the file).
+- **Contents:** offered when none is detected. Page numbers don't exist until layout, so the tool reserves the contents page(s) (estimated from entry count and lines per page) with a placeholder frame, and the user inserts the TOC with the layout program's own feature. Depth option: chapters only, or chapters plus first-level sections. An existing Word TOC field is replaced, not imported (its page numbers would be wrong). Whether an IDML TOC style survives in Affinity/DesignCraft is a test item; if it does, the tool also writes one.
+- **Pagination:** front matter is one roman section starting at i. Display pages (half-title, title, copyright, dedication) are **counted but not folioed** (D/E masters), so the first visible folio falls on contents or preface. Chapter 1 starts a new section at arabic 1.
+- **Recto rules:** title page, dedication, contents, preface and chapter 1 open on a recto. **Chapters open on a recto by default**; the profile can switch to "next page". Blank versos (E-Blank) are inserted as needed.
+
+### Content carried over
+- Paragraph and character styles with full settings and inheritance (fonts, sizes, spacing, indents, tabs, keep-with-next, widows/orphans).
+- **Footnotes.** **Endnotes are not supported**; preflight flags them and offers to convert them to footnotes.
+- Simple tables, images (extracted and linked), lists as auto-numbering.
+- **No index.** XE fields are stripped from the text and listed in preflight; indexing in InDesign is handled by Indicat's .jsx (Affinity's IDML import doesn't carry indexes).
+- **Left out in version 1** (and listed in preflight): text boxes and floating shapes, tracked changes, equations, unusual field codes.
+
+### Threading
+- **Each chapter is its own threaded story** starting on a B-Chapter opener page. Overflow stays in its chapter; a short chapter leaves at most a page or two to delete. All three programs can auto-flow an overset story.
+- Initial page counts come from the page-count estimate (or Word's `<Pages>` count in `docProps/app.xml`, scaled to the new trim), with a small buffer.
+
+### Defaults the user can switch off
+- Paragraph composer, optical margin alignment, hyphenation per language (InDesign has no Latin dictionary).
+- OpenType small caps, ligatures, old-style figures where the font supports them; balanced ragged lines for headings.
+- Footnote rule and spacing; widow/orphan control.
+- Each depends on the target program keeping the setting; ones that don't survive are simply lost, never broken.
+
+## Compatibility testing
+
+**Affinity target: the current Affinity app (the Canva relaunch), not Affinity Publisher 1 or 2.** It imports IDML (and, since September 2026, INDD, though IDML is described as the more reliable route) but has no IDML export, so the path stays one-way.
+
+The only published list of supported IDML features is for Affinity Publisher **V1**: facing spreads, master pages, automatic page numbering, bleed, grids and guides, frame properties, text styles, missing-resource warnings, tables and blend modes. Text variables other than page numbers are converted to static text. Footnotes, sections, section markers and TOC styles aren't mentioned. Treat the list as a hint only; the current app must be tested.
+
+DesignCraft is pre-alpha (0.8.0), with IDML support checked against synthetic files only. The plan is a set of **small feature test files**, one feature each:
+
+- footnotes
+- section markers → running heads (Affinity's Section Name field)
+- sections with roman → arabic numbering
+- facing-page masters, **parent/child masters**, **primary text frames on masters**
+- TOC style
+- table style
+- OpenType settings
+- baseline grid
+- Hebrew right-to-left run
+- linked image
+
+**How they get checked:**
+- **InDesign and Affinity:** the user opens each file, records works / partly works / lost, notes the exact Affinity version, and exports a PDF of each file as Affinity opened it for comparison. Notes cover what a PDF can't show (live field vs static text, masters still linked).
+- **DesignCraft:** automated. Its CLI can open an IDML and export each page as PNG, giving the headless check Scribus couldn't.
+
+The results form a **compatibility table** that decides each fallback.
+
+### Method: InDesign as the reference
+Affinity is known to open InDesign-exported IDML (tested). But opening a file isn't the same as keeping every feature, and InDesign writes far more explicit IDML than a generator does, so Affinity may depend on attributes InDesign always writes but the schema treats as optional. Testing is therefore split into two questions:
+
+1. **Does Affinity support the feature at all?** Build each feature by hand in InDesign, export it as IDML, and open that file in Affinity (and DesignCraft). This sets the ceiling, independent of the generator.
+2. **Does the generator write it correctly?** Compare the generator's IDML for the same feature against InDesign's reference export. Also open the generated file in InDesign and re-export it: if InDesign's re-export works in Affinity but the generated file doesn't, the differences between the two files show what's missing.
+
+The InDesign reference exports are kept with the project as the standard the generator is checked against.
+
+### First reference document (October 21, 2026)
+A real 34-page article exported from InDesign 2026 (21.6) — Daugereau, *Assumption Dogma*. Used for analysis only, not kept as a test file.
+
+- **Validates cleanly** against the converted schema (confirms the schema conversion; only fix needed was letting the validator accept InDesign's `META-INF/metadata.xml`).
+- **Page setup:** 6×9 in (432×648 pt), facing pages, no bleed.
+- **Running heads use two mechanisms, one of each kind we need to test** (checked against the InDesign PDF):
+  - **Verso = section marker**, the planned mechanism: one section per chapter, `ContinueNumbering="true"`, chapter title in `Marker`. Story: `<?ACE 18?> |  ` + `<?ACE 19?>` (Italic). **ACE 18 = page number, ACE 19 = section marker.** Prints e.g. "2 | *The Hermeneutics of the Assumption*".
+  - **Recto = InDesign "Running Header" text variable** (MatchParagraphStyle type, picking up Heading 1): `<TextVariableInstance … AssociatedTextVariable="dTextVariablenRunning Header"/>` + `  | <?ACE 18?>`. Prints e.g. "*Introduction* | 3". This is the InDesign-only kind the plan rules out; Affinity's V1 docs say such variables become static text, so this file tests that directly.
+- **Masters:** A-Parent (body), C-Parent (folio only), A-Title, A-Copyright, B-Contents. None is based on another master, and **none uses a primary text frame**. So parent/child masters and primary frames still need their own small test files.
+- **Part and chapter openings follow the planned pattern:** page 11 = part title page (recto, C master, dropped folio), page 12 = intentional blank verso (C), page 13 = chapter opener (recto, C). The Chapter Title style uses `StartParagraph="NextOddPage"`. Section 2 starts on page 11 with the part title as its marker.
+- **Threading:** the whole article is **one story** across all 34 pages (both chapters), not one story per chapter.
+- **Footnotes:** 103. Structure: `<Footnote>` inside a `CharacterStyleRange`, containing a `ParagraphStyleRange` (style "Footnote") whose text starts `<?ACE 4?>` (the footnote number) followed by the separator. Footnote options sit in `Preferences.xml` (`FootnoteOption`, separator ". ", rule off). The reference marker's superscript is local formatting (`Position="Superscript"`) on every marker, not a character style; **the generator should use a character style instead.**
+- **Direct formatting is common:** 135 local `FontStyle` overrides (italic) besides the Italic style. Preflight should expect this from Word-born text.
+- **Greek:** 6 runs. Two are tagged **`AppliedLanguage="$ID/Arabic"`**, apparently left over from import, a concrete example of why the tool should set script languages itself.
+- **Hebrew:** none in the text, though the document defines a Hebrew language and Taamey David CLM. Hebrew right-to-left still needs a test file.
+- **Not covered here:** TOC style, title-page content, tables, linked images, baseline grid, parent/child masters, primary text frames, Hebrew.
+
+**Opened in Affinity 3.3.0** (the current Canva app; PDF exported as spreads) and compared page by page with InDesign's PDF:
+
+| Feature | Affinity result |
+|---|---|
+| Page size, facing pages, page count (34) | **Kept** |
+| Section-marker running heads (verso) | **Kept, live:** change correctly from "The Hermeneutics of the Assumption" to "The Development of the Assumption Dogma" at section 2 |
+| Page numbers, section numbering continuing | **Kept** |
+| Masters, dropped folios on part page and opener, blank verso | **Kept:** pages 11–13 match InDesign |
+| Running Header text variable (recto) | **Lost:** prints the literal placeholder **"&lt;Running Header&gt;"** on every recto, not even static text. Confirms: no InDesign text variables. |
+| Paragraph and character styles (body, italic, small caps) | **Kept** for Arno Pro body text |
+| Heading fonts (Source Sans *Variable*; Segoe UI) | **Substituted with Arial.** Affinity did not match the variable font. The tool should warn about variable fonts and prefer static font families. |
+| Footnotes | **Kept**: placed at page foot with rule and numbering. But Affinity **kept each footnote whole** where InDesign split long ones across pages, which pushes text and changes page breaks. |
+| GREP styles (8 rules in the Footnote style applying a "No Break" character style) | **Damaged:** text matched by the GREP rules printed at a larger size and different font, i.e. lost the paragraph style's settings. The generator writes no GREP styles (Word has none), so this doesn't affect the tool, but it shows that partially-defined character styles can pick up defaults in Affinity; worth a test file. |
+| Line and page breaks | **Different on 28 of 34 pages.** Causes: the heading font substitution, unsplit footnotes, and a third-party composer in the styles (**"HL Composer Optyca"**, an InDesign plug-in) that neither Affinity nor a stock InDesign has. The generator should use only Adobe's built-in composers. |
+| Text fit | **About 800 words didn't fit** on the 34 pages (most likely left as overset text at the end of the story, since it's one story with a fixed page count). InDesign's own copy ends mid-sentence too, so it was already slightly overset. This supports chapter-per-story threading plus a page buffer, and the instruction to check for overset text after opening in Affinity. |
+| Greek | **Kept** where it fit (the two missing Greek words are in the text that didn't fit) |
+
+### Second reference file (October 21, 2026): primary frame, parent master, TOC
+A 7-page cut-down of the same article ("Untitled-1"), with a primary frame added to A-Parent and a generated TOC. Validates cleanly.
+
+- **How InDesign records the primary frame:** on the master, `MasterSpread … PrimaryTextFrame="u155"`, pointing to the frame's `Self` ID. Here it points only to the **recto** frame of the facing A-Parent; the verso master frame (`u13e`) is neither primary nor threaded to it. Smart Text Reflow settings are in `Preferences.xml` → `TextPreference SmartTextReflow="true" AddPages="EndOfStory" LimitToMasterTextFrames="true" DeleteEmptyPages="false"`.
+- **Why InDesign didn't add pages:** the body text sits in the article's original page frames (story u166 threaded through 6 local frames). None of them is derived from the master's primary frame (no `OverriddenMasterItem` link), so Smart Text Reflow, limited to primary frames, ignores them. A fresh document created with "Primary Text Frame" ticked is still needed to see how InDesign writes page frames that inherit from the primary frame.
+- **Parent/child master:** A-Title's page has `AppliedMaster="ud8"` (based on A-Parent), which shows how a master based on another is written. Affinity result pending.
+- **Revised version (same day):** the A-Parent master frames are now threaded verso → recto, with `PrimaryTextFrame` pointing to the verso frame (`u13e`). The page frames are still local frames (no `OverriddenMasterItem`), so InDesign still added no pages. The revision also added test content: Hebrew (character style "Hebrew Regular", Taamey David CLM), polytonic Greek, a linked image with bounding-box text wrap, a 4×4 table and a Heading 3. 7 pages in both programs.
+- **Affinity 3.3.1 results for the revised file:**
+  - **Hebrew: letters reversed.** InDesign sets the Hebrew right to left; Affinity sets the same letters left to right (word order and letter order both mirrored; vowel points not tested). In the IDML, direction is a local override on the run (`CharacterDirection="RightToLeftDirection"`), not part of the "Hebrew Regular" style, and Affinity ignored it. **Confirmed (Beaux, independently of this test): Affinity does not support Hebrew at all.** So books with Hebrew must be laid out in InDesign (DesignCraft's right-to-left support is untested). Pre-reversing Hebrew for Affinity is rejected: it breaks copy and search, and fails whenever a Hebrew phrase wraps across lines.
+  - **Greek (polytonic):** kept.
+  - **Linked image with text wrap:** kept, wrap included. InDesign writes the link as an absolute `file:` URI (`file:D:/Downloads/images.jpg`), and Affinity found the image.
+  - **Table:** kept.
+  - **TOC:** came across with the right entries, but the entry lost its bold and the page number sits right after the text instead of at the tab position. Whether it stays updatable in Affinity is still to be checked in Affinity itself.
+  - **Footnotes:** again kept whole in Affinity where InDesign splits them.
+- **TOC:** a generated table of contents on page 1. The `TOCStyle` (in Styles.xml) lists Heading 1 at level 1, tab before the page number, title "Contents". The TOC text is an ordinary story marked `AppliedTOCStyle="TOCStyle/$ID/DefaultTOCStyleName"`, with hyperlinks to the headings. Affinity result pending (whether the TOC stays updatable or becomes plain text).
+
+### Schema validation
+- Every IDML the tool writes (feature test files included) is **validated against Adobe's IDML schema** before it's handed over, catching structural errors without opening any outside program.
+- The schema (RELAX NG) can be generated once from InDesign through its scripting API (`generateIDMLSchema`) and shipped with the tool as a data file.
+- No built-in page previewer: the user reviews the layout in their own program.
+- **Schema in hand (October 21, 2026), complete:** generated from **InDesign 2026 (21.6.0.57)**; requires **`DOMVersion="21.5"`** in every part, so the tool writes that version. Kept in `idml-schema/` with the original .rnc files, the converted .rng files, `prepare_schema.py` (rebuilds the .rng after an InDesign update) and `validate_idml.py`. *(Not yet added to this repository.)*
+- **What the validator checks:** zip structure (`mimetype` first and uncompressed), `container.xml`, every XML part against its schema, and that designmap.xml's references and the package's files match both ways.
+- **Validation is a development and test-suite step, not done inside the shipped EXE.** lxml (libxml2) turned out to be far too slow on this schema's interleave patterns: `Styles.xml` didn't finish in 60 s even when valid. **jing** validates the same file in about a second, with clearer messages, but needs Java. So jing (via the `jingtrang` package) runs on every test file and sample book during development; users never need Java. The tool's own correctness comes from writing only structures the test suite has validated.
+- **Conversion notes:** Adobe's `datatype.rnc` has a documentation comment written without `#` marks (the "Schema for packaged folios" table, 18 lines), which breaks every parser; `prepare_schema.py` comments it out. `rnc2rng` mis-converts the included grammar; trang converts correctly.
+- **First result, `build_idml.py`:** its output fails in three ways, each fixed and confirmed (with the fixes, the package validates):
+  1. `DOMVersion="13.0"` in every part (must be 21.5)
+  2. `PageNumberStyle` written as an attribute on `Section`; it must be a child element: `<Properties><PageNumberStyle type="enumeration">Arabic</PageNumberStyle></Properties>`
+  3. `InsetSpacing` written as an attribute on `TextFramePreference`; it must be a child element: `<Properties><InsetSpacing type="list"><ListItem type="unit">0</ListItem>…(×4)</InsetSpacing></Properties>`
+  InDesign opened the file anyway, but Affinity and DesignCraft may be less forgiving, which is the reason for validating.
+
+## Lessons from the first IDML experiment
+
+A hand-built IDML was generated for a bilingual Latin/Spanish edition (Augustine, *De Genesi ad litteram* I–IV), with each book as a 2-column table in one threaded story (`build_idml.py`).
+
+- **It opened in InDesign.** The hand-written package structure works: mimetype stored uncompressed first, `META-INF/container.xml`, `designmap.xml`, `Resources/{Graphic,Fonts,Styles,Preferences}.xml`, a master spread, spreads, stories.
+- **Many blank pages at the start had to be deleted.** The page count was guessed (104 pre-threaded pages in one story); a table row taller than a frame likely left frames empty. Chapter-per-story threading and the page-count estimate are the fixes.
+- **InDesign table rows can't break across frames.** Long rows must be split (the 14 longest sections were split at matching sentences).
+- Geometry used and accepted: non-facing pages centered on the spread origin (`Page ItemTransform="1 0 0 1 -306 -396"` for US Letter), text-frame path points in spread coordinates.
+- No language was set in the styles; the real tool must set hyphenation languages.
+- `build_idml.py` is a useful reference for package structure, styles, cell and table styles, master page and footer, threaded frames, and the (empty) `Section` marker and `TOCStyle` elements.
+
+## Build order
+
+0. **Reader and preflight:** parse one or several .docx files, build the outline, report styles and unsupported items; style map and profile format. *(Under way, October 21, 2026: `python -m docx2idml preflight`. Not yet tried on a real manuscript from Word.)*
+1. **Schema and reference files:** ~~obtain the IDML schema and set up validation~~ (done October 21, 2026); make the InDesign reference export for each feature (list above), and validate those too, as a check on the validator itself.
+2. **Check the reference files** in Affinity (user) and DesignCraft (CLI); record the compatibility table and choose fallbacks.
+3. **Generated test files:** build each feature with the generator, validate it, compare it against the reference, and confirm it in Affinity.
+4. **Exporter core:** styles, content, footnotes, Hebrew/Greek character styles.
+5. **Geometry and pagination:** trim, margin and measure calculation, page-count estimate, masters, sections, chapter-per-story threading, recto rules.
+6. **Running-head setup and front-matter stage** (half-title, title, copyright, contents placeholder).
+7. **Tkinter GUI, EXE (versioned filename) and update checker.**
+
+## Still open
+
+- Results of the compatibility tests (decides the running-head mechanism, the TOC approach, and parent masters).
+- The tool's name (also sets the EXE filename and the GitHub repository name).
+
+## Separate project (tabled)
+
+A **page-layout engine** that can build and edit IDML itself, assembled from existing open-source components (text shaping, line breaking, hyphenation, rendering). It's a separate tool and project, not part of this converter, and isn't planned yet. The converter's plan doesn't depend on it.
+
+## Needed to restart
+
+- A representative book manuscript, ideally one sent as **separate chapter files**, with sections, footnotes and some Hebrew or Greek, plus the PDF Word makes from it for comparison.
+- Access to Affinity Publisher (and InDesign if possible) for the test checks.
+- `idml-schema.zip` (schema for InDesign 2026 21.6.0.57 / DOM 21.5, converted, with the validator). Regenerate with `generate_idml_schema.jsx` and `prepare_schema.py` after a major InDesign update.
+
+## Reference
+
+- Affinity Publisher V1 Help, "Importing documents" (supported IDML features list): https://affinity.help/publisher/en-US.lproj/pages/GetStarted/importDocument.html
+- Affinity Publisher 2 Help, "Importing InDesign documents": https://affinity.help/publisher2/en-US.lproj/pages/GetStarted/importInDesign.html
+- KDP, "Set Trim Size, Bleed, and Margins" (gutter minimums by page count): https://kdp.amazon.com/help/topic/G201857950
+- DesignCraft (open-source page layout with IDML import/export and a CLI): https://sourceforge.net/projects/designcraft.mirror/

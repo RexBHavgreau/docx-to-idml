@@ -1,0 +1,190 @@
+"""Profiles: everything the user sets for a book, saved so the next book in a series is one click.
+
+Profiles live in the tool's settings folder (%APPDATA%\\docx-to-idml\\profiles on Windows), not
+beside the program, so they survive updates. Each file carries PROFILE_VERSION; when the layout
+changes, bump it and add a step to MIGRATIONS so saved profiles are upgraded rather than lost.
+Defaults are neutral, not tied to any publisher.
+"""
+
+import copy
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+from . import APP_NAME
+
+PROFILE_VERSION = 1
+
+DEFAULT_PROFILE = {
+    "profile_version": PROFILE_VERSION,
+    "name": "Default",
+    # {Word style name: IDML style name, or {"idml": ..., "role": ..., "level": ...}}
+    "style_map": {"paragraph": {}, "character": {}},
+    "page": {
+        "trim": "6x9",                 # a standard size, or "custom"
+        "custom_width": None,          # inches, when trim is "custom"
+        "custom_height": None,
+        "facing": True,
+        "bleed": False,
+        "margins": {},                 # user overrides, inches: top, bottom, inside, outside
+    },
+    "fonts": {"body": None, "headings": None, "notes": None, "display": None,
+              "hebrew": None, "greek": None},
+    "leading": {"unit": "pt", "value": None},   # pt, multiple or percent
+    "baseline_grid": False,
+    "running_heads": {
+        "verso": "book_title",         # book_title, part, chapter, author, custom
+        "recto": "chapter_title",      # chapter_title, custom
+        "verso_custom": "",
+        "recto_custom": "",
+        "suppress_on_openers": True,
+        "suppress_on_display": True,
+        "suppress_on_blanks": True,
+    },
+    "chapters_open": "recto",          # recto or next_page
+    "footnote_numbering": "per_chapter",   # per_chapter or continuous
+    "endnotes": "convert",             # convert to footnotes, or ask
+    "front_matter": {"language": "en", "contents_depth": "chapters"},
+    "notices": [],                     # the user's own notice library: {"name", "text"}
+    "typography": {
+        "paragraph_composer": True,
+        "optical_margins": True,
+        "hyphenation": True,
+        "small_caps_opentype": True,
+        "ligatures": True,
+        "oldstyle_figures": True,
+        "balance_ragged_headings": True,
+        "widow_orphan_control": True,
+        "footnote_rule": True,
+    },
+}
+
+
+class ProfileError(Exception):
+    """A profile that can't be used. The message is shown to the user."""
+
+
+def settings_dir():
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    return Path(base) / APP_NAME
+
+
+def profiles_dir():
+    return settings_dir() / "profiles"
+
+
+def _merge(defaults, data):
+    """Fill what's missing in data from defaults; keep the user's values and unknown keys."""
+    out = copy.deepcopy(data)
+    for k, v in defaults.items():
+        if k not in out:
+            out[k] = copy.deepcopy(v)
+        elif isinstance(v, dict) and isinstance(out[k], dict) and k != "style_map":
+            out[k] = _merge(v, out[k])
+    if "style_map" in defaults and isinstance(out.get("style_map"), dict):
+        out["style_map"].setdefault("paragraph", {})
+        out["style_map"].setdefault("character", {})
+    return out
+
+
+def _from_0(data):
+    """Version 0: a profile written before versions existed, with the style map flat."""
+    sm = data.get("style_map")
+    if isinstance(sm, dict) and "paragraph" not in sm and "character" not in sm:
+        data["style_map"] = {"paragraph": sm, "character": {}}
+    return data
+
+
+MIGRATIONS = {0: _from_0}   # version n -> function that upgrades it to n + 1
+
+
+def migrate(data):
+    if not isinstance(data, dict):
+        raise ProfileError("This file is not a profile.")
+    version = data.get("profile_version", 0)
+    if not isinstance(version, int) or version > PROFILE_VERSION:
+        raise ProfileError("This profile was saved by a newer version of the tool. "
+                           "Update the tool to use it.")
+    while version < PROFILE_VERSION:
+        data = MIGRATIONS[version](data)
+        version += 1
+    data["profile_version"] = PROFILE_VERSION
+    return _merge(DEFAULT_PROFILE, data)
+
+
+def default_profile():
+    return copy.deepcopy(DEFAULT_PROFILE)
+
+
+def _safe_name(name):
+    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip(" .")
+    return s or "Profile"
+
+
+def load_file(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except OSError as e:
+        raise ProfileError("Can't open the profile %s: %s" % (path, e.strerror)) from None
+    except json.JSONDecodeError:
+        raise ProfileError("%s is not a profile (it isn't valid JSON)." % Path(path).name) from None
+    return migrate(data)
+
+
+def save_file(profile, path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(profile, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+
+
+def profile_path(name):
+    return profiles_dir() / (_safe_name(name) + ".json")
+
+
+def list_profiles():
+    d = profiles_dir()
+    names = []
+    if d.is_dir():
+        for p in sorted(d.glob("*.json")):
+            try:
+                names.append(load_file(p)["name"])
+            except ProfileError:
+                continue
+    return names
+
+
+def load(name_or_path=None):
+    """A saved profile by name, a profile file by path, or the defaults (None)."""
+    if not name_or_path:
+        return default_profile()
+    p = Path(name_or_path)
+    if p.suffix.lower() == ".json" and p.exists():
+        return load_file(p)
+    path = profile_path(name_or_path)
+    if not path.exists():
+        raise ProfileError('There is no profile named "%s".' % name_or_path)
+    return load_file(path)
+
+
+def save(profile):
+    save_file(profile, profile_path(profile["name"]))
+
+
+def export_profile(name, dest):
+    save_file(load(name), dest)
+
+
+def import_profile(src):
+    """Copy a profile file into the settings folder (upgraded if it's older). Returns its name."""
+    profile = load_file(src)
+    save(profile)
+    return profile["name"]
