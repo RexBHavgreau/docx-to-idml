@@ -36,13 +36,16 @@ keep it up to date when decisions change.
 | `docx2idml/preflight.py` | The preflight report (text and JSON) |
 | `docx2idml/profile.py` | Profiles: defaults, save/load, export/import, `PROFILE_VERSION` + `MIGRATIONS` |
 | `docx2idml/book.py` | Input files: drop/folder collection, natural order, saved order |
-| `docx2idml/cli.py` | `python -m docx2idml preflight / profile` |
+| `docx2idml/content.py` | The text of a .docx for the exporter: runs with formatting features, notes, tables, images, list numbers; paragraph indexes match `docx_reader`'s |
+| `docx2idml/export.py` | Step 4, the exporter core: book styles, Word styles kept by name, runs to character styles, Hebrew/Greek, one story and section per outline unit, page estimate; `export()` writes the export folder |
+| `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile` |
 | `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `images.py` (image size and resolution from file headers), `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
 | `reference/` | `make_reference_files.jsx` (builds the InDesign reference files), README with the Affinity checklist; reference IDMLs go in `reference/idml/` |
 | `idml-schema/` | Adobe's IDML schema for InDesign 2026 (21.6.0.57, DOM 21.5): `rnc/` as InDesign wrote it, `rng/` converted by `tools/prepare_schema.py` |
 | `tools/make_generated_files.py` | Step 3: the generator's versions of the reference files, in `reference/generated/` |
 | `tools/idml_check.py`, `tools/idml_inspect.py` | Development tools: structural check of an IDML package plus jing against the schema; summary of a package (masters, pages, overrides, sections, stories, styles) for comparing with references |
-| `tests/docx_builder.py` | Builds test .docx files from raw WordprocessingML; the test runner |
+| `tools/make_sample_book.py` | Step 4: a sample manuscript (`reference/manuscript/`, three .docx) exported to `reference/generated/e01-sample-book/` |
+| `tests/docx_builder.py` | Builds test .docx files from raw WordprocessingML (images, tables, numbering too); the test runner |
 
 ## Conventions
 
@@ -91,6 +94,13 @@ keep it up to date when decisions change.
   an ordinary `TextFrame` (reference file 05).
 - The two InDesign files from the brief (the Assumption article and its cut-down) are a real
   article: use them for analysis only; don't commit them.
+- Export (step 4): direct italic, bold, small caps, capitals, super/subscript, underline and
+  strikethrough become character styles (Italic, Bold, Bold Italic, Small Caps...), worked out
+  against the paragraph style (italic in a bold heading is Bold Italic; Word's toggle rule for
+  a character style inside an italic paragraph is kept). Other direct formatting gives way to
+  the book's styles. Body after a heading, a centered line or at a story's start is Body First.
+  List and heading numbers are static text for now (IDML auto-numbering not yet tested in
+  Affinity). Images that aren't JPEG or PNG are left out with a placeholder line and reported.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
@@ -102,6 +112,7 @@ python tests/test_outline.py
 python tests/test_preflight.py
 python tests/test_idml_tools.py
 python tests/test_writer.py
+python tests/test_export.py
 ```
 
 Run them all before pushing; CI (`.github/workflows/tests.yml`) runs them on Windows and Linux.
@@ -127,4 +138,6 @@ writes one.
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
   with a byte-order mark.
 
+- Step 4: e01 (sample book) validates; not yet opened in InDesign or Affinity. Not yet run on a
+  real manuscript.
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).

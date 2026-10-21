@@ -1,0 +1,245 @@
+"""The exporter core: Word manuscript -> IDML model -> export folder."""
+
+import os
+import sys
+import tempfile
+import zipfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+
+from docx_builder import (NUMBERING, endnote_ref, footnote_ref, image, make_docx, numbered, para,
+                          run, run_tests, table)
+from docx2idml.content import Numbering, read_content
+from docx2idml.docx_reader import read_docx
+from docx2idml.export import Exporter, export, segments
+from docx2idml.profile import default_profile
+
+TMP = tempfile.mkdtemp()
+SAMPLE = os.path.join(ROOT, "tests", "data", "sample.jpg")
+HEB = "בְּרֵאשִׁ֖ית בָּרָ֣א"
+GRK = "ἐν ἀρχῇ"
+
+EXTRA = [
+    '<w:style w:type="paragraph" w:customStyle="1" w:styleId="Epigraph"><w:name w:val="Epigraph"/>'
+    '<w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/><w:ind w:left="1440" w:right="1440"/>'
+    '</w:pPr><w:rPr><w:i/><w:sz w:val="20"/></w:rPr></w:style>',
+    '<w:style w:type="character" w:customStyle="1" w:styleId="ScriptureRef">'
+    '<w:name w:val="Scripture Ref"/><w:rPr><w:smallCaps/></w:rPr></w:style>',
+    '<w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="caption"/>'
+    '<w:basedOn w:val="Normal"/></w:style>',
+    '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/>'
+    '<w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="720"/></w:pPr></w:style>',
+]
+
+
+def chapter_one(path):
+    with open(SAMPLE, "rb") as f:
+        jpg = f.read()
+    body = [
+        para("The Covenant", "Title"),
+        para("Chapter One", "Heading1"),
+        para("Words spoken long ago.", "Epigraph"),
+        para(run("The first paragraph has ") + run("italic", "<w:i/>") + run(", ")
+             + run("bold", "<w:b/>") + run(", ") + run("small caps", "<w:smallCaps/>")
+             + run(" and an emphasis ") + run("style", '<w:rStyle w:val="Emphasis"/>')
+             + run(".") + footnote_ref(1)),
+        para(run("Genesis 1:1 reads ") + run(HEB, "<w:rtl/>") + run(", and John 1:1 ")
+             + run(GRK) + run(". See ") + run("Gen 1:1", '<w:rStyle w:val="ScriptureRef"/>')
+             + run(".") + endnote_ref(1)),
+        para("A Section", "Heading2"),
+        para(run("Italic heading text ") + run("inside", "<w:i/>")),
+        numbered("First bullet", 1, style="ListParagraph"),
+        numbered("Second bullet", 1, style="ListParagraph"),
+        numbered("Step one", 2, style="ListParagraph"),
+        numbered("Sub-step", 2, 1, style="ListParagraph"),
+        numbered("Step two", 2, style="ListParagraph"),
+        para(""),
+        table([["Book", "Verses"], ["Genesis", "1533"], ["A long merged cell"]], header=1,
+              widths=[3000, 2000], spans={(2, 0): 2}),
+        para(image(rid="rIdImg1")),
+        para("Figure 1. A picture.", "Caption"),
+        para("* * *", ppr='<w:jc w:val="center"/>'),
+        para("Closing words of the chapter."),
+    ]
+    note = (run("A note with ") + run("italic", "<w:i/>") + run(" and Greek ") + run(GRK)
+            + run("."))
+    return make_docx(path, body, extra_styles=EXTRA, footnotes=[note],
+                     endnotes=["An endnote, converted."], numbering=NUMBERING,
+                     media={"rIdImg1": ("image1.jpeg", jpg)})
+
+
+def chapter_two(path):
+    body = [para("Chapter Two", "Heading1"),
+            para(run("Second chapter text.") + footnote_ref(1)),
+            para("Bibliography", "Heading1"),
+            para("Author, A. A Book. City: Press, 2020.")]
+    return make_docx(path, body, footnotes=["Note one of chapter two."])
+
+
+import docx_builder  # noqa: E402
+
+
+def _files():
+    a = chapter_one(os.path.join(TMP, "01 Chapter One.docx"))
+    b = chapter_two(os.path.join(TMP, "02 Chapter Two.docx"))
+    return [a, b]
+
+
+def test_segments():
+    assert segments("Gen " + HEB + ", then") == [(None, "Gen "), ("hebrew", HEB), (None, ", then")]
+    assert segments(GRK + ".") == [("greek", GRK), (None, ".")]
+    assert segments("plain") == [(None, "plain")]
+    assert segments("λ́x") == [("greek", "λ́"), (None, "x")]
+
+
+def test_numbering_labels():
+    from lxml import etree
+    root = etree.fromstring('<w:numbering %s>%s</w:numbering>' % (docx_builder.WNS, NUMBERING))
+    n = Numbering(root)
+    assert n.label("1", 0)[0] == "•"
+    assert [n.label("2", 0)[0], n.label("2", 1)[0], n.label("2", 1)[0], n.label("2", 0)[0],
+            n.label("2", 1)[0]] == ["1.", "a.", "b.", "2.", "a."]
+    assert n.label("9", 0) is None
+
+
+def test_content_indexes_match_reader():
+    a, _b = _files()
+    docx = read_docx(a)
+    content = read_content(docx)
+    for cp in content:
+        if cp.table is None:
+            assert docx.paragraphs[cp.index].text.replace("\t", "") == \
+                cp.text.replace("\t", "").replace("‑", "-"), cp.index
+    tables = [cp for cp in content if cp.table is not None]
+    assert len(tables) == 1 and tables[0].table.header_rows == 1
+    assert tables[0].table.spans == {(2, 0): 2} and tables[0].table.rows[2][1] is None
+    notes = [r.footnote for cp in content for r in cp.runs if r.footnote is not None]
+    assert len(notes) == 2                     # the footnote and the endnote
+    assert notes[0][0].text.startswith("A note with")
+
+
+def _build():
+    ex = Exporter(_files(), default_profile())
+    doc = ex.build()
+    return ex, doc
+
+
+def _all_paras(doc):
+    for st in doc.stories:
+        for p in st.paragraphs:
+            yield p
+
+
+def test_model():
+    ex, doc = _build()
+    try:
+        assert [len(s.paragraphs) > 0 for s in doc.stories] == [True] * 4
+        styles = [p.style for p in _all_paras(doc)]
+        # Title page; chapter one; chapter two; bibliography.
+        assert styles[0] == "Book Title"
+        assert styles[1:4] == ["Chapter Title", "Epigraph", "Body First"]
+        assert "Heading A" in styles and "List Bullet" in styles and "List Number" in styles
+        assert "Table" in styles and "Figure" in styles and "Caption" in styles
+        assert styles[-2:] == ["Chapter Title", "Bibliography"]
+        epi = doc.style("Epigraph")
+        assert epi.based_on == "Body" and epi.attrs["Justification"] == "CenterAlign"
+        assert epi.attrs["FontStyle"] == "Italic" and epi.attrs["LeftIndent"] == 72
+        assert epi.attrs["PointSize"] == 9           # 10 pt against Word's 12 pt body: 11 * 10/12
+        paras = list(_all_paras(doc))
+        first = paras[3]
+        got = [(r.text, r.style, r.attrs) for r in first.runs if r.footnote is None]
+        assert ("italic", "Italic", {}) in got and ("bold", "Bold", {}) in got
+        assert ("small caps", "Small Caps", {}) in got and ("style", "Italic", {}) in got
+        note = [r.footnote for r in first.runs if r.footnote is not None][0]
+        assert note[0].style == "Footnote"
+        assert [(r.text, r.style) for r in note[0].runs][:2] == [("A note with ", None),
+                                                                 ("italic", "Italic")]
+        assert ("ἐν ἀρχῇ", "Greek") in \
+            [(r.text, r.style) for r in note[0].runs]
+        heb = paras[4]
+        assert (HEB, "Hebrew") in [(r.text, r.style) for r in heb.runs]
+        assert heb.attrs.get("Composer") == "HL Composer Optyca"
+        assert ("Gen 1:1", "Scripture Ref") in [(r.text, r.style) for r in heb.runs]
+        assert doc.style("Hebrew", "character").attrs["CharacterDirection"] == "RightToLeftDirection"
+        assert doc.style("Scripture Ref", "character").attrs == {"Capitalization": "SmallCaps"}
+        # The endnote became a footnote.
+        assert any(r.footnote for r in heb.runs)
+        # Italic inside a bold heading is bold italic.
+        sec = [p for p in paras if p.style == "Heading A"][0]
+        assert sec.runs[0].text == "A Section"
+        after = paras[paras.index(sec) + 1]
+        assert after.style == "Body First"
+        assert [(r.text, r.style) for r in after.runs] == [("Italic heading text ", None),
+                                                           ("inside", "Italic")]
+        lists = [("".join(r.text for r in p.runs), p.attrs.get("LeftIndent")) for p in paras
+                 if p.style.startswith("List")]
+        assert lists == [("•\tFirst bullet", None), ("•\tSecond bullet", None),
+                         ("1.\tStep one", None), ("a.\tSub-step", 36), ("2.\tStep two", None)]
+        tbl = [r.table for p in paras for r in p.runs if r.table is not None][0]
+        assert tbl.header_rows == 1 and tbl.rows[0][0][0].style == "Table Head"
+        assert tbl.rows[1][0][0].style == "Table Body" and tbl.spans == {(2, 0): 2}
+        assert tbl.widths == [150, 100]
+        star = [p for p in paras if "".join(r.text for r in p.runs) == "* * *"][0]
+        assert star.attrs["Justification"] == "CenterAlign"
+        # Sections per unit; pages run on; a section's first page is its story's first page.
+        assert [s.page for s in doc.sections] == [st.pages[0] for st in doc.stories]
+        assert doc.page_count == doc.stories[-1].pages[-1] + 1
+        assert doc.sections[1].marker == "Chapter One"
+        img = [r.image for p in paras for r in p.runs if r.image is not None][0]
+        assert img.width == 162 and os.path.exists(img.path)
+        assert any("endnote" in line for line in ex.report)
+    finally:
+        ex.cleanup()
+
+
+def test_export_folder_validates():
+    from idml_check import check
+    out = os.path.join(TMP, "out")
+    path, report = export(_files(), out, default_profile())
+    assert os.path.basename(path) == "The Covenant.idml"
+    assert os.path.exists(os.path.join(out, "The Covenant", "Links", "01 Chapter One-image1.jpg"))
+    problems = check(path)
+    assert not problems, problems[:5]
+    with zipfile.ZipFile(path) as z:
+        stories = "".join(z.read(n).decode("utf-8") for n in z.namelist()
+                          if n.startswith("Stories/"))
+    assert 'AppliedCharacterStyle="CharacterStyle/Hebrew"' in stories
+    assert "<Footnote>" in stories
+    assert 'LinkResourceURI="file:Links/01 Chapter One-image1.jpg"' in stories
+    assert any("pages" in line for line in report)
+
+
+def test_unsupported_image_listed():
+    body = [para("Chapter", "Heading1"), para(image(rid="rIdE"))]
+    path = make_docx(os.path.join(TMP, "emf.docx"), body,
+                     media={"rIdE": ("image1.emf", b"\x01\x00\x00\x00 not an image")})
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        texts = ["".join(r.text for r in p.runs) for p in _all_paras(doc)]
+        assert "[Image not carried over: image1.emf]" in texts
+        assert any("image1.emf" in line for line in ex.report)
+    finally:
+        ex.cleanup()
+
+
+def test_profile_fonts_and_trim():
+    prof = default_profile()
+    prof["fonts"].update({"body": "Arno Pro", "hebrew": "Taamey David CLM"})
+    prof["page"]["trim"] = "5.5x8.5"
+    ex = Exporter(_files(), prof)
+    try:
+        doc = ex.build()
+        assert (doc.width, doc.height) == (396, 612)
+        assert doc.style("Body").font == "Arno Pro"
+        assert doc.style("Hebrew", "character").font == "Taamey David CLM"
+        assert not any(line.startswith("Body font") for line in ex.report)
+    finally:
+        ex.cleanup()
+
+
+if __name__ == "__main__":
+    run_tests(globals())

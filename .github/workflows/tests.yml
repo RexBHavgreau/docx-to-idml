@@ -25,3 +25,4 @@ jobs:
       - run: python tests/test_preflight.py
       - run: python tests/test_idml_tools.py
       - run: python tests/test_writer.py
+      - run: python tests/test_export.py
