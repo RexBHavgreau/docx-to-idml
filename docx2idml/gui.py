@@ -29,7 +29,8 @@ from .stylemap import ROLES
 TITLE = "docx-to-idml"     # working name
 
 # Profile fields: (path in the profile, label, kind, choices). Kinds: bool, text, number
-# (blank allowed = automatic), int, choice, font (a dropdown of installed fonts that can also
+# (blank allowed = automatic), int, choice, int_choice (a choice saved as a number), file (an
+# IDML file, with Browse), font (a dropdown of installed fonts that can also
 # be typed in; its choices name a script, "hebrew" or "greek", to list only fonts that have it).
 PROFILE_FIELDS = {
     "Page": [
@@ -43,8 +44,10 @@ PROFILE_FIELDS = {
         (("page", "margins", "inside"), "Inside margin (in)", "number", None),
         (("page", "margins", "outside"), "Outside margin (in)", "number", None),
         (("chapters_open",), "Chapters open on", "choice", ["recto", "next_page"]),
+        (("page", "spare_pages"), "Spare pages after each chapter", "int_choice", ["0", "1", "2"]),
     ],
     "Type": [
+        (("styles_template",), "Styles from an IDML file (optional)", "file", None),
         (("fonts", "body"), "Body font (blank = from Word)", "font", None),
         (("fonts", "headings"), "Headings font", "font", None),
         (("fonts", "notes"), "Notes font", "font", None),
@@ -138,9 +141,21 @@ class Form:
             else:
                 var = tk.StringVar()
                 ttk.Label(parent, text=label).grid(row=row, column=col, sticky="w", padx=6, pady=2)
-                if kind == "choice":
+                if kind in ("choice", "int_choice"):
                     w = ttk.Combobox(parent, textvariable=var, values=choices, state="readonly",
                                      width=24)
+                elif kind == "file":
+                    w = ttk.Frame(parent)
+                    ttk.Entry(w, textvariable=var, width=20).pack(side="left", fill="x",
+                                                                   expand=True)
+
+                    def browse(var=var):
+                        path = filedialog.askopenfilename(
+                            title="IDML file whose styles the book should use",
+                            filetypes=[("InDesign Markup", "*.idml")])
+                        if path:
+                            var.set(path)
+                    ttk.Button(w, text="Browse...", command=browse).pack(side="left", padx=2)
                 elif kind == "font":
                     w = ttk.Combobox(parent, textvariable=var, width=24, height=20,
                                      values=["(reading the installed fonts...)"])
@@ -167,6 +182,8 @@ class Form:
         for path, (var, kind) in self.vars.items():
             if kind == "bool":
                 value = bool(var.get())
+            elif kind == "int_choice":
+                value = _num(var.get(), "int") or 0
             elif kind in ("number", "int"):
                 value = _num(var.get(), kind)
                 if value is None and kind == "int":

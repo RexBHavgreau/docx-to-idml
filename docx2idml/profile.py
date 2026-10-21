@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import APP_NAME
 
-PROFILE_VERSION = 3
+PROFILE_VERSION = 4
 
 DEFAULT_PROFILE = {
     "profile_version": PROFILE_VERSION,
@@ -29,7 +29,9 @@ DEFAULT_PROFILE = {
         "facing": True,
         "bleed": False,
         "margins": {},                 # user overrides, inches: top, bottom, inside, outside
+        "spare_pages": 0,              # spare pages after each chapter: 0, 1 or 2 (a pair)
     },
+    "styles_template": None,           # an IDML whose styles replace the tool's of the same name
     "fonts": {"body": None, "headings": None, "notes": None, "display": None,
               "hebrew": None, "greek": None},
     "leading": {"unit": "pt", "value": None},   # pt, multiple or percent
@@ -128,7 +130,16 @@ def _from_2(data):
     return data
 
 
-MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2}   # version n -> function that upgrades it to n + 1
+def _from_3(data):
+    """Version 3: one spare page after each chapter, always; no style template."""
+    page = data.setdefault("page", {})
+    if isinstance(page, dict):
+        page.setdefault("spare_pages", 0)
+    data.setdefault("styles_template", None)
+    return data
+
+
+MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2, 3: _from_3}   # version n -> function that upgrades it to n + 1
 
 
 def migrate(data):

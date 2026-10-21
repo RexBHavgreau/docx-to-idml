@@ -5,6 +5,13 @@
 - Fonts are chosen from dropdowns of the fonts installed on the computer (you can still type a
   name, or leave the box blank to use Word's). The Hebrew and Greek lists show only fonts that
   have Hebrew or Greek letters.
+- Styles from an IDML file (Layout profile > Type): the template's paragraph and character
+  styles replace the tool's of the same name, and its other styles are added. Settings that
+  point at things the export doesn't carry (most colour swatches, lists, nested and GREP
+  styles) are left out and listed in the report.
+- Spare pages after each chapter are a setting: none (the default), one, or two.
+- Chapter titles are set to start on the next odd page (the next page when chapters open on
+  the next page), so the rule holds if chapters are joined into one story in InDesign.
 - Fixed: Hebrew could come out reversed in InDesign: the styles used the Adobe Paragraph
   Composer. They now use the World-Ready Composer (the same paragraph composer, with
   right-to-left support), so Hebrew sets right everywhere, including Hebrew added later in

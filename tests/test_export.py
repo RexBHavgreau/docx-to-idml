@@ -14,7 +14,7 @@ from docx_builder import (NUMBERING, endnote_ref, footnote_ref, image, make_docx
                           run, run_tests, table)
 from docx2idml.content import Numbering, read_content
 from docx2idml.docx_reader import read_docx
-from docx2idml.export import Exporter, export, segments
+from docx2idml.export import ExportError, Exporter, export, segments
 from docx2idml.profile import default_profile
 
 TMP = tempfile.mkdtemp()
@@ -250,6 +250,7 @@ def test_pagination_and_bleed():
     from idml_check import check
     prof = default_profile()
     prof["page"]["bleed"] = True
+    prof["page"]["spare_pages"] = 1
     ex = Exporter(_files(), prof)
     try:
         doc = ex.build()
@@ -352,6 +353,7 @@ def test_short_title_flagged_and_part_heads():
     from docx2idml.export import Block
     prof = default_profile()
     prof["running_heads"]["verso"] = "part"
+    prof["page"]["spare_pages"] = 1
     ex = Exporter(_files(), prof)
     try:
         ex.build()
@@ -384,6 +386,68 @@ def test_single_line_composer_gives_way_to_hebrew():
         assert ex.build().style("Body").attrs["Composer"] == "HL Single"
     finally:
         ex.cleanup()
+
+
+def test_spare_pages_and_odd_page_start():
+    counts = {}
+    for spare in (0, 1, 2):
+        prof = default_profile()
+        prof["page"]["spare_pages"] = spare
+        ex = Exporter(_files(), prof)
+        try:
+            doc = ex.build()
+            counts[spare] = [len(st.pages) for st in doc.stories]
+            assert all(st.pages[0] % 2 == 0 for st in doc.stories[GENERATED:])
+            assert doc.style("Chapter Title").attrs["StartParagraph"] == "NextOddPage"
+        finally:
+            ex.cleanup()
+    # Chapters, preface-like units and the bibliography grow by the spare pages; display pages
+    # and the reserved contents don't.
+    assert [b - a for a, b in zip(counts[0], counts[1])] == [0, 0, 0, 0, 1, 1, 1]
+    assert [b - a for a, b in zip(counts[0], counts[2])] == [0, 0, 0, 0, 2, 2, 2]
+    prof = default_profile()
+    prof["chapters_open"] = "next_page"
+    ex = Exporter(_files(), prof)
+    try:
+        doc = ex.build()
+        assert doc.style("Chapter Title").attrs["StartParagraph"] == "NextPage"
+        assert doc.style("Chapter Subtitle") is None or \
+            doc.style("Chapter Subtitle").attrs["StartParagraph"] == "Anywhere"
+    finally:
+        ex.cleanup()
+
+
+def test_styles_from_template():
+    """The styles of an IDML InDesign wrote (reference 12) replace the tool's of the same name;
+    its other styles are added; the result validates."""
+    from idml_check import check
+    template = os.path.join(ROOT, "reference", "idml", "12-character-styles.idml")
+    prof = default_profile()
+    prof["styles_template"] = template
+    ex = Exporter(_files(), prof)
+    try:
+        doc = ex.build()
+        body = doc.style("Body")
+        assert body.font == "Arno Pro" and body.leading == 14 and body.attrs["PointSize"] == 11
+        assert body.attrs["FirstLineIndent"] == 18
+        assert body.attrs["Composer"] == "HL Composer Optyca"     # the book has Hebrew
+        assert doc.style("Sans Heading").based_on == "Heading A"  # added from the template
+        assert doc.style("Chapter Title").attrs["PointSize"] == 20
+        assert doc.style("Italic", "character").attrs == {"FontStyle": "Italic"}
+        assert doc.style("Footnote") is not None                  # not in the template: the tool's
+        assert not any(line.startswith("Body font") for line in ex.report)
+        assert any(line.startswith("Styles from 12-character-styles.idml") for line in ex.report)
+        assert any("World-Ready" in line for line in ex.report)
+        from docx2idml.idml.writer import write_idml
+        assert not check(write_idml(doc, os.path.join(TMP, "tpl.idml")))
+    finally:
+        ex.cleanup()
+    prof["styles_template"] = os.path.join(TMP, "missing.idml")
+    try:
+        Exporter(_files(), prof)
+        assert False, "a missing template must stop the export"
+    except ExportError as e:
+        assert "can't be read as an IDML file" in str(e)
 
 
 def test_two_papers_with_bibliographies():

@@ -112,7 +112,8 @@ keep it up to date when decisions change.
 - Layout (step 5): masters A-Body, B-Opener, C-Front each have their own primary text frames
   (and a folio for now); D-Display and E-Blank are empty. Each unit is a story and a section;
   display and front units are LowerRoman from i, the first chapter or part restarts Arabic 1.
-  A chapter's estimate gets one spare page; blank versos before recto openers get E-Blank.
+  Spare pages per chapter as the profile says (default none); blank versos before recto
+  openers get E-Blank.
 - Keeps (October 21): widow/orphan control is KeepLinesTogether="true" with KeepFirstLines and
   KeepLastLines 2 (InDesign ignores the line counts without KeepLinesTogether); headings keep
   all their lines together and with the next paragraph; no hyphen in a paragraph's last word
@@ -140,6 +141,14 @@ keep it up to date when decisions change.
 - Composer (0.2.0): the book's styles use the World-Ready composer (`HL Composer Optyca`) by
   default; the Adobe Paragraph Composer (`HL Composer`) reversed Hebrew in InDesign (Beaux).
   Profile `paragraph_composer` off = single-line (`HL Single`), unless the book has Hebrew.
+- Style template (0.2.0, `docx2idml/template.py`, profile `styles_template`): an IDML's
+  paragraph and character styles replace the tool's by name (model level, so note runs and
+  estimates use them); its other styles are added; attributes referring to swatches beyond
+  InDesign's standard ones, lists, styles, and nested/GREP styles are dropped and reported.
+  Its Body/Chapter Title/Footnote fonts count as chosen fonts; World-Ready kept if Hebrew.
+- Spare pages: profile `page.spare_pages` 0 (default, Beaux), 1 or 2. Chapter Title has
+  StartParagraph NextOddPage (NextPage for chapters on the next page); Chapter Subtitle resets
+  it to Anywhere. Profile version 4.
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.
@@ -202,4 +211,7 @@ writes one.
   updater is tested with a fake GitHub only (no release published yet).
 - Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
   the No Break style and the local NoBreak attribute?
+- 0.2.0 additions not yet opened: StartParagraph NextOddPage on Chapter Title (does Affinity
+  keep it, and does InDesign leave a title already at the top of a recto where it is?); a
+  style template's styles in InDesign and Affinity.
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).
