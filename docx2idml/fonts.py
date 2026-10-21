@@ -7,6 +7,7 @@ looked for in the system and per-user font folders of the machine running the to
 
 import os
 import sys
+import threading
 from pathlib import Path
 
 FONT_EXTS = {".ttf", ".otf", ".ttc", ".otc"}
@@ -36,6 +37,9 @@ def font_dirs():
 
 
 _INDEX = None
+_LOCK = threading.RLock()
+_NAMES = {}                 # family (lower case) -> the family's name as the font gives it
+SCRIPT_LETTERS = {"hebrew": 0x05D0, "greek": 0x03B1}   # alef, alpha
 
 
 def _names(font):
@@ -52,10 +56,18 @@ def _names(font):
 
 
 def font_index(dirs=None):
-    """{family (lower case): {style (lower case): (path, font number)}} of installed fonts."""
+    """{family (lower case): {style (lower case): (path, font number)}} of installed fonts.
+    Read once (the window reads it in the background at startup)."""
+    if dirs is None:
+        with _LOCK:
+            if _INDEX is None:
+                _read_index()
+            return _INDEX
+    return _read_index(dirs)
+
+
+def _read_index(dirs=None):
     global _INDEX
-    if _INDEX is not None and dirs is None:
-        return _INDEX
     try:
         from fontTools.ttLib import TTCollection, TTFont
     except ImportError:
@@ -77,11 +89,66 @@ def font_index(dirs=None):
                         if fam:
                             index.setdefault(fam.casefold(), {}).setdefault(
                                 style.casefold(), (path, n))
+                            _NAMES.setdefault(fam.casefold(), fam)
                 except Exception:
                     continue
     if dirs is None:
         _INDEX = index
     return index
+
+
+_SCRIPTS = None             # {script: set of families (lower case) that have its letters}
+
+
+def families(script=None, index=None):
+    """Installed font families, sorted, as their fonts name them; with script ("hebrew",
+    "greek"), only families whose regular font has that script's letters."""
+    index = index if index is not None else font_index()
+    keys = list(index)
+    if script:
+        have = _script_families(index)[script]
+        keys = [k for k in keys if k in have]
+    return sorted((_NAMES.get(k, k) for k in keys), key=str.casefold)
+
+
+def _script_families(index):
+    """Which families have Hebrew and Greek letters: one look at each family's regular font
+    (its character map), done once."""
+    global _SCRIPTS
+    with _LOCK:
+        if _SCRIPTS is not None and index is _INDEX:
+            return _SCRIPTS
+        out = {s: set() for s in SCRIPT_LETTERS}
+        try:
+            from fontTools.ttLib import TTFont
+        except ImportError:
+            return out
+        for key in index:
+            found = find_font(key, index=index)
+            if not found:
+                continue
+            try:
+                path, number = found
+                font = TTFont(path, fontNumber=number, lazy=True)
+                cmap = font["cmap"]
+                for script, cp in SCRIPT_LETTERS.items():
+                    if any(t.isUnicode() and cp in t.cmap for t in cmap.tables):
+                        out[script].add(key)
+            except Exception:
+                continue
+        if index is _INDEX:
+            _SCRIPTS = out
+        return out
+
+
+def has_char(found, codepoint):
+    try:
+        from fontTools.ttLib import TTFont
+        path, number = found
+        cmap = TTFont(path, fontNumber=number, lazy=True).getBestCmap() or {}
+        return codepoint in cmap
+    except Exception:
+        return False
 
 
 def find_font(family, style="Regular", index=None):

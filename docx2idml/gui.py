@@ -29,7 +29,8 @@ from .stylemap import ROLES
 TITLE = "docx-to-idml"     # working name
 
 # Profile fields: (path in the profile, label, kind, choices). Kinds: bool, text, number
-# (blank allowed = automatic), int, choice.
+# (blank allowed = automatic), int, choice, font (a dropdown of installed fonts that can also
+# be typed in; its choices name a script, "hebrew" or "greek", to list only fonts that have it).
 PROFILE_FIELDS = {
     "Page": [
         (("page", "trim"), "Trim size", "choice", list(TRIMS) + ["custom"]),
@@ -44,12 +45,12 @@ PROFILE_FIELDS = {
         (("chapters_open",), "Chapters open on", "choice", ["recto", "next_page"]),
     ],
     "Type": [
-        (("fonts", "body"), "Body font (blank = from Word)", "text", None),
-        (("fonts", "headings"), "Headings font", "text", None),
-        (("fonts", "notes"), "Notes font", "text", None),
-        (("fonts", "display"), "Display font", "text", None),
-        (("fonts", "hebrew"), "Hebrew font", "text", None),
-        (("fonts", "greek"), "Greek font", "text", None),
+        (("fonts", "body"), "Body font (blank = from Word)", "font", None),
+        (("fonts", "headings"), "Headings font", "font", None),
+        (("fonts", "notes"), "Notes font", "font", None),
+        (("fonts", "display"), "Display font", "font", None),
+        (("fonts", "hebrew"), "Hebrew font", "font", "hebrew"),
+        (("fonts", "greek"), "Greek font", "font", "greek"),
         (("leading", "value"), "Leading (blank = automatic)", "number", None),
         (("leading", "unit"), "Leading unit", "choice", ["pt", "multiple", "percent"]),
         (("front_matter", "language"), "Language", "choice", ["en", "es"]),
@@ -126,7 +127,7 @@ class Form:
     """Widgets for a list of fields, bound to a dict (read with load(), written with save())."""
 
     def __init__(self, parent, fields, columns=1):
-        self.fields, self.vars = fields, {}
+        self.fields, self.vars, self.font_boxes = fields, {}, []
         for n, (path, label, kind, choices) in enumerate(fields):
             row, col = n // columns, (n % columns) * 2
             if kind == "bool":
@@ -139,10 +140,19 @@ class Form:
                 if kind == "choice":
                     w = ttk.Combobox(parent, textvariable=var, values=choices, state="readonly",
                                      width=24)
+                elif kind == "font":
+                    w = ttk.Combobox(parent, textvariable=var, width=24, height=20,
+                                     values=["(reading the installed fonts...)"])
+                    self.font_boxes.append((w, choices))
                 else:
                     w = ttk.Entry(parent, textvariable=var, width=26)
                 w.grid(row=row, column=col + 1, sticky="we", padx=6, pady=2)
             self.vars[path] = (var, kind)
+
+    def set_fonts(self, lists):
+        """Fill the font dropdowns: lists = {None: all families, "hebrew": [...], ...}."""
+        for box, script in self.font_boxes:
+            box["values"] = lists.get(script) or lists.get(None) or []
 
     def load(self, data):
         for path, (var, kind) in self.vars.items():
@@ -162,6 +172,8 @@ class Form:
                     value = 0
             else:
                 value = var.get().strip() or None
+                if kind == "font" and value and value.startswith("("):
+                    value = None          # the placeholder shown while fonts are read
                 if kind == "choice" and value is None:
                     continue
             _set(data, path, value)
@@ -178,6 +190,7 @@ class App:
         self.report = None           # last preflight report
         self.units = []              # (title, kind) from the last outline
         self.results = queue.Queue() # callbacks from worker threads
+        self.font_lists = None       # installed fonts, once read
         self.profile_name = self.settings.get("profile")
         try:
             self.profile = profiles.load(self.profile_name)
@@ -192,6 +205,7 @@ class App:
         self._load_book_into_forms()
         root.protocol("WM_DELETE_WINDOW", self.quit)
         self._poll()
+        self._read_fonts()
 
     # ---- layout of the window ----
 
@@ -392,6 +406,27 @@ class App:
             self.notice_list.insert("end", item.get("name", ""))
             if item.get("name") in chosen:
                 self.notice_list.selection_set(n)
+
+    def _read_fonts(self):
+        """List the installed fonts in the background (a few seconds with many fonts), then
+        fill the font dropdowns."""
+        def work():
+            from . import fonts
+            return {None: fonts.families(), "hebrew": fonts.families("hebrew"),
+                    "greek": fonts.families("greek")}
+
+        def target():
+            try:
+                lists = work()
+            except Exception:
+                lists = {}
+            self.results.put(lambda: self._fonts_read(lists))
+        threading.Thread(target=target, daemon=True).start()
+
+    def _fonts_read(self, lists):
+        self.font_lists = lists
+        for form in self.profile_forms:
+            form.set_fonts(lists)
 
     def _forms_to_profile(self):
         for form in self.profile_forms:
@@ -725,7 +760,7 @@ class App:
                 self.results.get_nowait()()
         except queue.Empty:
             pass
-        self.root.after(50, self._poll)
+        self._poll_id = self.root.after(50, self._poll)
 
     def _finish(self, result, done):
         self.busy = False
@@ -897,6 +932,10 @@ class App:
         self.settings["profile"] = self.profile_name
         self.settings["out_dir"] = self.out_var.get().strip() or None
         appsettings.save(self.settings)
+        try:
+            self.root.after_cancel(self._poll_id)
+        except (AttributeError, tk.TclError):
+            pass
         self.root.destroy()
 
 

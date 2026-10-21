@@ -128,6 +128,9 @@ keep it up to date when decisions change.
   none unless the profile's suppress toggles are off. Verso "part": one copy of A-Body per part
   (P1-Body...), not a child master, so linked page frames point at its own primary frames. Book
   settings (`Book.settings`): "front" (see frontmatter.py) and "short_titles".
+- Font fields in the window are editable dropdowns of the installed families
+  (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
+  character map, once, cached); read in a background thread at startup.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
@@ -137,7 +140,8 @@ keep it up to date when decisions change.
   top of `CHANGELOG.md`. Pushing a tag `vX.Y.Z` (matching `__version__`) runs
   `.github/workflows/build.yml` on Windows: tests, the .exe, a check that it carries the IDML
   base files, and a GitHub Release with the .exe (its SHA-256 digest is what the updater
-  checks). **Ask Beaux before tagging.**
+  checks). **Ask Beaux before tagging.** Tag the merge commit on `main` (after the branch is
+  merged): v0.1.0 was put on an older commit without the workflow, so nothing was built.
 
 ## Tests
 
