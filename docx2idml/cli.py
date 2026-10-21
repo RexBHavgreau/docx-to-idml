@@ -57,7 +57,8 @@ def cmd_export(args):
         return 2
     prof = profiles.load(args.profile or (book.profile if book else None))
     try:
-        path, report = export(files, args.out, prof, args.name)
+        path, report = export(files, args.out, prof, args.name,
+                              book.settings if book else None)
     except ExportError as e:
         print(str(e), file=sys.stderr)
         return 2

@@ -111,19 +111,25 @@ class Placed:
 
 
 def plan_pages(units, chapters_open="recto"):
-    """Where each unit goes. units: [(kind, estimated pages, spare pages)] in book order, kind
-    as in the outline (display, front, part, chapter, back).
+    """Where each unit goes. units: [(kind, estimated pages, spare pages)] or [(kind, pages,
+    spare, opens)] in book order, kind as in the outline (display, front, part, chapter, back);
+    opens: "recto", "next" (the next page, e.g. a copyright page after the title page), or None
+    for the rule by kind.
 
     Returns ([Placed], page_count, masters {page index: master name}, first body unit index).
     """
     placed, masters = [], {}
     page = 0
     first_body = None
-    for n, (kind, est, spare) in enumerate(units):
+    for n, unit in enumerate(units):
+        kind, est, spare = unit[:3]
+        opens = unit[3] if len(unit) > 3 else None
         front = kind in ("display", "front")
         if not front and first_body is None:
             first_body = n
-        if front or kind == "part" or n == first_body or chapters_open == "recto":
+        if opens:
+            recto = opens == "recto"
+        elif front or kind == "part" or n == first_body or chapters_open == "recto":
             recto = True
         else:
             recto = False

@@ -23,18 +23,19 @@ What it does now:
 """
 
 import math
+from dataclasses import dataclass
 import os
 import shutil
 import tempfile
 
-from . import fonts, layout
+from . import fonts, frontmatter, layout
 from . import profile as profiles
 from .content import read_content, save_image
 from .docx_reader import is_greek, is_hebrew, read_docx
 from .idml.images import image_info
 from .idml.model import (CellStyle, Document, Frame, Image, Master, Paragraph, Run, Section,
-                         Story, Style, Table, TableStyle)
-from .outline import build_outline
+                         Story, Style, Table, TableStyle, TOCStyle)
+from .outline import Unit, build_outline
 from .stylemap import StyleMap, norm
 
 BLEED = 9                   # 0.125 in, KDP's bleed
@@ -69,6 +70,26 @@ ROLE_BASE = {"body": "Body", "quote": "Block Quote", "verse": "Verse", "list": "
              "caption": "Caption", "note": "Footnote", "chapter": "Chapter Title",
              "part": "Part Title", "book_title": "Book Title", "subtitle": "Book Subtitle",
              "author": "Author"}
+
+
+@dataclass
+class Block:
+    """One story of the book: a unit of the manuscript or a generated page."""
+    unit: object
+    paras: list
+    opens: str = None             # "recto", "next", or None for the rule by kind
+    spare: int = None             # spare pages; None = by kind
+    sink: float = None            # None = by kind
+    pages: int = None             # fixed page count (reserved contents), else estimated
+    valign: str = None            # e.g. "BottomAlign" (copyright page)
+
+    @property
+    def kind(self):
+        return self.unit.kind if self.unit else "chapter"
+
+    @property
+    def title(self):
+        return self.unit.title if self.unit else ""
 
 
 class ExportError(Exception):
@@ -142,9 +163,12 @@ def segments(text):
 
 
 class Exporter:
-    def __init__(self, paths, profile=None):
+    def __init__(self, paths, profile=None, settings=None):
+        """settings: the book's own settings (Book.settings): "front" (book details, see
+        frontmatter) and "short_titles" ({unit title: running head})."""
         self.paths = [str(p) for p in paths]
         self.profile = profile or profiles.default_profile()
+        self.settings = settings or {}
         self.sm = StyleMap.from_profile(self.profile)
         self.report = []
         self.tmp = None
@@ -173,7 +197,7 @@ class Exporter:
             self.used_char, self.custom = {}, {}
             self._book_styles()
             stories = self._stories()
-            new = self._paginate(stories)
+            new = self._paginate(self._front_matter(stories))
             if layout.kdp_band(new) == layout.kdp_band(pages):
                 break
             pages = new
@@ -387,6 +411,21 @@ class Exporter:
             S("Table Head", "Table Body", {"FontStyle": "Bold"}),
             S("Folio", font=f["body"], leading=lead,
               attrs={"PointSize": size - 2, "Justification": "CenterAlign"}),
+            S("Running Head", font=f["body"], leading=lead,
+              attrs={"PointSize": size - 2, "Justification": "CenterAlign",
+                     "Capitalization": "SmallCaps", "Tracking": 20, "Hyphenation": False}),
+            S("Half Title", "Book Title", {"PointSize": _half(size * 1.6)},
+              leading=_half(size * 2)),
+            S("Publisher", "Book Title", {"PointSize": size, "SpaceBefore": lead * 6},
+              leading=lead),
+            S("Copyright", "Body", {"PointSize": size - 2, "FirstLineIndent": 0,
+                                    "Justification": "LeftAlign", "Hyphenation": False,
+                                    "SpaceAfter": _half(lead / 2)}, leading=note_lead),
+            S("Contents Title", "Chapter Title", next_style="Contents 1"),
+            S("Contents 1", "Body", {"FirstLineIndent": 0, "Justification": "LeftAlign",
+                                     "SpaceBefore": 6, "Hyphenation": False},
+              tabs=[("RightAlign", self.measure, ". ")]),
+            S("Contents 2", "Contents 1", {"LeftIndent": 18, "SpaceBefore": 0}),
         ]
         self.doc.colors = [("Table Grey", (0, 0, 0, 12))]
         insets = {"TextTopInset": 3, "TextLeftInset": 4, "TextBottomInset": 3,
@@ -522,7 +561,11 @@ class Exporter:
             self.used_char.values(),
             key=lambda s: (order.index(s.name) if s.name in order else len(order), s.name))
         # Only the styles the book uses, plus the ones every book has.
-        used = set(self.para_used) | {"Body", "Body First", "Footnote", "Folio"}
+        used = set(self.para_used) | {"Body", "Body First", "Footnote", "Folio", "Running Head"}
+        for st in self.doc.stories:
+            used |= {p.style for p in st.paragraphs}
+        if self.doc.toc_styles:
+            used |= {"Contents Title", "Contents 1", "Contents 2"}
         keep, changed = [], True
         styles = {s.name: s for s in self.doc.paragraph_styles}
         while changed:
@@ -898,57 +941,172 @@ class Exporter:
                 height += lines(p, self.measure)
         return max(1, math.ceil(height / self.text_height))
 
-    def _paginate(self, stories):
-        """Pages, masters and sections; returns the page count."""
-        doc = self.doc
-        sink = _half(self.body_lead * 6)
-        items, sinks = [], []
+    # ---- front matter (step 6) ----
+
+    def _front_matter(self, stories):
+        """The book's blocks in order: generated half-title, title and copyright pages, the
+        manuscript's display pages, the reserved contents, then front matter, text and back
+        matter. Returns [Block]."""
+        front = self.settings.get("front", {})
+        info, notes = frontmatter.book_info(self.outline, front)
+        self.info = info
+        self.report += notes
+        lang = self.profile["front_matter"].get("language", "en")
+        display, front_units, rest = [], [], []
+        ms_copyright, extras = [], []
         for unit, paras in stories:
             kind = unit.kind if unit else "chapter"
-            s = 0 if kind in ("display", "part") else sink
-            sinks.append(s)
-            spare = 0 if kind in ("display", "part") else 1
-            items.append((kind, self._estimate(paras, s), spare))
+            if kind == "display" and unit.type in ("title page", "opening"):
+                cp, ex = self._split_opening(paras)
+                ms_copyright += cp
+                extras += ex
+            elif kind == "display" and unit.type == "copyright":
+                ms_copyright += [p for p in paras if p.style != "Chapter Title"]
+            elif kind == "display":
+                display.append(Block(unit, paras))
+            elif kind == "front" and unit.type == "contents":
+                self.report.append('The manuscript\'s own contents ("%s") was left out: its '
+                                   "page numbers would be wrong. Pages are reserved for the "
+                                   "contents instead." % unit.title)
+            elif kind == "front" and not rest:
+                front_units.append(Block(unit, paras))
+            else:
+                rest.append(Block(unit, paras))
+        blocks = []
+        g = lambda kind, title, typ: Unit(kind, typ, title, "", -1, "generated")  # noqa: E731
+        if info["half_title"]:
+            blocks.append(Block(g("display", "Half title", "half title"),
+                                frontmatter.half_title(info), sink=_half(self.text_height / 4)))
+        blocks.append(Block(g("display", "Title page", "title page"), frontmatter.title_page(info),
+                            sink=_half(self.text_height / 5)))
+        if ms_copyright:
+            paras = ms_copyright
+            for p in paras:
+                if p.style.startswith("Body"):
+                    p.style = "Copyright"
+        else:
+            paras, cnotes = frontmatter.copyright_page(info, lang, self.profile.get("notices"))
+            self.report += cnotes
+        blocks.append(Block(g("display", "Copyright", "copyright"), paras, opens="next",
+                            valign="BottomAlign"))
+        if extras:
+            blocks.append(Block(g("display", "(opening)", "opening"), extras))
+        blocks += display
+        if info["contents"]:
+            depth = self.profile["front_matter"].get("contents_depth", "chapters")
+            entries = frontmatter.contents_entries(self.outline, depth)
+            sink = _half(self.body_lead * 6)
+            pages = info["contents_pages"] or frontmatter.contents_pages(
+                entries, self.geo.cpl, self.body_lead, self.text_height, sink)
+            blocks.append(Block(g("front", frontmatter.texts(lang)["contents"], "contents"),
+                                frontmatter.contents_page(lang), pages=pages, spare=0))
+            self.report.append("Contents: %d page%s reserved for %d entries (change it in the "
+                               "book settings). Place the contents from the Contents style."
+                               % (pages, "" if pages == 1 else "s", len(entries)))
+            self.contents_depth = depth
+        else:
+            self.contents_depth = None
+        return blocks + front_units + rest
+
+    def _split_opening(self, paras):
+        """The manuscript's own title page: title, subtitle and author lines are replaced by
+        the generated title page; from a copyright line on, the text goes on the copyright
+        page; anything else is kept on a display page of its own."""
+        copyright_, extras = [], []
+        author = (self.outline.author or "").casefold()
+        for p in paras:
+            text = " ".join("".join(r.text for r in p.runs).split())
+            low = text.casefold()
+            if copyright_ or "\u00a9" in text or low.startswith("copyright") or \
+                    "derechos reservados" in low:
+                copyright_.append(p)
+            elif p.style in ("Book Title", "Book Subtitle", "Author") or \
+                    (author and author in low and len(text) < 80):
+                continue
+            else:
+                extras.append(p)
+        return copyright_, extras
+
+    # ---- pagination and running heads ----
+
+    def _short(self, title):
+        return (self.settings.get("short_titles") or {}).get(title) or title
+
+    def _head_frames(self, verso, recto):
+        """Running heads above the text area: verso and recto paragraphs' runs."""
+        doc, m = self.doc, self.doc.margins
+        out = []
+        for side, runs in (("verso", verso), ("recto", recto)):
+            if runs is None:
+                continue
+            left = m["outside"] if side == "verso" else m["inside"]
+            right = doc.width - (m["inside"] if side == "verso" else m["outside"])
+            out.append(Frame(side, (m["top"] - 27, left, m["top"] - 13, right),
+                             [Paragraph("Running Head", runs)], key=side[0] + "head",
+                             valign="BottomAlign"))
+        return out
+
+    def _paginate(self, blocks):
+        """Pages, masters, sections and running heads; returns the page count."""
+        doc = self.doc
+        sink = _half(self.body_lead * 6)
+        items = []
+        for b in blocks:
+            kind = b.kind
+            if b.sink is None:
+                b.sink = 0 if kind in ("display", "part") else sink
+            spare = b.spare if b.spare is not None else (0 if kind in ("display", "part") else 1)
+            est = b.pages or self._estimate(b.paras, b.sink)
+            items.append((kind, est, spare, b.opens))
         placed, count, masters, first_body = layout.plan_pages(
             items, self.profile.get("chapters_open", "recto"))
         doc.stories, doc.sections = [], []
         optical = self.body_size if self.profile["typography"]["optical_margins"] else None
-        for n, ((unit, paras), pl) in enumerate(zip(stories, placed)):
-            doc.stories.append(Story(paras, list(range(pl.start, pl.start + pl.pages)),
-                                     sink=sinks[n], linked=True, optical_margins=optical))
-            title = unit.title if unit and not unit.title.startswith("(") else ""
+        rh = self.profile["running_heads"]
+        part = None
+        part_masters = []
+        long_heads = []
+        for n, (b, pl) in enumerate(zip(blocks, placed)):
+            pages = list(range(pl.start, pl.start + pl.pages))
+            doc.stories.append(Story(b.paras, pages, sink=b.sink, linked=True,
+                                     optical_margins=optical, valign=b.valign))
+            title = b.title if not b.title.startswith("(") and b.kind != "display" else ""
+            marker = self._short(title)
+            if marker and self._too_long(marker):
+                long_heads.append(marker)
             body = first_body is not None and n >= first_body
             start = 1 if n == 0 or n == first_body else None
             # A blank verso before a unit belongs to the section before it.
-            doc.sections.append(Section(pl.start, marker=title[:80],
+            doc.sections.append(Section(pl.start, marker=marker,
                                         numbering="Arabic" if body else "LowerRoman",
                                         start=start))
+            if b.kind == "part":
+                part = self._short(b.title)
+                part_masters.append(part)
+            elif body and part and rh.get("verso") == "part":
+                name = "P%d-Body" % len(part_masters)
+                for i in pages:
+                    if masters.get(i) == "A-Body":
+                        masters[i] = name
         doc.page_count = max(count, 1)
         doc.page_masters = masters
         if not doc.sections:
             doc.sections = [Section(0, start=1)]
-        m = doc.margins
-        top, bottom = m["top"], doc.height - m["bottom"]
-
-        def text_frames():
-            out = []
-            for side in ("verso", "recto"):
-                left = m["outside"] if side == "verso" else m["inside"]
-                right = doc.width - (m["inside"] if side == "verso" else m["outside"])
-                out.append(Frame(side, (top, left, bottom, right), [], primary=True))
-                out.append(Frame(side, (bottom + 14, left, bottom + 28, right),
-                                 [Paragraph("Folio", [Run(special="page_number")])],
-                                 key="folio"))
-            return out
-        # Each text master has its own primary text frames, so a chapter's pages thread from
-        # B-Opener into A-Body. Running heads (step 6) go on A-Body and C-Front.
-        doc.masters = [Master("A", "Body", frames=text_frames()),
-                       Master("B", "Opener", frames=text_frames()),
-                       Master("C", "Front", frames=text_frames()),
-                       Master("D", "Display"), Master("E", "Blank")]
+        self._masters(part_masters)
+        if long_heads:
+            self.report.append("Running heads too long for the page: %s. Give these a short "
+                               "title in the book settings." % "; ".join(
+                                   '"%s"' % h for h in long_heads))
+        if self.contents_depth:
+            levels = [("Chapter Title", 1, "Contents 1"), ("Part Title", 1, "Contents 1")]
+            if self.contents_depth == "sections":
+                levels.append(("Heading A", 2, "Contents 2"))
+            lang = self.profile["front_matter"].get("language", "en")
+            doc.toc_styles = [TOCStyle("Contents", frontmatter.texts(lang)["contents"],
+                                       "Contents Title", levels)]
         est = sum(i[1] for i in items)
         blanks = sum(1 for v in masters.values() if v == "E-Blank")
-        g = self.geo
+        g, m = self.geo, doc.margins
         self.report.append(
             "%d pages: about %d of text, %d blank verso%s, and a page to spare after each "
             "chapter (where it stays empty, delete it with the blank page after it, or give "
@@ -961,17 +1119,66 @@ class Exporter:
                self.body_lead, round(g.cpl)))
         return doc.page_count
 
+    def _too_long(self, text):
+        attrs = self._resolved_attrs("Running Head")
+        size = attrs.get("PointSize", self.body_size)
+        return len(text) * size * self.avg_width * 1.1 > self.measure * 0.8
+
+    def _masters(self, parts):
+        """A-Body, B-Opener and C-Front carry text (each its own primary text frames, so a
+        chapter threads from B into A); D-Display and E-Blank are empty. Running heads follow
+        the profile: the recto head is the section marker (the chapter's short title), the
+        verso head the book title, author, chapter, part or custom text; C-Front shows the
+        unit's title on both sides. Parts with part verso heads get a master each (P1-Body...),
+        a copy of A-Body with the part's title."""
+        doc, m = self.doc, self.doc.margins
+        rh = self.profile["running_heads"]
+        info = self.info
+        top, bottom = m["top"], doc.height - m["bottom"]
+        marker = [Run(special="section_marker")]
+        verso_kind = rh.get("verso", "book_title")
+        verso = {"book_title": [Run(info.get("short_title") or info["title"])],
+                 "author": [Run(info["author"])], "chapter": marker,
+                 "custom": [Run(rh.get("verso_custom") or "")]}.get(verso_kind)
+        recto = [Run(rh.get("recto_custom") or "")] if rh.get("recto") == "custom" else marker
+
+        def frames(heads=True, verso_runs=None, recto_runs=None):
+            out = []
+            for side in ("verso", "recto"):
+                left = m["outside"] if side == "verso" else m["inside"]
+                right = doc.width - (m["inside"] if side == "verso" else m["outside"])
+                out.append(Frame(side, (top, left, bottom, right), [], primary=True))
+                out.append(Frame(side, (bottom + 14, left, bottom + 28, right),
+                                 [Paragraph("Folio", [Run(special="page_number")])],
+                                 key="folio"))
+            if heads:
+                out += self._head_frames(verso_runs, recto_runs)
+            return out
+        doc.masters = [
+            Master("A", "Body", frames=frames(True, verso or marker, recto)),
+            Master("B", "Opener", frames=frames(not rh.get("suppress_on_openers", True),
+                                                verso or marker, recto)),
+            Master("C", "Front", frames=frames(True, marker, marker)),
+            Master("D", "Display", frames=[] if rh.get("suppress_on_display", True)
+                   else self._head_frames(verso or marker, recto)),
+            Master("E", "Blank", frames=[] if rh.get("suppress_on_blanks", True)
+                   else self._head_frames(verso or marker, recto))]
+        if verso_kind == "part":
+            for k, title in enumerate(parts, 1):
+                doc.masters.append(Master("P%d" % k, "Body",
+                                          frames=frames(True, [Run(title)], recto)))
+
 
 def _label_run(text):
     from .content import CRun
     return CRun(text)
 
 
-def export(paths, out_dir, profile=None, name=None):
-    """Export the manuscript to an export folder (IDML and Links). Returns (IDML path, report
-    lines)."""
+def export(paths, out_dir, profile=None, name=None, settings=None):
+    """Export the manuscript to an export folder (IDML and Links). settings: the book's own
+    settings. Returns (IDML path, report lines)."""
     from .idml.writer import export_book
-    ex = Exporter(paths, profile)
+    ex = Exporter(paths, profile, settings)
     try:
         doc = ex.build()
         path = export_book(doc, out_dir, name or _safe(doc.name))

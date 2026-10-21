@@ -123,7 +123,15 @@ def main():
     # The fonts of the reference files (on Beaux's machine); Word's own are Calibri.
     prof = default_profile()
     prof["fonts"].update({"body": "Arno Pro", "hebrew": HEBREW_FONT})
-    path, report = export(files, OUT, prof, "e01-sample-book")
+    prof["notices"] = [{"name": "Sample Bible", "text": "Scripture quotations are the author's "
+                                                        "own translation."}]
+    # Sample book details (a placeholder ISBN), as the GUI's book settings would hold them.
+    settings = {"front": {"publisher": "Sample Press", "publisher_address": "City, State",
+                          "isbn_print": "978-0-000-00000-0", "notices": ["Sample Bible"],
+                          "printed_in": "the United States of America",
+                          "edition": "First edition"},
+                "short_titles": {"The Formula in the Prophets": "The Formula"}}
+    path, report = export(files, OUT, prof, "e01-sample-book", settings)
     print("Wrote %s" % path)
     for line in report:
         print("- " + line)

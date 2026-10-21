@@ -72,6 +72,7 @@ class Story:
     sink: float = 0               # extra top margin on the first page (chapter openers)
     linked: bool = False          # page frames made from the master's primary text frames
     optical_margins: float = None # optical margin alignment at this size, or None for off
+    valign: str = None            # vertical justification of its frames, e.g. "BottomAlign"
 
 
 @dataclass

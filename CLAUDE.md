@@ -39,6 +39,7 @@ keep it up to date when decisions change.
 | `docx2idml/content.py` | The text of a .docx for the exporter: runs with formatting features, notes, tables, images, list numbers; paragraph indexes match `docx_reader`'s |
 | `docx2idml/export.py` | Step 4, the exporter core: book styles, Word styles kept by name, runs to character styles, Hebrew/Greek, one story and section per outline unit, page estimate; `export()` writes the export folder |
 | `docx2idml/layout.py` | Step 5: margins and measure (65 characters, floors, KDP gutter by page count), pagination (roman front matter, recto rules, masters per page) |
+| `docx2idml/frontmatter.py` | Step 6: book details (settings, then detected, else bracketed placeholders), half-title, title, copyright (English/Spanish, notices from the profile's library), contents entries and reserved pages |
 | `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile` |
 | `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `images.py` (image size and resolution from file headers), `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
@@ -114,6 +115,16 @@ keep it up to date when decisions change.
   Affinity lacks: the exporter puts the last words of each running-text paragraph in the
   "No Break" character style (or NoBreak="true" on a run that has a style already) so the last
   line has at least `typography.last_line_min_chars` (10) characters.
+- Front matter and heads (step 6): the book is a list of `export.Block`s: generated half-title
+  (i), title (recto), copyright (the verso after it, set at the foot), the manuscript's display
+  pages, reserved contents (recto; its page count estimated or set), then front matter, text,
+  back matter. The manuscript's title page is replaced (copyright lines from it go on the
+  copyright page; other lines on a display page of their own); its typed contents is dropped.
+  Running heads: recto = section marker (short title from `settings["short_titles"]`), verso =
+  book title / author / chapter / custom on A-Body; C-Front shows the marker both sides; B, D, E
+  none unless the profile's suppress toggles are off. Verso "part": one copy of A-Body per part
+  (P1-Body...), not a child master, so linked page frames point at its own primary frames. Book
+  settings (`Book.settings`): "front" (see frontmatter.py) and "short_titles".
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
@@ -156,6 +167,7 @@ writes one.
   on a real manuscript.
 - Step 5: e01 with the layout: text flows right, text width fine, folios right (Beaux). Spare
   pages the text doesn't reach keep their folio (they are text pages). Bleed not yet checked.
+- Step 6: e01 with front matter and running heads: validates, not yet opened.
 - Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
   the No Break style and the local NoBreak attribute?
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).

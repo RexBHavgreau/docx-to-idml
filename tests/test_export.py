@@ -127,8 +127,12 @@ def _build():
     return ex, doc
 
 
+GENERATED = 4      # half-title, title, copyright and contents come first
+
+
 def _all_paras(doc):
-    for st in doc.stories:
+    """Paragraphs from the manuscript (after the generated front matter)."""
+    for st in doc.stories[GENERATED:]:
         for p in st.paragraphs:
             yield p
 
@@ -136,11 +140,10 @@ def _all_paras(doc):
 def test_model():
     ex, doc = _build()
     try:
-        assert [len(s.paragraphs) > 0 for s in doc.stories] == [True] * 4
+        assert [len(s.paragraphs) > 0 for s in doc.stories] == [True] * 7
         styles = [p.style for p in _all_paras(doc)]
-        # Title page; chapter one; chapter two; bibliography.
-        assert styles[0] == "Book Title"
-        assert styles[1:4] == ["Chapter Title", "Epigraph", "Body First"]
+        # Chapter one; chapter two; bibliography (the manuscript's title went to the title page).
+        assert styles[0:3] == ["Chapter Title", "Epigraph", "Body First"]
         assert "Heading A" in styles and "List Bullet" in styles and "List Number" in styles
         assert "Table" in styles and "Figure" in styles and "Caption" in styles
         assert styles[-2:] == ["Chapter Title", "Bibliography"]
@@ -149,7 +152,7 @@ def test_model():
         assert epi.attrs["FontStyle"] == "Italic" and epi.attrs["LeftIndent"] == 72
         assert epi.attrs["PointSize"] == 9           # 10 pt against Word's 12 pt body: 11 * 10/12
         paras = list(_all_paras(doc))
-        first = paras[3]
+        first = paras[2]
         got = [(r.text, r.style, r.attrs) for r in first.runs if r.footnote is None]
         assert ("italic", "Italic", {}) in got and ("bold", "Bold", {}) in got
         assert ("small caps", "Small Caps", {}) in got
@@ -161,7 +164,7 @@ def test_model():
                                                                  ("italic", "Italic")]
         assert ("ἐν ἀρχῇ", "Greek") in \
             [(r.text, r.style) for r in note[0].runs]
-        heb = paras[4]
+        heb = paras[3]
         assert (HEB, "Hebrew") in [(r.text, r.style) for r in heb.runs]
         assert heb.attrs.get("Composer") == "HL Composer Optyca"
         assert ("Gen 1:1", "Scripture Ref") in [(r.text, r.style) for r in heb.runs]
@@ -189,7 +192,7 @@ def test_model():
         # Sections per unit; pages run on; a section's first page is its story's first page.
         assert [s.page for s in doc.sections] == [st.pages[0] for st in doc.stories]
         assert doc.page_count == doc.stories[-1].pages[-1] + 1
-        assert doc.sections[1].marker == "Chapter One"
+        assert doc.sections[GENERATED].marker == "Chapter One"
         img = [r.image for p in paras for r in p.runs if r.image is not None][0]
         assert img.width == 162 and os.path.exists(img.path)
         assert any("endnote" in line for line in ex.report)
@@ -250,14 +253,17 @@ def test_pagination_and_bleed():
     ex = Exporter(_files(), prof)
     try:
         doc = ex.build()
-        # Title page (display) in roman from i, no folio; chapter one arabic 1 on a recto.
-        assert [(s.numbering, s.start) for s in doc.sections][:3] == \
-            [("LowerRoman", 1), ("Arabic", 1), ("Arabic", None)]
-        assert doc.page_masters[0] == "D-Display" and doc.page_masters[1] == "E-Blank"
-        ch1 = doc.stories[1].pages
-        assert ch1[0] == 2 and doc.page_masters[2] == "B-Opener"
-        assert doc.page_masters[3] == "A-Body"
-        assert all(doc.stories[n].pages[0] % 2 == 0 for n in range(len(doc.stories)))
+        # Half-title i, blank ii, title iii, copyright iv, contents v, blank vi (roman, display
+        # pages without folios); chapter one arabic 1 on a recto.
+        assert [(s.numbering, s.start) for s in doc.sections] == \
+            [("LowerRoman", 1)] + [("LowerRoman", None)] * 3 + [("Arabic", 1)] + \
+            [("Arabic", None)] * 2
+        assert [doc.page_masters[i] for i in range(8)] == [
+            "D-Display", "E-Blank", "D-Display", "D-Display", "B-Opener", "E-Blank", "B-Opener",
+            "A-Body"]
+        assert [st.pages[0] for st in doc.stories] == [0, 2, 3, 4, 6, 10, 12]
+        assert doc.stories[2].valign == "BottomAlign"
+        assert doc.toc_styles and doc.toc_styles[0].title_style == "Contents Title"
         assert [m.name for m in doc.masters] == ["A-Body", "B-Opener", "C-Front", "D-Display",
                                                  "E-Blank"]
         assert doc.bleed == 9
@@ -298,6 +304,62 @@ def test_no_runt():
         body = doc.style("Body").attrs
         assert body["KeepLinesTogether"] is True and body["KeepFirstLines"] == 2
         assert body["HyphenateLastWord"] is False
+    finally:
+        ex.cleanup()
+
+
+def test_front_matter_and_heads():
+    from idml_check import check
+    from docx2idml.idml.writer import write_idml
+    prof = default_profile()
+    prof["notices"] = [{"name": "ESV", "text": "Scripture quotations are from the ESV."}]
+    prof["running_heads"]["verso"] = "author"
+    settings = {"front": {"author": "A. N. Author", "isbn_print": "978-0-00-000000-0",
+                          "publisher": "Small Press", "notices": ["ESV", "Missing"],
+                          "printed_in": "the United States of America", "half_title": False,
+                          "contents_pages": 2},
+                "short_titles": {"Chapter One": "One"}}
+    ex = Exporter(_files(), prof, settings)
+    try:
+        doc = ex.build()
+        texts = lambda st: ["".join(r.text for r in p.runs) for p in st.paragraphs]  # noqa
+        assert texts(doc.stories[0])[:2] == ["The Covenant", "A. N. Author"]
+        cp = texts(doc.stories[1])
+        assert cp[0].startswith("Copyright \u00a9") and cp[0].endswith("by A. N. Author")
+        assert "Scripture quotations are from the ESV." in cp
+        assert "ISBN 978-0-00-000000-0 (paperback)" in cp
+        assert "Printed in the United States of America" in cp
+        assert any("Missing" in line for line in ex.report)
+        assert doc.stories[2].pages == [2, 3]               # contents: 2 pages as set
+        assert [s.marker for s in doc.sections][3] == "One"
+        a = [m for m in doc.masters if m.name == "A-Body"][0]
+        heads = {f.key: f.paragraphs[0].runs[0] for f in a.frames if f.key in ("vhead", "rhead")}
+        assert heads["vhead"].text == "A. N. Author"
+        assert heads["rhead"].special == "section_marker"
+        b = [m for m in doc.masters if m.name == "B-Opener"][0]
+        assert not [f for f in b.frames if f.key and f.key.endswith("head")]
+        path = write_idml(doc, os.path.join(TMP, "front.idml"))
+        assert not check(path)
+    finally:
+        ex.cleanup()
+
+
+def test_short_title_flagged_and_part_heads():
+    from docx2idml.outline import Unit
+    from docx2idml.export import Block
+    prof = default_profile()
+    prof["running_heads"]["verso"] = "part"
+    ex = Exporter(_files(), prof)
+    try:
+        ex.build()
+        assert ex._too_long("A Very Long Chapter Title That Goes On and On Past the Measure")
+        assert not ex._too_long("Chapter One")
+        part = Block(Unit("part", "part", "Part One", "", 0, "test"), [])
+        ch = Block(Unit("chapter", "chapter", "Inside", "", 0, "test"), [])
+        ex.report = []
+        ex._paginate([part, ch])
+        assert "P1-Body" in [m.name for m in ex.doc.masters]
+        assert "P1-Body" in ex.doc.page_masters.values()
     finally:
         ex.cleanup()
 

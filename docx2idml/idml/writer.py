@@ -566,7 +566,8 @@ class Writer:
                         sink = story.sink if i == story.pages[0] else 0
                         top = -doc.height / 2 + m["top"] + sink
                         height = doc.height - m["top"] - m["bottom"] - sink
-                        f = self._frame_el(story_ids[k2], left, top, self.measure, height)
+                        f = self._frame_el(story_ids[k2], left, top, self.measure, height,
+                                           valign=story.valign)
                         sp.append(f)
                         frames[k2].append(f)
                         if story.linked:
