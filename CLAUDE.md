@@ -63,6 +63,14 @@ keep it up to date when decisions change.
   a run of their own (Affinity breaks single-run notes); the Footnote style's font, size,
   leading, indent and alignment also on every note run (Affinity otherwise lays the root style
   `[No paragraph style]` over note text). Style edits still reach every note in both programs.
+- IDML sections, as InDesign writes them (g01's first version broke these and wouldn't open
+  in InDesign, though it validated and opened in Affinity): the alternate layout's name
+  (`AlternateLayout="Custom V"`) on the first section only, `""` on the others;
+  `AlternateLayoutLength` = pages from the section's start to the end; pages'
+  `AppliedAlternateLayout` = the first section's id. A spread's `BindingLocation` is 0 when it
+  starts with a recto, 1 when it starts with a verso (a lone last verso too). Each page carries a
+  `Descriptor` (prefix, numbering style, continue numbering, include prefix, number, number,
+  marker). Validating against the schema is not enough: compare with the reference files.
 - IDML: a page frame made from a master frame is linked on the `<Page>` element,
   `OverrideList="<master item> <page item> ..."` (pairs), not on the frame; the frame itself is
   an ordinary `TextFrame` (reference file 05).
@@ -89,8 +97,8 @@ writes one.
 ## Not yet checked
 - Step 2: Affinity done (all files; footnotes settled as fn-m, rule and spacing as fn-o/p/q).
   DesignCraft not yet.
-- Step 3: g01 (footnotes) validates and matches reference 01 in the inspector; not yet opened in
-  InDesign or Affinity. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
+- Step 3: g01 (footnotes) opens in Affinity and looks right; the first version would not open in
+  InDesign (sections, binding; fixed), the fixed one not yet tried in InDesign. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
   Kozuka, Arno); generating it from the fonts used is still to do. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8

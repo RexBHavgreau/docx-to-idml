@@ -37,6 +37,33 @@ def test_spreads():
     assert Writer(Document(page_count=2, facing=False))._spreads() == [[0], [1]]
 
 
+def test_sections_and_spreads_as_indesign_writes_them():
+    """Rules read from reference files 02, 03 and 13 (g01's first version broke them and
+    InDesign wouldn't open it)."""
+    doc = Document(page_count=7, sections=[Section(0, marker="One"), Section(2, marker="Two"),
+                                           Section(4, marker="Three")])
+    doc.stories = [Story([Paragraph("Body", [Run("x")])], [0])]
+    doc.paragraph_styles = [Style("Body")]
+    path = write_idml(doc, os.path.join(TMP, "sections.idml"))
+    z = zipfile.ZipFile(path)
+    dm = etree.fromstring(z.read("designmap.xml"))
+    secs = [(s.get("Length"), s.get("AlternateLayoutLength"), s.get("AlternateLayout"))
+            for s in dm.iter("Section")]
+    assert secs == [("2", "7", "Custom V"), ("2", "5", ""), ("3", "3", "")], secs
+    spreads = sorted((etree.fromstring(z.read(n)).find("Spread") for n in z.namelist()
+                      if n.startswith("Spreads/")),
+                     key=lambda sp: float(sp.get("ItemTransform").split()[5]))
+    assert [(sp.get("PageCount"), sp.get("BindingLocation")) for sp in spreads] == \
+        [("1", "0"), ("2", "1"), ("2", "1"), ("2", "1")]
+    doc.page_count = 6
+    doc.sections = [Section(0)]
+    z = zipfile.ZipFile(write_idml(doc, os.path.join(TMP, "lone-verso.idml")))
+    spreads = sorted((etree.fromstring(z.read(n)).find("Spread") for n in z.namelist()
+                      if n.startswith("Spreads/")),
+                     key=lambda sp: float(sp.get("ItemTransform").split()[5]))
+    assert (spreads[-1].get("PageCount"), spreads[-1].get("BindingLocation")) == ("1", "1")
+
+
 def test_g01_validates():
     path = write_idml(g01_footnotes(), os.path.join(TMP, "g01.idml"))
     why = schema_available()

@@ -13,6 +13,7 @@ every run of note text.
 import copy
 import os
 import re
+import uuid
 import zipfile
 
 from lxml import etree
@@ -118,9 +119,19 @@ class Writer:
 
     def _style_el(self, s, kind):
         tag = "ParagraphStyle" if kind == "paragraph" else "CharacterStyle"
-        el = etree.Element(tag, Self="%s/%s" % (tag, s.name), Name=s.name)
+        el = etree.Element(tag, Self="%s/%s" % (tag, s.name), Name=s.name, Imported="false")
         if kind == "paragraph":
             el.set("NextStyle", "ParagraphStyle/%s" % (s.next_style or s.name))
+        # The housekeeping attributes InDesign writes on every style.
+        for k, v in (("SplitDocument", "false"), ("EmitCss", "true"),
+                     ("StyleUniqueId", str(uuid.uuid5(uuid.NAMESPACE_URL, tag + "/" + s.name))),
+                     ("IncludeClass", "true"), ("ExtendedKeyboardShortcut", "0 0 0"),
+                     ("EpubAriaRole", "")):
+            el.set(k, v)
+        if kind == "paragraph":
+            for k in ("EmptyNestedStyles", "EmptyLineStyles", "EmptyGrepStyles"):
+                el.set(k, "true")
+        el.set("KeyboardShortcut", "0 0")
         for k, v in s.attrs.items():
             el.set(k, _num(v))
         props = etree.SubElement(el, "Properties")
@@ -219,9 +230,10 @@ class Writer:
             i += 2
         return groups
 
-    def _page_names(self):
+    def _page_numbers(self):
+        """[(page number, its section)] for every page."""
         doc = self.doc
-        names = []
+        out = []
         sections = sorted(doc.sections, key=lambda s: s.page)
         number = 0
         for i in range(doc.page_count):
@@ -230,6 +242,12 @@ class Writer:
                 number = sec.start if sec.start is not None else number + 1
             else:
                 number += 1
+            out.append((number, sec))
+        return out
+
+    def _page_names(self):
+        names = []
+        for number, sec in self._page_numbers():
             if sec.numbering == "LowerRoman":
                 names.append(roman(number))
             elif sec.numbering == "UpperRoman":
@@ -237,6 +255,17 @@ class Writer:
             else:
                 names.append(str(number))
         return names
+
+    def _descriptor(self, page, number, sec):
+        """Page number information, as InDesign records it on each page: prefix, numbering
+        style, continue numbering, include prefix, the number (twice), section marker."""
+        props = page.find("Properties")
+        desc = etree.Element("Descriptor", type="list")
+        for typ, text in (("string", ""), ("enumeration", sec.numbering),
+                          ("boolean", _num(sec.start is None)), ("boolean", "false"),
+                          ("long", str(number)), ("long", str(number)), ("string", sec.marker)):
+            etree.SubElement(desc, "ListItem", type=typ).text = text
+        props.insert(0, desc)
 
     def _page_el(self, self_id, x, name, master_id, alt_layout, master_page=False):
         page = copy.deepcopy(self.snip["Page"] if not master_page else
@@ -304,6 +333,7 @@ class Writer:
         doc = self.doc
         default_master = masters[doc.masters[0].name] if doc.masters else None
         names = self._page_names()
+        numbers = self._page_numbers()
         page_ids = [self.ids() for _ in range(doc.page_count)]
         story_ids = [self.ids() for _ in doc.stories]
         frames = {k: [] for k in range(len(doc.stories))}
@@ -316,12 +346,15 @@ class Writer:
             sp.set("Self", sid)
             sp.set("ItemTransform", "1 0 0 1 0 %s" % _num(k * (doc.height + PAGE_GAP)))
             sp.set("PageCount", str(len(group)))
-            sp.set("BindingLocation", "1" if len(group) == 2 else "0")
+            # The spine's position among the spread's pages: after the verso, if there is one.
+            sp.set("BindingLocation", "0" if self._is_recto(group[0]) else "1")
             for i in group:
                 mname = doc.page_masters.get(i)
                 mid = masters.get(mname, default_master) if mname != "" else None
-                sp.append(self._page_el(page_ids[i], self._page_left(i), names[i], mid,
-                                        self.section_ids[0]))
+                page = self._page_el(page_ids[i], self._page_left(i), names[i], mid,
+                                     self.section_ids[0])
+                self._descriptor(page, *numbers[i])
+                sp.append(page)
             for i in group:
                 for k2, story in enumerate(doc.stories):
                     if i in story.pages:
@@ -442,7 +475,11 @@ class Writer:
             el.set("Self", self.section_ids[n])
             end = sections[n + 1].page if n + 1 < len(sections) else doc.page_count
             el.set("Length", str(end - sec.page))
-            el.set("AlternateLayoutLength", str(doc.page_count))
+            # As InDesign writes them: the layout's name on the first section only, and each
+            # section's AlternateLayoutLength the pages from its start to the end.
+            el.set("AlternateLayoutLength", str(doc.page_count - sec.page))
+            if n:
+                el.set("AlternateLayout", "")
             el.set("PageStart", page_ids[sec.page])
             el.set("Marker", sec.marker)
             el.set("ContinueNumbering", _num(sec.start is None))
