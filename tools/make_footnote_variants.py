@@ -23,6 +23,10 @@ version 4) is removed.
                         so every note has at least two runs: Affinity read only notes with
                         two or more runs as proper footnotes (October 21)
   fn-j-split-plain-callout  i + a (callout runs with no character style)
+  fn-k-split-no-italic  i, with the Italic style in note 1 made plain text: no character style
+                        anywhere in the notes (in fn-i, note text after the Italic run fell back
+                        to InDesign's default 12 pt Minion as overrides)
+  fn-l-split-local-italic  i + d (italic in notes as local formatting, not a style)
 """
 
 import os
@@ -110,7 +114,7 @@ def split_number(fn, separator):
 
 
 def transform(story_xml, plain_callout=False, local_superscript=False, note_format=None,
-              note_local_italic=False, note_break=False, split=None):
+              note_local_italic=False, note_break=False, split=None, note_no_italic=False):
     root = etree.fromstring(story_xml)
     for csr in root.iter("CharacterStyleRange"):
         # The stray local italic after the Italic run in note 1.
@@ -133,6 +137,10 @@ def transform(story_xml, plain_callout=False, local_superscript=False, note_form
         if note_break:
             last = list(fn.iter("CharacterStyleRange"))[-1]
             etree.SubElement(last, "Br")
+        if note_no_italic:
+            for csr in fn.iter("CharacterStyleRange"):
+                if csr.get("AppliedCharacterStyle") == "CharacterStyle/Italic":
+                    csr.set("AppliedCharacterStyle", NONE)
         if note_local_italic:
             for csr in fn.iter("CharacterStyleRange"):
                 if csr.get("AppliedCharacterStyle") == "CharacterStyle/Italic":
@@ -160,6 +168,8 @@ VARIANTS = [
     ("fn-h-renamed-break", {"rename": True, "note_break": True}, False),
     ("fn-i-split-number", {"split": True}, False),
     ("fn-j-split-plain-callout", {"split": True, "plain_callout": True}, False),
+    ("fn-k-split-no-italic", {"split": True, "note_no_italic": True}, False),
+    ("fn-l-split-local-italic", {"split": True, "note_local_italic": True}, False),
 ]
 
 

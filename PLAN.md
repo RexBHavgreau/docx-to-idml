@@ -199,6 +199,8 @@ Beaux confirmed the same footnote fault in an IDML exported from a real InDesign
 
 **fn-i and fn-j result (Beaux, October 21): the workaround works for the style.** Every note gets the Footnote style by name and responds to Affinity's document-wide footnote setting. Two things left: the notes don't look like the Footnote style on opening (the name is right, the formatting isn't), and choosing the style again in the document-wide setting strips italics (character style and local). The generator will put the footnote number in its own run either way; fn-i (callouts unchanged) is enough.
 
+**fn-i details (Beaux):** editing the Footnote style reaches every note that really has it, italics kept. But on opening, note text after an Italic run (note 1's "in it") and all of note 2 onward show 12 pt Minion Pro with a "+": InDesign's built-in default font and size laid over the style as overrides, while the indent (a paragraph setting) comes from Footnote. Variants fn-k (no character style anywhere in the notes) and fn-l (italic as local formatting) test whether a character style in a note is what triggers it.
+
 **Open: footnote text in Affinity.** Options: (a) also write the Footnote style's settings (font, size, leading, indent) directly on the footnote text, so it looks right in Affinity even without the style (InDesign would show the style with overrides); (b) leave it to the user to apply the Footnote style to the notes in Affinity in one step, if Affinity allows that; (c) (a) only when the profile says the book is for Affinity.
 
 Beaux's reminders, already in the plan: chapter opener pages carry no running heads (02 had them only on the test's A master), and blank pages carry nothing, neither heads nor folio (E-Blank).
