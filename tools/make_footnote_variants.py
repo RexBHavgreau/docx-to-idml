@@ -173,7 +173,7 @@ def root_style(styles_xml, font, size):
 # top of the note area, the first baseline at least FootnoteMinimumFirstBaselineOffset below it.
 SPACING = {"Spacer": "12", "SpaceBetween": "3", "FootnoteFirstBaselineOffset": "LeadingOffset",
            "RuleOffset": "0", "ContinuingRuleOffset": "0", "RuleWidth": "72",
-           "ContinuingRuleWidth": "315", "RuleLineWeight": "0.5",
+           "ContinuingRuleWidth": "72", "RuleLineWeight": "0.5",
            "ContinuingRuleLineWeight": "0.5"}
 
 

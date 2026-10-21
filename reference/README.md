@@ -129,9 +129,11 @@ root style `[No paragraph style]` over note text.
 
 | File | Settings | InDesign | Affinity |
 |---|---|---|---|
-| fn-o-rule-spaced | Rule above the notes and above continued notes; 12 pt above the notes; first baseline at least 16 pt below the rule | | |
-| fn-p-space-only | No rules; 12 pt between body text and notes | | |
-| fn-q-continuation-rule | Rule only above the note continued onto page 2; 12 pt above the notes | | |
+| fn-o-rule-spaced | Rule above the notes and above continued notes; 12 pt above the notes; first baseline at least 16 pt below the rule | Works | Works |
+| fn-p-space-only | No rules; 12 pt between body text and notes | Works | Works |
+| fn-q-continuation-rule | Rule only above the note continued onto page 2; 12 pt above the notes | Works | Works |
+
+Both rules are now 1 inch (the continuation rule was first the full text width).
 
 Check: the space between body text and rule (or notes), the space between rule and note text,
 whether the continuation rule appears only on page 2 (the long note 3 runs over), and whether

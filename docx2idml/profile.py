@@ -51,6 +51,7 @@ DEFAULT_PROFILE = {
         "space_above": 12,             # points between the body text and the notes (or rule)
         "space_below_rule": 6,         # points between a rule and the note text
         "space_between": 3,            # points between notes
+        "rule_length": 72,             # points (1 inch), for both rules
     },
     "endnotes": "convert",             # convert to footnotes, or ask
     "front_matter": {"language": "en", "contents_depth": "chapters"},
