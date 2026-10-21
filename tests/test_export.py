@@ -241,5 +241,35 @@ def test_profile_fonts_and_trim():
         ex.cleanup()
 
 
+def test_pagination_and_bleed():
+    from idml_check import check
+    prof = default_profile()
+    prof["page"]["bleed"] = True
+    ex = Exporter(_files(), prof)
+    try:
+        doc = ex.build()
+        # Title page (display) in roman from i, no folio; chapter one arabic 1 on a recto.
+        assert [(s.numbering, s.start) for s in doc.sections][:3] == \
+            [("LowerRoman", 1), ("Arabic", 1), ("Arabic", None)]
+        assert doc.page_masters[0] == "D-Display" and doc.page_masters[1] == "E-Blank"
+        ch1 = doc.stories[1].pages
+        assert ch1[0] == 2 and doc.page_masters[2] == "B-Opener"
+        assert doc.page_masters[3] == "A-Body"
+        assert all(doc.stories[n].pages[0] % 2 == 0 for n in range(len(doc.stories)))
+        assert [m.name for m in doc.masters] == ["A-Body", "B-Opener", "C-Front", "D-Display",
+                                                 "E-Blank"]
+        assert doc.bleed == 9
+        assert any(line.startswith("Margins (in)") for line in ex.report)
+        from docx2idml.idml.writer import write_idml
+        path = write_idml(doc, os.path.join(TMP, "bleed.idml"))
+        assert not check(path)
+        with zipfile.ZipFile(path) as z:
+            prefs = z.read("Resources/Preferences.xml").decode("utf-8")
+        assert 'DocumentBleedTopOffset="9"' in prefs
+        assert 'DocumentBleedInsideOrLeftOffset="0"' in prefs
+    finally:
+        ex.cleanup()
+
+
 if __name__ == "__main__":
     run_tests(globals())

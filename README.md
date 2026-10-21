@@ -4,9 +4,10 @@ Turns a Word book manuscript (one .docx or several) into an IDML file that opens
 Affinity or DesignCraft with most of the book already laid out: page geometry, masters, styles,
 front matter, running heads and pagination. The plan is in [PLAN.md](PLAN.md).
 
-**Status:** step 4 of the build order. Preflight reports what the manuscript holds; export
-writes the text, styles, footnotes, Hebrew and Greek, tables and images as IDML. Page layout
-(margins, masters, recto rules), running heads and front matter come next (steps 5 and 6).
+**Status:** step 5 of the build order. Preflight reports what the manuscript holds; export
+writes the text, styles, footnotes, Hebrew and Greek, tables and images as IDML, with margins,
+masters, roman/arabic page numbers and recto rules. Running heads and generated front matter
+(half-title, title, copyright, contents) come next (step 6).
 
 ## Export
 
@@ -66,6 +67,7 @@ python tests/test_preflight.py    # includes a LibreOffice round trip when soffi
 python tests/test_idml_tools.py
 python tests/test_writer.py
 python tests/test_export.py
+python tests/test_layout.py
 ```
 
 ## Development tools

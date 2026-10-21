@@ -38,6 +38,8 @@ keep it up to date when decisions change.
 | `docx2idml/book.py` | Input files: drop/folder collection, natural order, saved order |
 | `docx2idml/content.py` | The text of a .docx for the exporter: runs with formatting features, notes, tables, images, list numbers; paragraph indexes match `docx_reader`'s |
 | `docx2idml/export.py` | Step 4, the exporter core: book styles, Word styles kept by name, runs to character styles, Hebrew/Greek, one story and section per outline unit, page estimate; `export()` writes the export folder |
+| `docx2idml/layout.py` | Step 5: margins and measure (65 characters, floors, KDP gutter by page count), pagination (roman front matter, recto rules, masters per page) |
+| `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile` |
 | `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `images.py` (image size and resolution from file headers), `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
 | `reference/` | `make_reference_files.jsx` (builds the InDesign reference files), README with the Affinity checklist; reference IDMLs go in `reference/idml/` |
@@ -101,6 +103,10 @@ keep it up to date when decisions change.
   the book's styles. Body after a heading, a centered line or at a story's start is Body First.
   List and heading numbers are static text for now (IDML auto-numbering not yet tested in
   Affinity). Images that aren't JPEG or PNG are left out with a placeholder line and reported.
+- Layout (step 5): masters A-Body, B-Opener, C-Front each have their own primary text frames
+  (and a folio for now); D-Display and E-Blank are empty. Each unit is a story and a section;
+  display and front units are LowerRoman from i, the first chapter or part restarts Arabic 1.
+  A chapter's estimate gets one spare page; blank versos before recto openers get E-Blank.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
@@ -113,6 +119,7 @@ python tests/test_preflight.py
 python tests/test_idml_tools.py
 python tests/test_writer.py
 python tests/test_export.py
+python tests/test_layout.py
 ```
 
 Run them all before pushing; CI (`.github/workflows/tests.yml`) runs them on Windows and Linux.
@@ -138,6 +145,9 @@ writes one.
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
   with a byte-order mark.
 
-- Step 4: e01 (sample book) validates; not yet opened in InDesign or Affinity. Not yet run on a
-  real manuscript.
+- Step 4: e01 (sample book) opens in InDesign and Affinity and looks right (Beaux). Not yet run
+  on a real manuscript.
+- Step 5: e01 re-exported with the layout; validates, not yet opened. To check: threading from
+  B-Opener into A-Body pages (separate masters, each with primary frames), roman/arabic folios,
+  blank versos, bleed. Font measure not tried with Beaux's fonts (Arno isn't installed here).
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).

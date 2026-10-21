@@ -27,6 +27,7 @@ import os
 import shutil
 import tempfile
 
+from . import fonts, layout
 from . import profile as profiles
 from .content import read_content, save_image
 from .docx_reader import is_greek, is_hebrew, read_docx
@@ -36,6 +37,7 @@ from .idml.model import (CellStyle, Document, Frame, Image, Master, Paragraph, R
 from .outline import build_outline
 from .stylemap import StyleMap, norm
 
+BLEED = 9                   # 0.125 in, KDP's bleed
 TRIMS = {"5x8": (5, 8), "5.25x8": (5.25, 8), "5.5x8.5": (5.5, 8.5), "6x9": (6, 9),
          "7x10": (7, 10), "8.5x11": (8.5, 11), "A5": (5.83, 8.27)}
 LANGUAGES = {"en": "$ID/English: USA", "es": "$ID/Spanish: Castilian"}
@@ -153,13 +155,25 @@ class Exporter:
         self.doc = Document(name=self.outline.title or os.path.splitext(
             os.path.basename(self.paths[0]))[0])
         self.tmp = tempfile.mkdtemp(prefix="docx2idml-")
-        self._geometry()
         self._fonts()
+        self._page()
         self._book_styles()
-        self.used_char = {}
-        self.custom = {}
-        stories = self._stories()
-        self._paginate(stories)
+        self._measure_font()
+        # Geometry depends on the page count (KDP's gutter steps) and the page count on the
+        # geometry: repeat until the count stays in the same step.
+        base_report = list(self.report)
+        pages = self._first_guess()
+        for _ in range(4):
+            self.report = list(base_report)
+            self._geometry(pages)
+            self.used_char, self.custom = {}, {}
+            self._book_styles()
+            stories = self._stories()
+            new = self._paginate(stories)
+            if layout.kdp_band(new) == layout.kdp_band(pages):
+                break
+            pages = new
+        self.report += self.geo.notes + layout.page_count_notes(self.doc.page_count)
         self._finish_styles()
         return self.doc
 
@@ -170,7 +184,7 @@ class Exporter:
 
     # ---- page and fonts ----
 
-    def _geometry(self):
+    def _page(self):
         page = self.profile["page"]
         if page.get("trim") == "custom" and page.get("custom_width") and page.get("custom_height"):
             w, h = page["custom_width"], page["custom_height"]
@@ -179,15 +193,49 @@ class Exporter:
         doc = self.doc
         doc.width, doc.height = _half(w * 72), _half(h * 72)
         doc.facing = page.get("facing", True)
-        # Provisional margins until step 5 calculates them: the profile's, else these.
-        margins = {"top": 54, "bottom": 63, "inside": 63, "outside": 54}
-        for k, v in (page.get("margins") or {}).items():
-            if k in margins and v:
-                margins[k] = _half(v * 72)
-        doc.margins = margins
+        doc.bleed = BLEED if page.get("bleed") else 0
         doc.footnotes = dict(self.profile["footnotes"])
-        self.measure = doc.width - margins["inside"] - margins["outside"]
-        self.text_height = doc.height - margins["top"] - margins["bottom"]
+        # Until the geometry is worked out (the styles need a measure for nothing yet).
+        self.measure, self.text_height = doc.width - 108, doc.height - 117
+
+    def _measure_font(self):
+        """The body font's average character width, from the manuscript's own text."""
+        text = []
+        n = 0
+        for d in self.docs:
+            for p in d.paragraphs:
+                if n > 20000:
+                    break
+                text.append(p.text)
+                n += len(p.text)
+        found = fonts.find_font(self.fonts["body"])
+        if found:
+            try:
+                self.avg_width = fonts.average_width(found, " ".join(text))
+                return
+            except Exception:
+                pass
+        self.avg_width = fonts.FALLBACK_WIDTH
+        self.report.append("%s isn't installed on this computer, so the text width was worked out "
+                           "for an average book font. Install the font, or check the line length "
+                           "in InDesign or Affinity." % self.fonts["body"])
+
+    def _first_guess(self):
+        """Page count from the words, for the first geometry."""
+        chars = sum(len(p.text) for d in self.docs for p in d.paragraphs)
+        notes = sum(len(p.text) for d in self.docs for p in d.note_paragraphs)
+        g = layout.geometry(self.doc.width, self.doc.height, self.body_size, self.body_lead,
+                            self.avg_width, 100)
+        per_page = g.cpl * g.lines
+        return int((chars + notes * 0.8) / per_page) + 2 * len(self.outline.units) + 4
+
+    def _geometry(self, pages):
+        doc = self.doc
+        g = layout.geometry(doc.width, doc.height, self.body_size, self.body_lead,
+                            self.avg_width, pages, self.profile["page"].get("margins"))
+        self.geo = g
+        doc.margins = g.margins
+        self.measure, self.text_height = g.measure, g.text_height
 
     def _word_font(self, names):
         """The font Word gives the first of these styles found in any file."""
@@ -758,7 +806,7 @@ class Exporter:
             size = attrs.get("PointSize", self.body_size)
             lead = leading if isinstance(leading, (int, float)) else size * 1.2
             text = "".join(r.text for r in p.runs)
-            cpl = max(10, (measure - attrs.get("LeftIndent", 0)) / (size * 0.48))
+            cpl = max(10, (measure - attrs.get("LeftIndent", 0)) / (size * self.avg_width))
             n = max(1, math.ceil(len(text) / cpl))
             return n * lead + attrs.get("SpaceBefore", 0) + attrs.get("SpaceAfter", 0)
         height = sink
@@ -780,43 +828,67 @@ class Exporter:
         return max(1, math.ceil(height / self.text_height))
 
     def _paginate(self, stories):
+        """Pages, masters and sections; returns the page count."""
         doc = self.doc
-        lead = self.body_lead
-        sink = _half(lead * 6)
-        doc.stories, doc.sections = [], []
-        page = 0
-        total_est = 0
+        sink = _half(self.body_lead * 6)
+        items, sinks = [], []
         for unit, paras in stories:
             kind = unit.kind if unit else "chapter"
             s = 0 if kind in ("display", "part") else sink
-            est = self._estimate(paras, s)
-            total_est += est
-            pages = est + (0 if kind in ("display", "part") else 1)   # one to spare
-            doc.stories.append(Story(paras, list(range(page, page + pages)), sink=s, linked=True,
-                                     optical_margins=self.body_size
-                                     if self.profile["typography"]["optical_margins"] else None))
+            sinks.append(s)
+            spare = 0 if kind in ("display", "part") else 1
+            items.append((kind, self._estimate(paras, s), spare))
+        placed, count, masters, first_body = layout.plan_pages(
+            items, self.profile.get("chapters_open", "recto"))
+        doc.stories, doc.sections = [], []
+        optical = self.body_size if self.profile["typography"]["optical_margins"] else None
+        for n, ((unit, paras), pl) in enumerate(zip(stories, placed)):
+            doc.stories.append(Story(paras, list(range(pl.start, pl.start + pl.pages)),
+                                     sink=sinks[n], linked=True, optical_margins=optical))
             title = unit.title if unit and not unit.title.startswith("(") else ""
-            doc.sections.append(Section(page, marker=title[:80], start=1 if page == 0 else None))
-            page += pages
-        doc.page_count = max(page, 1)
+            body = first_body is not None and n >= first_body
+            start = 1 if n == 0 or n == first_body else None
+            # A blank verso before a unit belongs to the section before it.
+            doc.sections.append(Section(pl.start, marker=title[:80],
+                                        numbering="Arabic" if body else "LowerRoman",
+                                        start=start))
+        doc.page_count = max(count, 1)
+        doc.page_masters = masters
         if not doc.sections:
             doc.sections = [Section(0, start=1)]
         m = doc.margins
         top, bottom = m["top"], doc.height - m["bottom"]
 
-        def area(side):
-            left = m["outside"] if side == "verso" else m["inside"]
-            right = doc.width - (m["inside"] if side == "verso" else m["outside"])
-            return left, right
-        frames = []
-        for side in ("verso", "recto"):
-            left, right = area(side)
-            frames.append(Frame(side, (top, left, bottom, right), [], primary=True))
-            frames.append(Frame(side, (bottom + 14, left, bottom + 28, right),
-                                [Paragraph("Folio", [Run(special="page_number")])], key="folio"))
-        doc.masters = [Master("A", "Body", frames=frames)]
-        self.report.append("%d pages: about %d of text, plus a page to spare after each chapter "
-                           "(delete what isn't used)." % (doc.page_count, total_est))
+        def text_frames():
+            out = []
+            for side in ("verso", "recto"):
+                left = m["outside"] if side == "verso" else m["inside"]
+                right = doc.width - (m["inside"] if side == "verso" else m["outside"])
+                out.append(Frame(side, (top, left, bottom, right), [], primary=True))
+                out.append(Frame(side, (bottom + 14, left, bottom + 28, right),
+                                 [Paragraph("Folio", [Run(special="page_number")])],
+                                 key="folio"))
+            return out
+        # Each text master has its own primary text frames, so a chapter's pages thread from
+        # B-Opener into A-Body. Running heads (step 6) go on A-Body and C-Front.
+        doc.masters = [Master("A", "Body", frames=text_frames()),
+                       Master("B", "Opener", frames=text_frames()),
+                       Master("C", "Front", frames=text_frames()),
+                       Master("D", "Display"), Master("E", "Blank")]
+        est = sum(i[1] for i in items)
+        blanks = sum(1 for v in masters.values() if v == "E-Blank")
+        g = self.geo
+        self.report.append(
+            "%d pages: about %d of text, %d blank verso%s, and a page to spare after each "
+            "chapter (where it stays empty, delete it with the blank page after it, or give "
+            "it the E-Blank master, so chapters keep their sides)."
+            % (doc.page_count, est, blanks, "" if blanks == 1 else "s"))
+        self.report.append(
+            "Margins (in): top %.3g, bottom %.3g, inside %.3g, outside %.3g; text %d lines of "
+            "%g pt, about %d characters per line."
+            % (m["top"] / 72, m["bottom"] / 72, m["inside"] / 72, m["outside"] / 72, g.lines,
+               self.body_lead, round(g.cpl)))
+        return doc.page_count
 
 
 def _label_run(text):

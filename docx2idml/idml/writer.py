@@ -282,6 +282,11 @@ class Writer:
         dp.set("PageWidth", _num(doc.width))
         dp.set("PageHeight", _num(doc.height))
         dp.set("FacingPages", _num(doc.facing))
+        if doc.bleed:
+            dp.set("DocumentBleedUniformSize", "false")
+            for k in ("Top", "Bottom", "OutsideOrRight"):
+                dp.set("DocumentBleed%sOffset" % k, _num(doc.bleed))
+            dp.set("DocumentBleedInsideOrLeftOffset", "0")
         # PagesPerDocument stays as InDesign writes it (1): it is the page count for a new
         # document, not this one's. Set to the real count, InDesign adds that many pages before
         # the file's own when opening it.

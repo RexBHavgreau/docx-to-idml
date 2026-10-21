@@ -137,6 +137,7 @@ class Document:
     margins: dict = field(default_factory=lambda: {"top": 54, "bottom": 63, "inside": 54,
                                                    "outside": 63})
     facing: bool = True
+    bleed: float = 0              # points, on the top, bottom and outside edges
     page_count: int = 1
     page_masters: dict = field(default_factory=dict)   # page index -> master name (default: first)
     masters: list = field(default_factory=lambda: [Master()])
