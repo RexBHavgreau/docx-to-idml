@@ -171,19 +171,21 @@ The 13 reference files from InDesign, opened in the current Affinity app by Beau
 
 | Feature (file) | Affinity | Decision |
 |---|---|---|
-| Footnotes (01) | **Works**: at the page foot, numbering restarts per section, a long note splits. The footnote text loses its paragraph style | Use footnotes as planned; footnote style question open (see below) |
+| Footnotes (01) | **Works**: at the page foot, numbering restarts per section, a long note splits. **The footnote text loses its paragraph style**: Affinity shows [Basic Paragraph], though InDesign writes `AppliedParagraphStyle="ParagraphStyle/Footnote"` on every note paragraph | Use footnotes as planned. Fallback for the lost style still to choose (see below) |
 | Section-marker running heads (02) | **Works** | Recto heads from section markers, one section per chapter, as planned |
-| Roman/arabic sections, display pages without folio (03) | **Works** (pages placed oddly in Affinity's layout view; content right) | As planned |
+| Roman/arabic sections, display pages without folio (03) | **Works**. The odd placing of pages in Affinity copies InDesign's own spreads: the front matter ended on vii, so InDesign put chapter 1 alone on a recto spread and page 2 alone on the next | As planned. The generator inserts a blank verso (E-Blank) before a recto opener, so spreads stay in pairs |
 | Parent/child masters (04) | **Works**: B-Opener stays based on A-Body, heads removed, folio dropped | B-Opener based on A-Body; no per-chapter master fallback needed |
 | Primary text frame, page added for overset (05) | **Pages and threading kept; Affinity adds no pages** (not even in native files) | Keep the primary frame (InDesign reflows), but write enough pages for each chapter from the estimate plus a buffer |
 | Generated TOC (06) | **Lost in practice**: formatting inconsistent, page numbers wrong or missing, no levels, not updatable | No generated contents; reserved pages plus the TOC style |
 | Table (07) | **Partly**: styles and merged cells kept; the header row is not repeated on the next page (InDesign repeats it) | Write header rows as InDesign does; nothing to fix for Affinity; long tables rare in Word books |
 | OpenType features, composers, hyphenation, optical margins (08) | **Works** | Write them as planned (user can switch off) |
 | Baseline grid (09) | **Works** | As planned (off by default) |
-| Hebrew (10) | **Fails** (reversed), as expected; style-level direction doesn't help | Unchanged: books with Hebrew go to InDesign |
+| Hebrew (10) | **Fails** (reversed), as expected; style-level direction doesn't help. Greek, and the English around the Hebrew, are fine | Unchanged: books with Hebrew go to InDesign |
 | Images, inline and with wrap (11) | **Works** | Inline anchored images for Word's inline pictures |
 | Partly defined character styles (12) | **Works**: each keeps the paragraph's font and size | Character styles define only what they change |
 | Story per chapter, overset, blank verso (13) | **Works** | As planned |
+
+**Open: footnote text in Affinity.** Options: (a) also write the Footnote style's settings (font, size, leading, indent) directly on the footnote text, so it looks right in Affinity even without the style (InDesign would show the style with overrides); (b) leave it to the user to apply the Footnote style to the notes in Affinity in one step, if Affinity allows that; (c) (a) only when the profile says the book is for Affinity.
 
 Beaux's reminders, already in the plan: chapter opener pages carry no running heads (02 had them only on the test's A master), and blank pages carry nothing, neither heads nor folio (E-Blank).
 
