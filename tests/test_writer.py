@@ -272,6 +272,47 @@ def test_toc_grid_language_and_optical_margins():
                for p in prefs)
 
 
+def test_image_info():
+    import struct, zlib
+    from docx2idml.idml.images import image_info
+    assert image_info(gen.SAMPLE_IMAGE) == (450, 300, 150.0, 150.0, "JPEG")
+    # A 3 x 2 px PNG at 300 ppi (11811 px per metre), built by hand.
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 3, 2, 8, 2, 0, 0, 0))
+           + chunk(b"pHYs", struct.pack(">IIB", 11811, 11811, 1))
+           + chunk(b"IDAT", zlib.compress(b"\x00" + b"\x00" * 9 + b"\x00" + b"\x00" * 9))
+           + chunk(b"IEND", b""))
+    path = os.path.join(TMP, "t.png")
+    with open(path, "wb") as f:
+        f.write(png)
+    w, h, x, y, fmt = image_info(path)
+    assert (w, h, fmt) == (3, 2, "PNG") and abs(x - 300) < 0.1
+
+
+def test_images():
+    """g11: an anchored image in the text and a placed one with a text wrap, sized and scaled as
+    in reference 11; the image copied to Links/ beside the IDML and linked there."""
+    out = os.path.join(TMP, "g11dir")
+    os.makedirs(out, exist_ok=True)
+    path = write_idml(gen.g11_images(), os.path.join(out, "g11.idml"))
+    assert os.path.exists(os.path.join(out, "Links", "sample.jpg"))
+    z = zipfile.ZipFile(path)
+    roots = {n: etree.fromstring(z.read(n)) for n in z.namelist() if n.endswith(".xml")}
+    anchored = [r for n, root in roots.items() if n.startswith("Stories/") for r in root.iter("Rectangle")]
+    placed = [r for n, root in roots.items() if n.startswith("Spreads/") for r in root.iter("Rectangle")]
+    assert len(anchored) == 1 and len(placed) == 1
+    assert anchored[0].find("AnchoredObjectSetting").get("AnchoredPosition") == "InlinePosition"
+    assert placed[0].find("TextWrapPreference").get("TextWrapMode") == "BoundingBoxTextWrap"
+    for rect, scale in ((anchored[0], "0.75"), (placed[0], "0.6667")):
+        img = rect.find("Image")
+        assert img.get("ItemTransform").startswith(scale + " 0 0 " + scale)
+        assert img.find("Properties/GraphicBounds").get("Right") == "216"
+        uri = img.find("Link").get("LinkResourceURI")
+        assert uri.startswith("file:") and uri.endswith("/Links/sample.jpg")
+    assert check(path, schema=schema_available() is None) == []
+
+
 def test_text_details():
     doc = Document(page_count=1)
     doc.paragraph_styles = [Style("Body", font="Arno Pro", leading=14, attrs={"PointSize": 11})]

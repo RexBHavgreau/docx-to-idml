@@ -37,7 +37,7 @@ keep it up to date when decisions change.
 | `docx2idml/profile.py` | Profiles: defaults, save/load, export/import, `PROFILE_VERSION` + `MIGRATIONS` |
 | `docx2idml/book.py` | Input files: drop/folder collection, natural order, saved order |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / profile` |
-| `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
+| `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `images.py` (image size and resolution from file headers), `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
 | `reference/` | `make_reference_files.jsx` (builds the InDesign reference files), README with the Affinity checklist; reference IDMLs go in `reference/idml/` |
 | `idml-schema/` | Adobe's IDML schema for InDesign 2026 (21.6.0.57, DOM 21.5): `rnc/` as InDesign wrote it, `rng/` converted by `tools/prepare_schema.py` |
 | `tools/make_generated_files.py` | Step 3: the generator's versions of the reference files, in `reference/generated/` |
@@ -81,6 +81,9 @@ keep it up to date when decisions change.
   marker). Validating against the schema is not enough: compare with the reference files.
 - Tables: write every row's `SingleRowHeight` (an estimate; InDesign grows a short row).
   Without it Affinity can't break a table across frames and runs it off the page (g07).
+- Images are copied to a `Links` folder beside the IDML and linked by full path
+  (`file:D:/...` on Windows), as InDesign writes links. Frames are cloned from reference 11.
+  `tests/data/sample.jpg` is the test image (450 x 300 px, 150 ppi).
 - IDML: a page frame made from a master frame is linked on the `<Page>` element,
   `OverrideList="<master item> <page item> ..."` (pairs), not on the frame; the frame itself is
   an ordinary `TextFrame` (reference file 05).
@@ -115,7 +118,8 @@ writes one.
   decided). Beaux: all right in InDesign; contents placed by hand from the style in both programs
   (as intended); all right in Affinity except g07's table, which doesn't break across pages
   even with row heights (parked: tables uncommon; reference 07 does break, so compare again
-  later). g11 (images) not yet written. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
+  later). g11 (images) validates and matches reference 11; not yet opened (its link path is this
+  machine's: a test of whether the programs find the image in Links/ beside the file). The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
   Kozuka, Arno); generating it from the fonts used is still to do. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8

@@ -7,13 +7,15 @@ styles with the document's content stripped out (spreads, masters, stories, sect
 paragraph and character styles, metadata). The generator adds its own content to this, so every
 setting InDesign always writes is present, as Affinity may rely on them.
 
-Also writes base/snippets.xml: one Spread, Page, TextFrame, MasterSpread, Story and Section as
+Also writes base/snippets.xml: one Spread, Page, TextFrame, MasterSpread, Story and Section, and
+the image frames of reference 11 (anchored in text, placed on a page), as
 InDesign wrote them, which the generator clones for their full set of attributes.
 
 Default source: reference/idml/01-footnotes.idml (InDesign 2026, 21.6). Rerun after updating the
 reference files for a new InDesign version.
 """
 
+import copy
 import os
 import shutil
 import sys
@@ -110,6 +112,21 @@ def main(src=SRC):
             story_shell.append(child)
     for el in (shell, page, frame, master_shell, story_shell, section):
         snippets.append(el)
+    # Image frames, from reference 11: one anchored in text, one placed on a page.
+    images = os.path.join(os.path.dirname(src), "11-images.idml")
+    if os.path.exists(images):
+        z11 = zipfile.ZipFile(images)
+        for n in z11.namelist():
+            root = etree.fromstring(z11.read(n)) if n.endswith(".xml") else None
+            if root is None:
+                continue
+            for rect in root.iter("Rectangle"):
+                if rect.find("Image") is None:
+                    continue
+                kind = "AnchoredImage" if n.startswith("Stories/") else "PlacedImage"
+                if snippets.find(kind) is None:
+                    holder = etree.SubElement(snippets, kind)
+                    holder.append(copy.deepcopy(rect))
     write(os.path.join(OUT, "snippets.xml"), snippets)
     print("base written to %s from %s" % (os.path.relpath(OUT, ROOT), os.path.basename(src)))
     return 0

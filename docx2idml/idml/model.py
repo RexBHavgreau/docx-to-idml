@@ -28,6 +28,7 @@ class Run:
     footnote: list = None         # a footnote here: its paragraphs (list of Paragraph)
     special: str = None           # "page_number" or "section_marker", before the text
     table: object = None          # a Table here (in a paragraph of its own)
+    image: object = None          # an Image anchored here, inline (in a paragraph of its own)
 
 
 @dataclass
@@ -45,6 +46,23 @@ class Table:
     header_rows: int = 0
     style: str = None             # table style name
     spans: dict = field(default_factory=dict)   # (row, column) -> columns spanned
+
+
+@dataclass
+class Image:
+    path: str                     # the image file (JPEG or PNG)
+    width: float = None           # frame width, points; None = the image's size
+    height: float = None          # frame height; None = in proportion to the width
+
+
+@dataclass
+class PlacedImage:
+    """An image on a page, not in the text, with the text wrapping around it."""
+    page: int
+    top: float                    # frame position on the page, points
+    left: float
+    image: Image
+    wrap: tuple = (6, 6, 6, 6)    # text wrap offsets (top, left, bottom, right); None = no wrap
 
 
 @dataclass
@@ -135,6 +153,7 @@ class Document:
     table_styles: list = field(default_factory=list)
     cell_styles: list = field(default_factory=list)
     toc_styles: list = field(default_factory=list)
+    images: list = field(default_factory=list)          # PlacedImage
     baseline_grid: dict = None    # {"start": pt, "division": pt, "shown": bool, "relative": "TopOfMargin..."}
 
     def style(self, name, kind="paragraph"):

@@ -15,8 +15,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-from docx2idml.idml.model import (CellStyle, Document, Frame, Master, Paragraph, Run, Section,
-                                  Story, Style, Table, TableStyle, TOCStyle)
+from docx2idml.idml.model import (CellStyle, Document, Frame, Image, Master, Paragraph,
+                                  PlacedImage, Run, Section, Story, Style, Table, TableStyle,
+                                  TOCStyle)
 from docx2idml.idml.writer import write_idml
 from docx2idml.profile import default_profile
 
@@ -410,6 +411,32 @@ def g10_hebrew_greek():
     return doc
 
 
+SAMPLE_IMAGE = os.path.join(ROOT, "tests", "data", "sample.jpg")
+
+
+def g11_images():
+    """An inline anchored image with a caption, and a free image with a text wrap on page 2, as
+    reference 11. The image is copied to a Links folder beside the IDML."""
+    doc = base_doc(2, "g11-images")
+    doc.paragraph_styles += [
+        Style("Caption", based_on="Body", leading=11,
+              attrs={"PointSize": 9, "FirstLineIndent": 0, "FontStyle": "Italic",
+                     "Justification": "CenterAlign", "SpaceAfter": 7}),
+        Style("Figure", based_on="Body",
+              attrs={"FirstLineIndent": 0, "Justification": "CenterAlign", "SpaceBefore": 7,
+                     "SpaceAfter": 4})]
+    doc.stories = [Story([
+        Paragraph("Chapter Title", [Run("Images")]),
+        Paragraph("Body First", [Run(filler(80, 0))]),
+        Paragraph("Figure", [Run(image=Image(SAMPLE_IMAGE, width=162))]),
+        Paragraph("Caption", [Run("Figure 1. An inline image, anchored in the text.")]),
+        Paragraph("Body", [Run(filler(400, 1))])], [0, 1], sink=72)]
+    top, left, _b, _r = area(doc, "verso")
+    doc.images = [PlacedImage(1, top + 120, left, Image(SAMPLE_IMAGE, width=144),
+                              wrap=(6, 6, 6, 9))]
+    return doc
+
+
 def g12_character_styles():
     """Character styles that set one thing each, inside different paragraph styles, and one
     local italic, as reference 12."""
@@ -463,7 +490,7 @@ FILES = [("g01-footnotes", g01_footnotes), ("g02-section-marker-heads", g02_sect
          ("g05-primary-text-frame", g05_primary_text_frame), ("g06-toc", g06_toc),
          ("g07-table", g07_table), ("g08-opentype", g08_opentype),
          ("g09-baseline-grid", g09_baseline_grid), ("g10-hebrew-greek", g10_hebrew_greek),
-         ("g12-character-styles", g12_character_styles),
+         ("g11-images", g11_images), ("g12-character-styles", g12_character_styles),
          ("g13-chapter-stories", g13_chapter_stories)]
 
 

@@ -11,14 +11,17 @@ every run of note text.
 """
 
 import copy
+import datetime
 import math
 import os
 import re
+import shutil
 import uuid
 import zipfile
 
 from lxml import etree
 
+from .images import image_info
 from .model import Paragraph
 
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "base")
@@ -107,6 +110,8 @@ class Writer:
 
     def write(self, path):
         doc = self.doc
+        self.links_dir = os.path.join(os.path.dirname(os.path.abspath(path)), "Links")
+        self.linked = {}
         dm = _parse(os.path.join(BASE, "designmap.xml"))
         self.layer = dm.find("Layer").get("Self")
         self.styles = _parse(os.path.join(BASE, "Resources", "Styles.xml"))
@@ -566,6 +571,12 @@ class Writer:
                                 pairs = (page.get("OverrideList") or "").split()
                                 page.set("OverrideList",
                                          " ".join(pairs + [mf.get("Self"), f.get("Self")]))
+            for i in group:
+                for placed in doc.images:
+                    if placed.page == i:
+                        x = self._page_left(i) + placed.left
+                        y = -doc.height / 2 + placed.top
+                        sp.append(self._image_rect(placed.image, "PlacedImage", x, y, placed.wrap))
             self.parts["Spreads/Spread_%s.xml" % sid] = self._wrap("Spread", sp)
             spreads.append(sid)
         for k2, fl in frames.items():
@@ -628,6 +639,11 @@ class Writer:
             c.append(pi)
             psr.append(num)
         for run in para.runs:
+            if run.image is not None:
+                csr = self._csr(None)
+                csr.append(self._image_rect(run.image, "AnchoredImage", 0, 0, None))
+                psr.append(csr)
+                continue
             if run.table is not None:
                 csr = self._csr(None)
                 csr.append(self._table(run.table))
@@ -663,6 +679,78 @@ class Writer:
                 psr.append(self._csr(None))
             etree.SubElement(psr[-1], "Br")
         return psr
+
+    # ---- images ----
+
+    def _link(self, src):
+        """Copy the image into the Links folder beside the IDML (once) and return its path."""
+        if src not in self.linked:
+            os.makedirs(self.links_dir, exist_ok=True)
+            name = os.path.basename(src)
+            dest = os.path.join(self.links_dir, name)
+            n = 1
+            while os.path.exists(dest) and os.path.abspath(dest) != os.path.abspath(src) and \
+                    dest in self.linked.values():
+                n += 1
+                stem, ext = os.path.splitext(name)
+                dest = os.path.join(self.links_dir, "%s-%d%s" % (stem, n, ext))
+            if os.path.abspath(dest) != os.path.abspath(src):
+                shutil.copy2(src, dest)
+            self.linked[src] = dest
+        return self.linked[src]
+
+    @staticmethod
+    def _uri(path):
+        """A file URI as InDesign writes it: file:D:/folder/file.jpg (Windows), file:/home/..."""
+        p = os.path.abspath(path).replace("\\", "/")
+        return "file:" + p
+
+    def _image_rect(self, img, kind, x, y, wrap):
+        """A frame holding a linked image, cloned from InDesign's (reference 11)."""
+        path = self._link(img.path)
+        wpx, hpx, xppi, yppi, fmt = image_info(path)
+        gw, gh = wpx / xppi * 72, hpx / yppi * 72          # the image's own size, points
+        w = img.width or gw
+        h = img.height or (w * gh / gw)
+        scale = w / gw
+        rect = copy.deepcopy(self.snip[kind][0])
+        rect.set("Self", self.ids())
+        if kind == "PlacedImage":
+            rect.set("ItemLayer", self.layer)
+        rect.set("ItemTransform", "1 0 0 1 %s %s" % (_num(x), _num(y)))
+        pts = rect.findall("Properties/PathGeometry/GeometryPathType/PathPointArray/PathPointType")
+        for pt, (px, py) in zip(pts, ((0, 0), (0, h), (w, h), (w, 0))):
+            xy = "%s %s" % (_num(px), _num(py))
+            pt.set("Anchor", xy)
+            pt.set("LeftDirection", xy)
+            pt.set("RightDirection", xy)
+        twp = rect.find("TextWrapPreference")
+        twp.set("TextWrapMode", "BoundingBoxTextWrap" if wrap else "None")
+        off = twp.find("Properties/TextWrapOffset")
+        for k, v in zip(("Top", "Left", "Bottom", "Right"), wrap or (0, 0, 0, 0)):
+            off.set(k, _num(v))
+        image = rect.find("Image")
+        image.set("Self", self.ids())
+        image.set("ItemTransform", "%s 0 0 %s 0 0" % (_num(scale), _num(scale)))
+        image.set("ActualPpi", "%s %s" % (_num(xppi), _num(yppi)))
+        image.set("EffectivePpi", "%s %s" % (_num(round(xppi / scale)), _num(round(yppi / scale))))
+        type_name = "$ID/JPEG" if fmt == "JPEG" else "$ID/Portable Network Graphics (PNG)"
+        image.set("ImageTypeName", type_name)
+        gb = image.find("Properties/GraphicBounds")
+        gb.set("Right", _num(gw))
+        gb.set("Bottom", _num(gh))
+        link = image.find("Link")
+        link.set("Self", self.ids())
+        link.set("LinkResourceURI", self._uri(path))
+        link.set("LinkResourceFormat", type_name)
+        st = os.stat(path)
+        when = datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%dT%H:%M:%S")
+        filetime = int((st.st_mtime + 11644473600) * 10000000)     # 100 ns since 1601
+        link.set("LinkImportStamp", "file %d %d" % (filetime, st.st_size))
+        link.set("LinkImportModificationTime", when)
+        link.set("LinkImportTime", when)
+        link.set("LinkResourceSize", "0~%x" % st.st_size)
+        return rect
 
     def _cell_insets(self, t, header):
         """(top, left, bottom, right) text insets of the table style's header or body cells."""
