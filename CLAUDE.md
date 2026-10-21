@@ -37,6 +37,7 @@ keep it up to date when decisions change.
 | `docx2idml/profile.py` | Profiles: defaults, save/load, export/import, `PROFILE_VERSION` + `MIGRATIONS` |
 | `docx2idml/book.py` | Input files: drop/folder collection, natural order, saved order |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / profile` |
+| `reference/` | `make_reference_files.jsx` (builds the InDesign reference files), README with the Affinity checklist; reference IDMLs go in `reference/idml/` |
 | `tests/docx_builder.py` | Builds test .docx files from raw WordprocessingML; the test runner |
 
 ## Conventions
@@ -62,5 +63,8 @@ On Windows set `PYTHONUTF8=1`. `test_preflight` includes a LibreOffice round tri
 writes one.
 
 ## Not yet checked
+- `reference/make_reference_files.jsx` has only been run against a stand-in for InDesign (checks
+  the script's own logic, not InDesign's object model). ExtendScript is ES3: no let/const,
+  arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8 with a byte-order mark.
 
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).

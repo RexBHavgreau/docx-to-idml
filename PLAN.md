@@ -252,7 +252,7 @@ A hand-built IDML was generated for a bilingual Latin/Spanish edition (Augustine
 ## Build order
 
 0. **Reader and preflight:** parse one or several .docx files, build the outline, report styles and unsupported items; style map and profile format. *(Under way, October 21, 2026: `python -m docx2idml preflight`. Not yet tried on a real manuscript from Word.)*
-1. **Schema and reference files:** ~~obtain the IDML schema and set up validation~~ (done October 21, 2026); make the InDesign reference export for each feature (list above), and validate those too, as a check on the validator itself.
+1. **Schema and reference files:** ~~obtain the IDML schema and set up validation~~ (done October 21, 2026); make the InDesign reference export for each feature (list above), and validate those too, as a check on the validator itself. *(October 21, 2026: `reference/make_reference_files.jsx` builds all 13 reference files in InDesign and exports IDML, PDF and INDD; `reference/README.md` has the list and the Affinity checklist for step 2. Waiting on: a run of the script in InDesign, and `idml-schema.zip` added to the repository so the reference files can be validated.)*
 2. **Check the reference files** in Affinity (user) and DesignCraft (CLI); record the compatibility table and choose fallbacks.
 3. **Generated test files:** build each feature with the generator, validate it, compare it against the reference, and confirm it in Affinity.
 4. **Exporter core:** styles, content, footnotes, Hebrew/Greek character styles.
