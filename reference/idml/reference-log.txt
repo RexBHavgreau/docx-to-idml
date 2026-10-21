@@ -1,10 +1,6 @@
-Reference files, script version 2
+Reference files, script version 3
 InDesign 21.6.0.57 (Adobe InDesign)
 Fonts: body Arno Pro, sans Myriad Pro, Hebrew Taamey David CLM, Greek Arno Pro
 
 OK      05-primary-text-frame  (6 pages)  Primary text frame on the master; page frames overridden from it and threaded; smart text reflow.
-          could not override the master frame on page 2: This parent page item is already overridden on the page.
-          could not override the master frame on page 3: This parent page item is already overridden on the page.
-          could not override the master frame on page 4: This parent page item is already overridden on the page.
-          pages after placing the text: 6; overset: false; primary frame on A-Parent: 257
-OK      06-toc  (7 pages)  A TOC style (two levels, tab leader, bold level 1) and a generated contents.
+          pages after placing the text: 6 (started with 1); overset: false; frames in the story: 6; primary frame on A-Parent: 257
