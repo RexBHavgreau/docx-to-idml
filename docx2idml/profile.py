@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import APP_NAME
 
-PROFILE_VERSION = 2
+PROFILE_VERSION = 3
 
 DEFAULT_PROFILE = {
     "profile_version": PROFILE_VERSION,
@@ -64,7 +64,9 @@ DEFAULT_PROFILE = {
         "ligatures": True,
         "oldstyle_figures": True,
         "balance_ragged_headings": True,
-        "widow_orphan_control": True,
+        "widow_orphan_control": True,  # at least 2 lines of a paragraph at a page's foot or head
+        "last_line_min_chars": 10,     # last line of a paragraph at least this long (0 = off):
+                                       # the last words are kept together (No Break)
     },
 }
 
@@ -118,7 +120,15 @@ def _from_1(data):
     return data
 
 
-MIGRATIONS = {0: _from_0, 1: _from_1}   # version n -> function that upgrades it to n + 1
+def _from_2(data):
+    """Version 2: no setting for the last line of a paragraph (it was off)."""
+    typo = data.setdefault("typography", {})
+    if isinstance(typo, dict):
+        typo.setdefault("last_line_min_chars", 10)
+    return data
+
+
+MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2}   # version n -> function that upgrades it to n + 1
 
 
 def migrate(data):

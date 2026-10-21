@@ -54,11 +54,15 @@ CHAR_STYLES = {
     "All Caps": {"Capitalization": "AllCaps"}, "Superscript": {"Position": "Superscript"},
     "Subscript": {"Position": "Subscript"}, "Underline": {"Underline": True},
     "Strikethrough": {"StrikeThru": True}, "Footnote Reference": {"Position": "Superscript"},
-    "Hyperlink": {},
+    "Hyperlink": {}, "No Break": {"NoBreak": True},
 }
 RESET = {"FontStyle": None, "Capitalization": "Normal", "Position": "Normal",
          "Underline": False, "StrikeThru": False}
 # Roles whose paragraphs are followed by an unindented first paragraph.
+# Styles whose paragraphs are not running text (no runt control), with those based on them.
+NO_RUNT_SKIP = {"Chapter Title", "Part Title", "Heading A", "Heading B", "Heading C",
+                "Book Title", "Book Subtitle", "Author", "Verse", "Figure", "Table", "Caption",
+                "Table Body", "Table Head", "Folio"}
 HEAD_ROLES = {"chapter", "part", "heading", "book_title", "subtitle", "author", "toc_title",
               "centered"}
 ROLE_BASE = {"body": "Body", "quote": "Block Quote", "verse": "Verse", "list": "List",
@@ -315,14 +319,18 @@ class Exporter:
                 "AppliedLanguage": lang, "Ligatures": bool(typo["ligatures"])}
         if typo["oldstyle_figures"]:
             body["OTFFigureStyle"] = "ProportionalOldstyle"
+        # Widows and orphans: InDesign applies KeepFirstLines/KeepLastLines only with
+        # KeepLinesTogether on (and KeepAllLinesTogether off).
         if typo["widow_orphan_control"]:
-            body.update({"KeepFirstLines": 2, "KeepLastLines": 2})
+            body.update({"KeepLinesTogether": True, "KeepFirstLines": 2, "KeepLastLines": 2})
         else:
-            body.update({"KeepFirstLines": 1, "KeepLastLines": 1})
+            body.update({"KeepLinesTogether": False, "KeepFirstLines": 1, "KeepLastLines": 1})
+        # No hyphen in a paragraph's last word, nor at the foot of a page or column.
+        body.update({"HyphenateLastWord": False, "HyphenateAcrossColumns": False})
         balance = {"BalanceRaggedLines": ("enumeration", "VeeShape")} \
             if typo["balance_ragged_headings"] else {}
         head = {"FirstLineIndent": 0, "Hyphenation": False, "KeepWithNext": 2,
-                "KeepFirstLines": 2, "KeepLastLines": 2}
+                "KeepLinesTogether": True, "KeepAllLinesTogether": True}
         note_size, note_lead = size - 2, _half((size - 2) * 1.22)
         hang = [("LeftAlign", 18, "")]
         S = Style
@@ -363,7 +371,9 @@ class Exporter:
               attrs={"FontStyle": "Regular", "PointSize": note_size, "FirstLineIndent": size - 2,
                      "Justification": "LeftJustified", "AppliedLanguage": lang,
                      "Hyphenation": bool(typo["hyphenation"]),
-                     "Composer": body["Composer"]}),
+                     "Composer": body["Composer"], "HyphenateLastWord": False,
+                     **{k: body[k] for k in ("KeepLinesTogether", "KeepFirstLines",
+                                             "KeepLastLines")}}),
             S("Caption", "Body", {"PointSize": size - 2, "FirstLineIndent": 0,
                                   "FontStyle": "Italic", "Justification": "CenterAlign",
                                   "SpaceAfter": _half(lead / 2)}, leading=note_lead),
@@ -631,6 +641,64 @@ class Exporter:
                 merged.append(r)
         return merged
 
+    def _runt_style(self, name):
+        """Paragraphs of running text (Body, notes, quotations...), not headings or display."""
+        seen = set()
+        while name and name not in seen:
+            seen.add(name)
+            if name in NO_RUNT_SKIP:
+                return False
+            if name in ("Body", "Footnote"):
+                return True
+            s = self.doc.style(name)
+            name = s.based_on if s else None
+        return False
+
+    def _no_runt(self, para, min_chars):
+        """Keep the last words of a paragraph together (No Break), so its last line has at
+        least min_chars characters: no short word alone on the last line. Works in every
+        program, unlike a GREP style."""
+        if not min_chars or not self._runt_style(para.style):
+            return
+        texts = [(i, r) for i, r in enumerate(para.runs)
+                 if r.footnote is None and r.table is None and r.image is None and not r.special]
+        full = "".join(r.text for _i, r in texts)
+        end = len(full.rstrip())
+        if end < 4 * min_chars:
+            return                      # a line or so: nothing to gain
+        start = full.rfind(" ", 0, end) + 1
+        if not start or end - start >= min_chars:
+            return                      # a long last word is not a runt
+        while end - start < min_chars:
+            space = full.rfind(" ", 0, start - 1)
+            if space < 0 or "\t" in full[space:end] or "\n" in full[space:end]:
+                return
+            start = space + 1
+        if end - start > 3 * min_chars:
+            return
+        # Split the runs at start; mark everything from there on.
+        pos, out = 0, []
+        text_ids = {i for i, _r in texts}
+        for i, r in enumerate(para.runs):
+            if i not in text_ids:
+                out.append(r)
+                continue
+            a, b = pos, pos + len(r.text)
+            pos = b
+            if b <= start:
+                out.append(r)
+                continue
+            if a < start:
+                out.append(Run(r.text[:start - a], r.style, dict(r.attrs)))
+                r = Run(r.text[start - a:], r.style, dict(r.attrs))
+            if r.style is None:
+                r.style = "No Break"
+                self._char_style("No Break")
+            else:
+                r.attrs["NoBreak"] = True
+            out.append(r)
+        para.runs = out
+
     def _note(self, cparas, docx):
         paras = []
         for cp in cparas:
@@ -787,12 +855,15 @@ class Exporter:
                 if paras:
                     current[1].extend(paras)
                     prev_role, first = role, False
+        min_chars = self.profile["typography"].get("last_line_min_chars") or 0
         for _unit, paras in stories:
             for p in paras:
                 self.para_used.add(p.style)
+                self._no_runt(p, min_chars)
                 for r in p.runs:
                     for n in r.footnote or ():
                         self.para_used.add(n.style)
+                        self._no_runt(n, min_chars)
         n_end = sum(d.endnote_count for d in self.docs)
         if n_end:
             self.report.append("%d endnote%s converted to footnotes." %

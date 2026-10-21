@@ -107,6 +107,13 @@ keep it up to date when decisions change.
   (and a folio for now); D-Display and E-Blank are empty. Each unit is a story and a section;
   display and front units are LowerRoman from i, the first chapter or part restarts Arabic 1.
   A chapter's estimate gets one spare page; blank versos before recto openers get E-Blank.
+- Keeps (October 21): widow/orphan control is KeepLinesTogether="true" with KeepFirstLines and
+  KeepLastLines 2 (InDesign ignores the line counts without KeepLinesTogether); headings keep
+  all their lines together and with the next paragraph; no hyphen in a paragraph's last word
+  or at the foot of a page. Short last lines (runts) are prevented without GREP styles, which
+  Affinity lacks: the exporter puts the last words of each running-text paragraph in the
+  "No Break" character style (or NoBreak="true" on a run that has a style already) so the last
+  line has at least `typography.last_line_min_chars` (10) characters.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
@@ -147,7 +154,8 @@ writes one.
 
 - Step 4: e01 (sample book) opens in InDesign and Affinity and looks right (Beaux). Not yet run
   on a real manuscript.
-- Step 5: e01 re-exported with the layout; validates, not yet opened. To check: threading from
-  B-Opener into A-Body pages (separate masters, each with primary frames), roman/arabic folios,
-  blank versos, bleed. Font measure not tried with Beaux's fonts (Arno isn't installed here).
+- Step 5: e01 with the layout: text flows right, text width fine, folios right (Beaux). Spare
+  pages the text doesn't reach keep their folio (they are text pages). Bleed not yet checked.
+- Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
+  the No Break style and the local NoBreak attribute?
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).

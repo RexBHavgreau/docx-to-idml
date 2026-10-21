@@ -152,7 +152,9 @@ def test_model():
         first = paras[3]
         got = [(r.text, r.style, r.attrs) for r in first.runs if r.footnote is None]
         assert ("italic", "Italic", {}) in got and ("bold", "Bold", {}) in got
-        assert ("small caps", "Small Caps", {}) in got and ("style", "Italic", {}) in got
+        assert ("small caps", "Small Caps", {}) in got
+        # The short last word is kept with the one before it (No Break).
+        assert ("emphasis ", "No Break", {}) in got and ("style", "Italic", {"NoBreak": True}) in got
         note = [r.footnote for r in first.runs if r.footnote is not None][0]
         assert note[0].style == "Footnote"
         assert [(r.text, r.style) for r in note[0].runs][:2] == [("A note with ", None),
@@ -267,6 +269,35 @@ def test_pagination_and_bleed():
             prefs = z.read("Resources/Preferences.xml").decode("utf-8")
         assert 'DocumentBleedTopOffset="9"' in prefs
         assert 'DocumentBleedInsideOrLeftOffset="0"' in prefs
+    finally:
+        ex.cleanup()
+
+
+def test_no_runt():
+    from docx2idml.idml.model import Paragraph, Run
+    ex, doc = _build()
+    try:
+        long = "word " * 20
+        p = Paragraph("Body", [Run(long + "and so it "), Run("ends", "Italic"), Run(".")])
+        ex._no_runt(p, 10)
+        got = [(r.text, r.style, r.attrs) for r in p.runs]
+        assert got == [(long + "and ", None, {}), ("so it ", "No Break", {}),
+                       ("ends", "Italic", {"NoBreak": True}), (".", "No Break", {})]
+        # A long last word, a short paragraph, a heading: left alone.
+        for para in (Paragraph("Body", [Run(long + "extraordinarily.")]),
+                     Paragraph("Body", [Run("Short text ends here.")]),
+                     Paragraph("Heading A", [Run(long + "a b")])):
+            before = [(r.text, r.style) for r in para.runs]
+            ex._no_runt(para, 10)
+            assert [(r.text, r.style) for r in para.runs] == before
+        # A footnote marker at the end stays where it is.
+        p = Paragraph("Footnote", [Run(long + "see p. 4."), Run(footnote=[])])
+        ex._no_runt(p, 10)
+        assert p.runs[-1].footnote == []
+        assert (p.runs[-2].text, p.runs[-2].style) == ("word see p. 4.", "No Break")
+        body = doc.style("Body").attrs
+        assert body["KeepLinesTogether"] is True and body["KeepFirstLines"] == 2
+        assert body["HyphenateLastWord"] is False
     finally:
         ex.cleanup()
 
