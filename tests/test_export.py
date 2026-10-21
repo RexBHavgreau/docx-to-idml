@@ -364,5 +364,37 @@ def test_short_title_flagged_and_part_heads():
         ex.cleanup()
 
 
+def test_two_papers_with_bibliographies():
+    """Two articles not prepared as a book: each a Title, Heading 2 sections and a
+    bibliography. Each paper is a unit of its own; bibliography styling stops at the end of
+    its section, not at the end of the book."""
+    long = "The prophets use the covenant formula in many settings and with many changes. " * 12
+    a = make_docx(os.path.join(TMP, "Paper A.docx"), [
+        para("Paper One", "Title"), para("Introduction", "Heading2"), para(long), para(long),
+        para("Bibliography", "Heading1"), para("Author, A. A Book. 2020."),
+        para("Writer, B. Another Book. 2018.")])
+    b = make_docx(os.path.join(TMP, "Paper B.docx"), [
+        para("Paper Two", "Title"), para("Introduction", "Heading2"), para(long),
+        para("Works Cited", "Heading2"), para("Smith, C. A Third Book. 2019."),
+        para("Afterword", "Heading2"), para("Text after the bibliography section.")])
+    ex = Exporter([a, b], default_profile())
+    try:
+        ex.build()
+        units = [(u.kind, u.title) for u in ex.outline.units]
+        assert units == [("chapter", "Paper One"), ("back", "Bibliography"),
+                         ("chapter", "Paper Two")], units
+        styles = {}
+        for st in ex.doc.stories[GENERATED:]:
+            for p in st.paragraphs:
+                styles.setdefault("".join(r.text for r in p.runs)[:20], p.style)
+        assert styles["Paper One"] == "Chapter Title" and styles["Paper Two"] == "Chapter Title"
+        assert styles["Author, A. A Book. 2"] == "Bibliography"
+        assert styles["Smith, C. A Third Bo"] == "Bibliography"
+        assert styles["Text after the bibli"] == "Body First"
+        assert styles["The prophets use the"] == "Body First"
+    finally:
+        ex.cleanup()
+
+
 if __name__ == "__main__":
     run_tests(globals())

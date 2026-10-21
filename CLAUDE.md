@@ -130,6 +130,13 @@ keep it up to date when decisions change.
   none unless the profile's suppress toggles are off. Verso "part": one copy of A-Body per part
   (P1-Body...), not a child master, so linked page frames point at its own primary frames. Book
   settings (`Book.settings`): "front" (see frontmatter.py) and "short_titles".
+- Bibliographies (0.2.0): Body paragraphs are set in Bibliography from a heading whose title is
+  a bibliography title (outline `_BACK`) at any level until the next heading of the same or a
+  higher level, a new unit or a new file. Outline: text before a file's first chapter heading
+  is a unit of its own (titled by a Title-style line, else its first line) when it has a title
+  line, headings or more than 150 words; in the first file, a short opening without headings
+  is the title page; a stray line or two in a later file stays with the previous unit. In a
+  chapter, Title/Subtitle/Author lines are set as Chapter Title, Chapter Subtitle, Chapter Author.
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.

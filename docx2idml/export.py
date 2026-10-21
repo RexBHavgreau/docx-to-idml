@@ -35,7 +35,7 @@ from .docx_reader import is_greek, is_hebrew, read_docx
 from .idml.images import image_info
 from .idml.model import (CellStyle, Document, Frame, Image, Master, Paragraph, Run, Section,
                          Story, Style, Table, TableStyle, TOCStyle)
-from .outline import Unit, build_outline
+from .outline import _BACK, Unit, build_outline, title_key
 from .stylemap import StyleMap, norm
 
 BLEED = 9                   # 0.125 in, KDP's bleed
@@ -377,6 +377,13 @@ class Exporter:
             S("Book Title", "Body", dict(head, PointSize=_half(size * 2.4),
                                           Justification="CenterAlign", SpaceAfter=lead),
               font=f["display"], leading=_half(size * 2.8), props=balance),
+            S("Chapter Subtitle", "Chapter Title", {"PointSize": _half(size * 1.3),
+                                                    "FontStyle": "Italic",
+                                                    "SpaceAfter": lead * 2},
+              leading=_half(size * 1.7), next_style="Body First"),
+            S("Chapter Author", "Chapter Subtitle", {"FontStyle": "Regular",
+                                                     "PointSize": size + 1},
+              leading=_half(size * 1.5), next_style="Body First"),
             S("Book Subtitle", "Book Title", {"PointSize": _half(size * 1.4),
                                               "FontStyle": "Italic"}, leading=_half(size * 1.8)),
             S("Author", "Book Title", {"PointSize": _half(size * 1.3), "SpaceBefore": lead * 2},
@@ -777,8 +784,26 @@ class Exporter:
             self._custom_paragraph_style(m, docx, sid)
         return m
 
-    def _paragraphs(self, cp, docx, unit, prev_role, first):
-        """Model paragraphs for one content paragraph (an image splits it), with its role."""
+    def _bibliography_state(self, cp, docx, bib):
+        """Bibliography styling runs from a heading titled Bibliography (Works Cited,
+        References...) at any level to the next heading of the same or a higher level, so a
+        bibliography ending a chapter doesn't spill into what follows."""
+        if cp.table is not None:
+            return bib
+        m = self._mapping(docx, cp.style_id)
+        if m.role in ("chapter", "part", "book_title"):
+            level = 0
+        elif m.role == "heading":
+            level = max(1, m.level)
+        else:
+            return bib
+        if _BACK.get(title_key(cp.text)) == "bibliography":
+            return level
+        return bib if bib is not None and level > bib else None
+
+    def _paragraphs(self, cp, docx, unit, prev_role, first, bib=False):
+        """Model paragraphs for one content paragraph (an image splits it), with its role.
+        bib: the paragraph is in a bibliography section (body text set as entries)."""
         if cp.table is not None:
             return [Paragraph("Table", [Run(table=self._table(cp.table, docx))])], "table"
         m = self._mapping(docx, cp.style_id)
@@ -789,6 +814,12 @@ class Exporter:
         if m.role == "part" or (unit is not None and unit.kind == "part" and first and
                                 m.role == "chapter"):
             style = "Part Title"
+        elif unit is not None and unit.kind != "display" and \
+                m.role in ("book_title", "subtitle", "author"):
+            # A title line opening a chapter (an article's title, say) titles that chapter,
+            # not the book's title page.
+            style = {"book_title": "Chapter Title", "subtitle": "Chapter Subtitle",
+                     "author": "Chapter Author"}[m.role]
         if cp.label:
             if m.role in ("chapter", "part", "heading"):
                 runs.insert(0, _label_run(cp.label + " "))
@@ -796,7 +827,7 @@ class Exporter:
                 if style in ("Body", "List"):
                     style = "List Bullet" if cp.list_format == "bullet" else "List Number"
                 runs.insert(0, _label_run(cp.label + (cp.label_suffix or "\t")))
-        if style == "Body" and unit is not None and unit.type == "bibliography":
+        if style == "Body" and bib:
             style = "Bibliography"
         if style == "Body" and (first or prev_role in HEAD_ROLES):
             style = "Body First"
@@ -881,12 +912,13 @@ class Exporter:
             content = read_content(docx)
             starts = {u.start: u for u in units_by_file.get(docx.name, [])}
             prev_role, first = None, True
+            bib = None              # level of the bibliography heading we're under, if any
             for cp in content:
                 if cp.index in starts:
                     unit = starts.pop(cp.index)
                     current = [unit, []]
                     stories.append(current)
-                    prev_role, first = None, True
+                    prev_role, first, bib = None, True, None
                 if current is None:
                     # Text before the first unit (the outline found none for it).
                     current = [None, []]
@@ -894,7 +926,9 @@ class Exporter:
                 if cp.index >= 0 and cp.index < len(docx.paragraphs) and \
                         docx.paragraphs[cp.index].in_toc_field and cp.table is None:
                     continue
-                paras, role = self._paragraphs(cp, docx, current[0], prev_role, first)
+                bib = self._bibliography_state(cp, docx, bib)
+                paras, role = self._paragraphs(cp, docx, current[0], prev_role, first,
+                                               bib is not None)
                 if paras:
                     current[1].extend(paras)
                     prev_role, first = role, False
