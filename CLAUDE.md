@@ -57,8 +57,9 @@ keep it up to date when decisions change.
 - IDML: a parent-master item removed on a child master, or a master item removed on a page,
   is an `OverrideList` pair with `n` as the page item.
 - Affinity reads a footnote properly only if its paragraph has two or more CharacterStyleRanges
-  (single-run notes lose their style and settings). Workaround under test (fn-i): the number
-  `<?ACE 4?>` and separator in a run of their own.
+  (single-run notes lose their style and settings). Workaround (fn-i, confirmed for the style
+  name): the number `<?ACE 4?>` and separator in a run of their own. The generator always does
+  this.
 - IDML: a page frame made from a master frame is linked on the `<Page>` element,
   `OverrideList="<master item> <page item> ..."` (pairs), not on the frame; the frame itself is
   an ordinary `TextFrame` (reference file 05).
