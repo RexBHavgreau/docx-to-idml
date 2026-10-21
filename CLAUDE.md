@@ -41,7 +41,10 @@ keep it up to date when decisions change.
 | `docx2idml/layout.py` | Step 5: margins and measure (65 characters, floors, KDP gutter by page count), pagination (roman front matter, recto rules, masters per page) |
 | `docx2idml/frontmatter.py` | Step 6: book details (settings, then detected, else bracketed placeholders), half-title, title, copyright (English/Spanish, notices from the profile's library), contents entries and reserved pages |
 | `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
-| `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile` |
+| `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile`; no arguments opens the window |
+| `docx2idml/gui.py` | Step 7, the window (ttk): Files, Book details, Running heads, Layout profile, Style map, Report tabs; forms declared as field tables bound to the profile and book settings; work in threads, results through a queue polled by the window |
+| `docx2idml/updates.py`, `appsettings.py` | Update check and install (as Indicat's: versioned .exe beside the running one, SHA-256 digest, Downloads fallback, older copies offered for deletion); the program's own settings.json |
+| `run_app.py`, `build_exe.bat`, `.github/workflows/build.yml` | The .exe (PyInstaller, one file, "docx-to-idml-X.Y.Z.exe", with `docx2idml/idml/base`); the workflow builds and releases on a `vX.Y.Z` tag, or by hand |
 | `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `images.py` (image size and resolution from file headers), `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
 | `reference/` | `make_reference_files.jsx` (builds the InDesign reference files), README with the Affinity checklist; reference IDMLs go in `reference/idml/` |
 | `idml-schema/` | Adobe's IDML schema for InDesign 2026 (21.6.0.57, DOM 21.5): `rnc/` as InDesign wrote it, `rng/` converted by `tools/prepare_schema.py` |
@@ -128,6 +131,14 @@ keep it up to date when decisions change.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
+## Releases
+
+- Version in `docx2idml/__init__.py` (`EXE_BASE` and `REPO` there too); a dated entry at the
+  top of `CHANGELOG.md`. Pushing a tag `vX.Y.Z` (matching `__version__`) runs
+  `.github/workflows/build.yml` on Windows: tests, the .exe, a check that it carries the IDML
+  base files, and a GitHub Release with the .exe (its SHA-256 digest is what the updater
+  checks). **Ask Beaux before tagging.**
+
 ## Tests
 
 ```
@@ -138,6 +149,8 @@ python tests/test_idml_tools.py
 python tests/test_writer.py
 python tests/test_export.py
 python tests/test_layout.py
+python tests/test_updates.py
+python tests/test_gui.py             # needs a display: on Linux, xvfb-run (and python3-tk)
 ```
 
 Run them all before pushing; CI (`.github/workflows/tests.yml`) runs them on Windows and Linux.
@@ -168,6 +181,8 @@ writes one.
 - Step 5: e01 with the layout: text flows right, text width fine, folios right (Beaux). Spare
   pages the text doesn't reach keep their folio (they are text pages). Bleed not yet checked.
 - Step 6: e01 with front matter and running heads: validates, not yet opened.
+- Step 7: the window tested here under Xvfb (Linux, Python 3.12), not yet on Windows; the .exe
+  and the updater not yet built or run on Windows (no release published yet).
 - Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
   the No Break style and the local NoBreak attribute?
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).

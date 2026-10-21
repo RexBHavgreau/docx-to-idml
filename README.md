@@ -4,10 +4,22 @@ Turns a Word book manuscript (one .docx or several) into an IDML file that opens
 Affinity or DesignCraft with most of the book already laid out: page geometry, masters, styles,
 front matter, running heads and pagination. The plan is in [PLAN.md](PLAN.md).
 
-**Status:** step 5 of the build order. Preflight reports what the manuscript holds; export
+**Status:** step 7 of the build order (the window, .exe and updater), not yet released. Preflight reports what the manuscript holds; export
 writes the text, styles, footnotes, Hebrew and Greek, tables and images as IDML, with margins,
 masters, roman/arabic page numbers and recto rules. Running heads and generated front matter
 (half-title, title, copyright, contents) come next (step 6).
+
+## The window
+
+```
+pip install -r requirements.txt
+python run_app.py            # or: python -m docx2idml
+```
+
+Add the .docx files (or drop them, with tkinterdnd2 installed), put them in order, fill in the
+book details and running heads, choose or adjust the layout profile, then Export IDML. File >
+Save book keeps all of it for a re-export after corrections. `build_exe.bat` builds the
+Windows program (`dist\docx-to-idml-X.Y.Z.exe`).
 
 ## Export
 
@@ -68,6 +80,8 @@ python tests/test_idml_tools.py
 python tests/test_writer.py
 python tests/test_export.py
 python tests/test_layout.py
+python tests/test_updates.py
+python tests/test_gui.py      # needs a display (xvfb-run on Linux)
 ```
 
 ## Development tools

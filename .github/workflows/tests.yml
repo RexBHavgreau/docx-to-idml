@@ -27,3 +27,5 @@ jobs:
       - run: python tests/test_writer.py
       - run: python tests/test_export.py
       - run: python tests/test_layout.py
+      - run: python tests/test_updates.py
+      - run: python tests/test_gui.py       # skipped where there's no display (Linux CI)

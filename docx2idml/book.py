@@ -109,7 +109,8 @@ class Book:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
         base = path.parent
-        files = [str((base / f)) if not Path(f).is_absolute() else f for f in data.get("files", [])]
+        files = [os.path.normpath(str(base / f)) if not Path(f).is_absolute() else f
+                 for f in data.get("files", [])]
         return cls(files=files, profile=data.get("profile"), settings=data.get("settings", {}))
 
 

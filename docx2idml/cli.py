@@ -89,6 +89,9 @@ def cmd_profile(args):
 
 
 def main(argv=None):
+    if (sys.argv[1:] if argv is None else argv) == []:
+        from .gui import main as gui_main      # no arguments: open the window
+        return gui_main()
     ap = argparse.ArgumentParser(prog="docx2idml", description="Word manuscript to IDML book.")
     ap.add_argument("--version", action="version", version=__version__)
     sub = ap.add_subparsers(dest="cmd", required=True)
