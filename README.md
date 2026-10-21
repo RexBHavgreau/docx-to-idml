@@ -4,8 +4,33 @@ Turns a Word book manuscript (one .docx or several) into an IDML file that opens
 Affinity or DesignCraft with most of the book already laid out: page geometry, masters, styles,
 front matter, running heads and pagination. The plan is in [PLAN.md](PLAN.md).
 
-**Status:** step 0 of the build order. Preflight works: it reads the manuscript and reports what
-it holds. It doesn't write IDML yet.
+**Status:** step 7 of the build order (the window, .exe and updater), not yet released. Preflight reports what the manuscript holds; export
+writes the text, styles, footnotes, Hebrew and Greek, tables and images as IDML, with margins,
+masters, roman/arabic page numbers and recto rules. Running heads and generated front matter
+(half-title, title, copyright, contents) come next (step 6).
+
+## The window
+
+```
+pip install -r requirements.txt
+python run_app.py            # or: python -m docx2idml
+```
+
+Add the .docx files (or drop them, with tkinterdnd2 installed), put them in order, fill in the
+book details and running heads, choose or adjust the layout profile, then Export IDML. File >
+Save book keeps all of it for a re-export after corrections. `build_exe.bat` builds the
+Windows program (`dist\docx-to-idml-X.Y.Z.exe`).
+
+## Export
+
+```
+python -m docx2idml export "Chapter 1.docx" "Chapter 2.docx" --out books
+python -m docx2idml export manuscript-folder --out books --profile "Series A"
+```
+
+Each export is a folder of its own (named after the book title, or `--name`) holding the IDML
+and a `Links` folder with the images, linked relative to the IDML, so the folder can be moved
+or sent on.
 
 ## Preflight
 
@@ -51,4 +76,21 @@ Profiles are saved in `%APPDATA%\docx-to-idml\profiles` (on Linux and Mac,
 python tests/test_reader.py
 python tests/test_outline.py
 python tests/test_preflight.py    # includes a LibreOffice round trip when soffice is installed
+python tests/test_idml_tools.py
+python tests/test_writer.py
+python tests/test_export.py
+python tests/test_layout.py
+python tests/test_updates.py
+python tests/test_gui.py      # needs a display (xvfb-run on Linux)
+```
+
+## Development tools
+
+```
+pip install -r requirements-dev.txt      # jing and trang for schema validation (needs Java)
+python tools/idml_check.py file.idml      # structure, then Adobe's schema (jing)
+python tools/idml_inspect.py file.idml    # masters, pages, overrides, sections, stories, styles
+python tools/prepare_schema.py            # rebuild idml-schema/rng after an InDesign update
+python tools/make_base.py                 # rebuild the writer's base from reference 01
+python tools/make_generated_files.py      # the generator's feature files, reference/generated/
 ```

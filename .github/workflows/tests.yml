@@ -19,7 +19,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: python tests/test_reader.py
       - run: python tests/test_outline.py
       - run: python tests/test_preflight.py
+      - run: python tests/test_idml_tools.py
+      - run: python tests/test_writer.py
+      - run: python tests/test_export.py
+      - run: python tests/test_layout.py
+      - run: python tests/test_updates.py
+      - run: python tests/test_gui.py       # skipped where there's no display (Linux CI)

@@ -131,6 +131,17 @@ def test_profiles():
     assert up["style_map"] == {"paragraph": {"Verse": "Poetry"}, "character": {}}
     assert up["page"]["trim"] == "5.5x8.5" and up["page"]["facing"] is True
     assert up["typography"]["optical_margins"] is True
+    # Version 1: footnote numbering and rule elsewhere; moved into "footnotes".
+    v1 = os.path.join(TMP, "v1.json")
+    with open(v1, "w") as f:
+        json.dump({"profile_version": 1, "name": "V1", "footnote_numbering": "continuous",
+                   "typography": {"footnote_rule": True, "ligatures": False}}, f)
+    up1 = profiles.load(v1)
+    assert up1["footnotes"]["numbering"] == "continuous" and up1["footnotes"]["rule"] is True
+    assert up1["footnotes"]["continuation_rule"] is True and up1["footnotes"]["space_above"] == 12
+    assert "footnote_numbering" not in up1 and "footnote_rule" not in up1["typography"]
+    assert up1["typography"]["ligatures"] is False
+    assert up1["typography"]["last_line_min_chars"] == 10 and up1["profile_version"] == 3
     newer = os.path.join(TMP, "newer.json")
     with open(newer, "w") as f:
         json.dump({"profile_version": 999}, f)

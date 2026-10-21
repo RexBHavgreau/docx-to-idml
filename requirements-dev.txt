@@ -1,0 +1,1 @@
+jingtrang>=0.1.2   # jing and trang (needs Java): schema validation during development and tests

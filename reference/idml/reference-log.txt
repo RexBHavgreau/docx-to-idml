@@ -1,0 +1,9 @@
+Reference files, script version 4
+InDesign 21.6.0.57 (Adobe InDesign)
+Fonts: body Arno Pro, sans Myriad Pro, Hebrew Taamey David CLM, Greek Arno Pro
+
+OK      01-footnotes  (4 pages)  Footnotes with a Footnote Reference character style, restart per section, a note split across pages.
+OK      08-opentype  (2 pages)  Ligatures, old-style figures, small caps, fractions, ordinals, composers, hyphenation, optical margins, balanced heading.
+OK      10-hebrew-greek  (2 pages)  Hebrew (pointed, cantillated) and polytonic Greek; direction and language in the styles.
+          fonts: Hebrew Taamey David CLM, Greek Arno Pro
+OK      12-character-styles  (1 pages)  Partly defined character styles (italic, bold, small caps, superscript, no break) in different paragraph styles.

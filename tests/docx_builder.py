@@ -111,17 +111,60 @@ def textbox(text):
             '</wp:anchor></w:drawing></w:r>' % para(text))
 
 
-def image(floating=False):
+def image(floating=False, rid=None, cx=2057400, cy=1371600):
+    """An image drawing; rid: the relationship of its picture (see make_docx's media), and its
+    size in EMU (default 162 x 108 pt)."""
     tag = "wp:anchor" if floating else "wp:inline"
-    return ('<w:r><w:drawing><%s><wp:docPr id="2" name="Picture 1"/><a:graphic><a:graphicData '
-            'uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr/>'
-            '</pic:pic></a:graphicData></a:graphic></%s></w:drawing></w:r>' % (tag, tag))
+    blip = '<pic:blipFill><a:blip r:embed="%s"/></pic:blipFill>' % rid if rid else ""
+    return ('<w:r><w:drawing><%s><wp:extent cx="%d" cy="%d"/><wp:docPr id="2" name="Picture 1"/>'
+            '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/'
+            'picture"><pic:pic><pic:nvPicPr/>%s</pic:pic></a:graphicData></a:graphic></%s>'
+            '</w:drawing></w:r>' % (tag, cx, cy, blip, tag))
+
+
+def table(rows, header=0, widths=None, spans=None):
+    """A table: rows of cell texts (or raw paragraph XML starting with '<'); header: number of
+    header rows; widths in twips; spans: {(row, col): n} gridSpan on that cell."""
+    spans = spans or {}
+    ncols = max(len(r) + sum(n - 1 for (rr, _c), n in spans.items() if rr == i)
+                for i, r in enumerate(rows))
+    widths = widths or [9000 // ncols] * ncols
+    out = ['<w:tbl><w:tblPr/><w:tblGrid>%s</w:tblGrid>'
+           % "".join('<w:gridCol w:w="%d"/>' % w for w in widths)]
+    for r, row in enumerate(rows):
+        trpr = "<w:trPr><w:tblHeader/></w:trPr>" if r < header else ""
+        cells = []
+        for c, text in enumerate(row):
+            tcpr = '<w:tcPr><w:gridSpan w:val="%d"/></w:tcPr>' % spans[(r, c)] \
+                if (r, c) in spans else ""
+            cells.append("<w:tc>%s%s</w:tc>" % (tcpr, text if text.startswith("<") else para(text)))
+        out.append("<w:tr>%s%s</w:tr>" % (trpr, "".join(cells)))
+    out.append("</w:tbl>")
+    return "".join(out)
+
+
+def numbered(text, num_id, level=0, style=None):
+    return para(text, style, '<w:numPr><w:ilvl w:val="%d"/><w:numId w:val="%d"/></w:numPr>'
+                % (level, num_id))
+
+
+# A bullet list (numId 1) and a numbered list "1." / "a." (numId 2).
+NUMBERING = ('<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/>'
+             '<w:numFmt w:val="bullet"/><w:lvlText w:val="\uf0b7"/></w:lvl></w:abstractNum>'
+             '<w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:start w:val="1"/>'
+             '<w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/></w:lvl><w:lvl w:ilvl="1">'
+             '<w:start w:val="1"/><w:numFmt w:val="lowerLetter"/><w:lvlText w:val="%2."/></w:lvl>'
+             '</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+             '<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>')
 
 
 def make_docx(path, body, styles=None, extra_styles=(), footnotes=(), endnotes=(), header=None,
-              core=None, app=None, sect=SECT, doc_defaults_size="24"):
+              core=None, app=None, sect=SECT, doc_defaults_size="24", media=None,
+              numbering=None):
     """Write a .docx. body: list of paragraph XML strings. footnotes/endnotes: note texts
-    (ids from 1). header: XML of a header's paragraphs. styles: {id: xml} replacing defaults."""
+    (ids from 1). header: XML of a header's paragraphs. styles: {id: xml} replacing defaults.
+    media: {relationship id: (file name, bytes)} for images. numbering: the w:abstractNum and
+    w:num elements of numbering.xml (e.g. NUMBERING)."""
     st = dict(DEFAULT_STYLES)
     if styles:
         st.update(styles)
@@ -152,6 +195,14 @@ def make_docx(path, body, styles=None, extra_styles=(), footnotes=(), endnotes=(
         files["word/endnotes.xml"] = notes("endnote", endnotes)
         rels.append('<Relationship Id="rIdE" Type="http://schemas.openxmlformats.org/officeDocument/'
                     '2006/relationships/endnotes" Target="endnotes.xml"/>')
+    for rid, (fname, data) in (media or {}).items():
+        files["word/media/" + fname] = data
+        rels.append('<Relationship Id="%s" Type="http://schemas.openxmlformats.org/officeDocument/'
+                    '2006/relationships/image" Target="media/%s"/>' % (rid, fname))
+    if numbering:
+        files["word/numbering.xml"] = '<w:numbering %s>%s</w:numbering>' % (WNS, numbering)
+        rels.append('<Relationship Id="rIdN" Type="http://schemas.openxmlformats.org/officeDocument/'
+                    '2006/relationships/numbering" Target="numbering.xml"/>')
     if header is not None:
         files["word/header1.xml"] = '<w:hdr %s>%s</w:hdr>' % (WNS, header)
         rels.append('<Relationship Id="rIdH1" Type="http://schemas.openxmlformats.org/officeDocument/'
@@ -180,6 +231,10 @@ def make_docx(path, body, styles=None, extra_styles=(), footnotes=(), endnotes=(
     ct = ('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
           '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
           '<Default Extension="xml" ContentType="application/xml"/>'
+          '<Default Extension="png" ContentType="image/png"/>'
+          '<Default Extension="jpeg" ContentType="image/jpeg"/>'
+          '<Default Extension="jpg" ContentType="image/jpeg"/>'
+          '<Default Extension="emf" ContentType="image/x-emf"/>'
           '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-'
           'officedocument.wordprocessingml.document.main+xml"/>'
           '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-'
@@ -198,6 +253,10 @@ def make_docx(path, body, styles=None, extra_styles=(), footnotes=(), endnotes=(
              '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-'
              'officedocument.wordprocessingml.header+xml"/>' if header is not None else ""))
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        if numbering:
+            ct = ct.replace("</Types>", '<Override PartName="/word/numbering.xml" ContentType='
+                            '"application/vnd.openxmlformats-officedocument.wordprocessingml.'
+                            'numbering+xml"/></Types>')
         z.writestr("[Content_Types].xml", ct)
         for name, data in files.items():
             z.writestr(name, data)

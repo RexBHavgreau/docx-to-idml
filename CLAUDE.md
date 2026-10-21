@@ -36,8 +36,22 @@ keep it up to date when decisions change.
 | `docx2idml/preflight.py` | The preflight report (text and JSON) |
 | `docx2idml/profile.py` | Profiles: defaults, save/load, export/import, `PROFILE_VERSION` + `MIGRATIONS` |
 | `docx2idml/book.py` | Input files: drop/folder collection, natural order, saved order |
-| `docx2idml/cli.py` | `python -m docx2idml preflight / profile` |
-| `tests/docx_builder.py` | Builds test .docx files from raw WordprocessingML; the test runner |
+| `docx2idml/content.py` | The text of a .docx for the exporter: runs with formatting features, notes, tables, images, list numbers; paragraph indexes match `docx_reader`'s |
+| `docx2idml/export.py` | Step 4, the exporter core: book styles, Word styles kept by name, runs to character styles, Hebrew/Greek, one story and section per outline unit, page estimate; `export()` writes the export folder |
+| `docx2idml/layout.py` | Step 5: margins and measure (65 characters, floors, KDP gutter by page count), pagination (roman front matter, recto rules, masters per page) |
+| `docx2idml/frontmatter.py` | Step 6: book details (settings, then detected, else bracketed placeholders), half-title, title, copyright (English/Spanish, notices from the profile's library), contents entries and reserved pages |
+| `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
+| `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile`; no arguments opens the window |
+| `docx2idml/gui.py` | Step 7, the window (ttk): Files, Book details, Running heads, Layout profile, Style map, Report tabs; forms declared as field tables bound to the profile and book settings; work in threads, results through a queue polled by the window |
+| `docx2idml/updates.py`, `appsettings.py` | Update check and install (as Indicat's: versioned .exe beside the running one, SHA-256 digest, Downloads fallback, older copies offered for deletion); the program's own settings.json |
+| `run_app.py`, `build_exe.bat`, `.github/workflows/build.yml` | The .exe (PyInstaller, one file, "docx-to-idml-X.Y.Z.exe", with `docx2idml/idml/base`); the workflow builds and releases on a `vX.Y.Z` tag, or by hand |
+| `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `images.py` (image size and resolution from file headers), `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
+| `reference/` | `make_reference_files.jsx` (builds the InDesign reference files), README with the Affinity checklist; reference IDMLs go in `reference/idml/` |
+| `idml-schema/` | Adobe's IDML schema for InDesign 2026 (21.6.0.57, DOM 21.5): `rnc/` as InDesign wrote it, `rng/` converted by `tools/prepare_schema.py` |
+| `tools/make_generated_files.py` | Step 3: the generator's versions of the reference files, in `reference/generated/` |
+| `tools/idml_check.py`, `tools/idml_inspect.py` | Development tools: structural check of an IDML package plus jing against the schema; summary of a package (masters, pages, overrides, sections, stories, styles) for comparing with references |
+| `tools/make_sample_book.py` | Step 4: a sample manuscript (`reference/manuscript/`, three .docx) exported to `reference/generated/e01-sample-book/` |
+| `tests/docx_builder.py` | Builds test .docx files from raw WordprocessingML (images, tables, numbering too); the test runner |
 
 ## Conventions
 
@@ -45,8 +59,85 @@ keep it up to date when decisions change.
   `profile.py`, so saved profiles are upgraded, not lost.
 - In Word, a section's `w:type` says how *that* section starts; it sits in the sectPr that ends
   the section.
+- The schema is strict about element order (e.g. in designmap.xml, idPkg:Styles comes before
+  idPkg:Preferences, and many settings are child `<Properties>` elements, not attributes).
+  Check the generator's output with `tools/idml_check.py`; jing needs Java and
+  `pip install -r requirements-dev.txt`.
+- IDML composer names: `HL Composer` (Adobe Paragraph Composer), `HL Single` (Single-line),
+  `HL Composer Optyca` (World-Ready). They are InDesign's own, not plug-ins.
+- IDML: a parent-master item removed on a child master, or a master item removed on a page,
+  is an `OverrideList` pair with `n` as the page item.
+- Footnotes are written as in `reference/variants/fn-m-split-formatting.idml` (decided after
+  Affinity tests, see PLAN.md): Footnote paragraph style; the number `<?ACE 4?>` and separator in
+  a run of their own (Affinity breaks single-run notes); the Footnote style's font, size,
+  leading, indent and alignment also on every note run (Affinity otherwise lays the root style
+  `[No paragraph style]` over note text). Style edits still reach every note in both programs.
+- designmap.xml must start with InDesign's `<?aid style="50" type="document" ...?>` line before
+  `<Document>`; without it InDesign says it "may not support the file format". The schema
+  doesn't require it; `idml_check.py` does. Write parts with `writer.serialize()` (whole
+  document, double-quoted XML declaration), never `tostring(root)`, which drops the line.
+- `DocumentPreference PagesPerDocument` stays 1 (the new-document default InDesign writes); set
+  to the real page count, InDesign adds that many pages at the start when opening the file.
+- In facing documents a page's side follows its number (odd = recto), as in InDesign; a recto
+  after a recto stands alone on its spread (reference 03). The writer works out spreads that way.
+- IDML sections, as InDesign writes them (g01's first version broke these and wouldn't open
+  in InDesign, though it validated and opened in Affinity): the alternate layout's name
+  (`AlternateLayout="Custom V"`) on the first section only, `""` on the others;
+  `AlternateLayoutLength` = pages from the section's start to the end; pages'
+  `AppliedAlternateLayout` = the first section's id. A spread's `BindingLocation` is 0 when it
+  starts with a recto, 1 when it starts with a verso (a lone last verso too). Each page carries a
+  `Descriptor` (prefix, numbering style, continue numbering, include prefix, number, number,
+  marker). Validating against the schema is not enough: compare with the reference files.
+- Tables: write every row's `SingleRowHeight` (an estimate; InDesign grows a short row).
+  Without it Affinity can't break a table across frames and runs it off the page (g07).
+- An export is a folder of its own (`writer.export_book`): `<name>/<name>.idml` and
+  `<name>/Links/` with the images, linked relative to the IDML (`file:Links/x.jpg`), so the
+  folder can be moved or sent on: both InDesign and Affinity find them (decided October 21).
+  Full paths (InDesign's own way) broke when the folder moved. Frames are cloned from reference 11.
+  `tests/data/sample.jpg` is the test image (450 x 300 px, 150 ppi).
+- IDML: a page frame made from a master frame is linked on the `<Page>` element,
+  `OverrideList="<master item> <page item> ..."` (pairs), not on the frame; the frame itself is
+  an ordinary `TextFrame` (reference file 05).
+- The two InDesign files from the brief (the Assumption article and its cut-down) are a real
+  article: use them for analysis only; don't commit them.
+- Export (step 4): direct italic, bold, small caps, capitals, super/subscript, underline and
+  strikethrough become character styles (Italic, Bold, Bold Italic, Small Caps...), worked out
+  against the paragraph style (italic in a bold heading is Bold Italic; Word's toggle rule for
+  a character style inside an italic paragraph is kept). Other direct formatting gives way to
+  the book's styles. Body after a heading, a centered line or at a story's start is Body First.
+  List and heading numbers are static text for now (IDML auto-numbering not yet tested in
+  Affinity). Images that aren't JPEG or PNG are left out with a placeholder line and reported.
+- Layout (step 5): masters A-Body, B-Opener, C-Front each have their own primary text frames
+  (and a folio for now); D-Display and E-Blank are empty. Each unit is a story and a section;
+  display and front units are LowerRoman from i, the first chapter or part restarts Arabic 1.
+  A chapter's estimate gets one spare page; blank versos before recto openers get E-Blank.
+- Keeps (October 21): widow/orphan control is KeepLinesTogether="true" with KeepFirstLines and
+  KeepLastLines 2 (InDesign ignores the line counts without KeepLinesTogether); headings keep
+  all their lines together and with the next paragraph; no hyphen in a paragraph's last word
+  or at the foot of a page. Short last lines (runts) are prevented without GREP styles, which
+  Affinity lacks: the exporter puts the last words of each running-text paragraph in the
+  "No Break" character style (or NoBreak="true" on a run that has a style already) so the last
+  line has at least `typography.last_line_min_chars` (10) characters.
+- Front matter and heads (step 6): the book is a list of `export.Block`s: generated half-title
+  (i), title (recto), copyright (the verso after it, set at the foot), the manuscript's display
+  pages, reserved contents (recto; its page count estimated or set), then front matter, text,
+  back matter. The manuscript's title page is replaced (copyright lines from it go on the
+  copyright page; other lines on a display page of their own); its typed contents is dropped.
+  Running heads: recto = section marker (short title from `settings["short_titles"]`), verso =
+  book title / author / chapter / custom on A-Body; C-Front shows the marker both sides; B, D, E
+  none unless the profile's suppress toggles are off. Verso "part": one copy of A-Body per part
+  (P1-Body...), not a child master, so linked page frames point at its own primary frames. Book
+  settings (`Book.settings`): "front" (see frontmatter.py) and "short_titles".
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
+
+## Releases
+
+- Version in `docx2idml/__init__.py` (`EXE_BASE` and `REPO` there too); a dated entry at the
+  top of `CHANGELOG.md`. Pushing a tag `vX.Y.Z` (matching `__version__`) runs
+  `.github/workflows/build.yml` on Windows: tests, the .exe, a check that it carries the IDML
+  base files, and a GitHub Release with the .exe (its SHA-256 digest is what the updater
+  checks). **Ask Beaux before tagging.**
 
 ## Tests
 
@@ -54,6 +145,12 @@ keep it up to date when decisions change.
 python tests/test_reader.py
 python tests/test_outline.py
 python tests/test_preflight.py
+python tests/test_idml_tools.py
+python tests/test_writer.py
+python tests/test_export.py
+python tests/test_layout.py
+python tests/test_updates.py
+python tests/test_gui.py             # needs a display: on Linux, xvfb-run (and python3-tk)
 ```
 
 Run them all before pushing; CI (`.github/workflows/tests.yml`) runs them on Windows and Linux.
@@ -62,5 +159,31 @@ On Windows set `PYTHONUTF8=1`. `test_preflight` includes a LibreOffice round tri
 writes one.
 
 ## Not yet checked
+- Step 2: Affinity done (all files; footnotes settled as fn-m, rule and spacing as fn-o/p/q).
+  DesignCraft not yet.
+- Step 3: g01 (footnotes) opens in Affinity and looks right; confirmed in InDesign and Affinity.
+  g02-g04 confirmed in both programs. g05-g10, g12, g13 (primary text frame, contents style,
+  table, OpenType, baseline grid, Hebrew/Greek, character styles, chapter stories) validate and
+  match their references in the inspector (masters named A-Body where InDesign defaults to
+  A-Parent; g06 writes the contents style and a reserved page, no generated contents, as
+  decided). Beaux: all right in InDesign; contents placed by hand from the style in both programs
+  (as intended); all right in Affinity except g07's table, which doesn't break across pages
+  even with row heights (parked: tables uncommon; reference 07 does break, so compare again
+  later). g11 (images) right in both; with the linked path missing, both programs find the image
+  in the file's folder, else warn and leave a placeholder. Step 3 done. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
+  Kozuka, Arno); generating it from the fonts used is still to do. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
+  are in `reference/idml/` and validate. ExtendScript is
+  ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
+  with a byte-order mark.
 
+- Step 4: e01 (sample book) opens in InDesign and Affinity and looks right (Beaux). Not yet run
+  on a real manuscript.
+- Step 5: e01 with the layout: text flows right, text width fine, folios right (Beaux). Spare
+  pages the text doesn't reach keep their folio (they are text pages). Bleed not yet checked.
+- Step 6: e01 with front matter and running heads: validates, not yet opened.
+- Step 7: the window tested under Xvfb here and by its tests on GitHub's Windows runner; the
+  .exe builds there (about 19 MB, carries the base files) but hasn't been opened by hand. The
+  updater is tested with a fake GitHub only (no release published yet).
+- Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
+  the No Break style and the local NoBreak attribute?
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).

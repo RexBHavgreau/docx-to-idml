@@ -1,4 +1,4 @@
-"""Command line: python -m docx2idml preflight|profile ..."""
+"""Command line: python -m docx2idml preflight|export|profile ..."""
 
 import argparse
 import sys
@@ -42,6 +42,32 @@ def cmd_preflight(args):
     return 1 if rep.errors else 0
 
 
+def cmd_export(args):
+    from .export import ExportError, export
+    book = Book.load(args.book) if args.book else None
+    files, skipped = collect(args.files) if args.files else ([], [])
+    if book:
+        files = apply_saved_order(book.files, files) if files else book.files
+    if args.sort:
+        files = natural_sort(files)
+    for path, reason in skipped:
+        print("Skipped %s: %s" % (path, reason), file=sys.stderr)
+    if not files:
+        print("No .docx files to export.", file=sys.stderr)
+        return 2
+    prof = profiles.load(args.profile or (book.profile if book else None))
+    try:
+        path, report = export(files, args.out, prof, args.name,
+                              book.settings if book else None)
+    except ExportError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    print("Wrote %s" % path)
+    for line in report:
+        print("- " + line)
+    return 0
+
+
 def cmd_profile(args):
     if args.action == "list":
         names = profiles.list_profiles()
@@ -63,6 +89,9 @@ def cmd_profile(args):
 
 
 def main(argv=None):
+    if (sys.argv[1:] if argv is None else argv) == []:
+        from .gui import main as gui_main      # no arguments: open the window
+        return gui_main()
     ap = argparse.ArgumentParser(prog="docx2idml", description="Word manuscript to IDML book.")
     ap.add_argument("--version", action="version", version=__version__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -77,6 +106,16 @@ def main(argv=None):
     pf.add_argument("--json", action="store_true", help="write the report as JSON")
     pf.add_argument("--out", help="write the report to a file")
     pf.set_defaults(func=cmd_preflight)
+
+    ex = sub.add_parser("export", help="write the book as IDML, in a folder of its own with its "
+                                        "images in Links")
+    ex.add_argument("files", nargs="*", help=".docx files or folders, in book order")
+    ex.add_argument("--out", default=".", help="folder to put the export folder in")
+    ex.add_argument("--name", help="name of the export folder and IDML (default: the book title)")
+    ex.add_argument("--profile", help="profile name or .json file")
+    ex.add_argument("--book", help="book settings file (keeps the file order)")
+    ex.add_argument("--sort", action="store_true", help="sort the files by name (natural order)")
+    ex.set_defaults(func=cmd_export)
 
     pr = sub.add_parser("profile", help="list, show, create, export or import profiles")
     pr.add_argument("action", choices=["list", "show", "new", "export", "import"])
