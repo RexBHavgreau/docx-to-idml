@@ -113,8 +113,9 @@ writes one.
   match their references in the inspector (masters named A-Body where InDesign defaults to
   A-Parent; g06 writes the contents style and a reserved page, no generated contents, as
   decided). Beaux: all right in InDesign; contents placed by hand from the style in both programs
-  (as intended); g07's table ran off the page in Affinity (no row heights; fixed, not yet
-  retried). Affinity results for the others not yet reported. g11 (images) not yet written. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
+  (as intended); all right in Affinity except g07's table, which doesn't break across pages
+  even with row heights (parked: tables uncommon; reference 07 does break, so compare again
+  later). g11 (images) not yet written. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
   Kozuka, Arno); generating it from the fonts used is still to do. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
