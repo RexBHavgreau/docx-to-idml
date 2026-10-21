@@ -304,6 +304,9 @@ def test_no_runt():
         body = doc.style("Body").attrs
         assert body["KeepLinesTogether"] is True and body["KeepFirstLines"] == 2
         assert body["HyphenateLastWord"] is False
+        # World-Ready composer by default (Hebrew sets right everywhere).
+        assert body["Composer"] == "HL Composer Optyca"
+        assert doc.style("Footnote").attrs["Composer"] == "HL Composer Optyca"
     finally:
         ex.cleanup()
 
@@ -360,6 +363,25 @@ def test_short_title_flagged_and_part_heads():
         ex._paginate([part, ch])
         assert "P1-Body" in [m.name for m in ex.doc.masters]
         assert "P1-Body" in ex.doc.page_masters.values()
+    finally:
+        ex.cleanup()
+
+
+def test_single_line_composer_gives_way_to_hebrew():
+    prof = default_profile()
+    prof["typography"]["paragraph_composer"] = False
+    ex = Exporter(_files(), prof)              # chapter one has Hebrew
+    try:
+        doc = ex.build()
+        assert doc.style("Body").attrs["Composer"] == "HL Composer Optyca"
+        assert sum("World-Ready" in line for line in ex.report) == 1
+    finally:
+        ex.cleanup()
+    path = make_docx(os.path.join(TMP, "latin.docx"), [para("Chapter", "Heading1"),
+                                                         para("English only.")])
+    ex = Exporter([path], prof)
+    try:
+        assert ex.build().style("Body").attrs["Composer"] == "HL Single"
     finally:
         ex.cleanup()
 

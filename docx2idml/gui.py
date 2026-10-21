@@ -54,7 +54,8 @@ PROFILE_FIELDS = {
         (("leading", "value"), "Leading (blank = automatic)", "number", None),
         (("leading", "unit"), "Leading unit", "choice", ["pt", "multiple", "percent"]),
         (("front_matter", "language"), "Language", "choice", ["en", "es"]),
-        (("typography", "paragraph_composer"), "Paragraph composer", "bool", None),
+        (("typography", "paragraph_composer"), "Paragraph composer (World-Ready; off = "
+                                               "single-line)", "bool", None),
         (("typography", "optical_margins"), "Optical margin alignment", "bool", None),
         (("typography", "hyphenation"), "Hyphenation", "bool", None),
         (("typography", "ligatures"), "Ligatures", "bool", None),

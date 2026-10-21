@@ -137,6 +137,9 @@ keep it up to date when decisions change.
   line, headings or more than 150 words; in the first file, a short opening without headings
   is the title page; a stray line or two in a later file stays with the previous unit. In a
   chapter, Title/Subtitle/Author lines are set as Chapter Title, Chapter Subtitle, Chapter Author.
+- Composer (0.2.0): the book's styles use the World-Ready composer (`HL Composer Optyca`) by
+  default; the Adobe Paragraph Composer (`HL Composer`) reversed Hebrew in InDesign (Beaux).
+  Profile `paragraph_composer` off = single-line (`HL Single`), unless the book has Hebrew.
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.

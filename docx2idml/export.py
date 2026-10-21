@@ -318,6 +318,22 @@ class Exporter:
 
     # ---- styles ----
 
+    def _composer(self, typo):
+        """The World-Ready composer (InDesign's "HL Composer Optyca") by default: the paragraph
+        composer with right-to-left support, so Hebrew is set right in every style, including
+        Hebrew added later in InDesign; Latin and Greek text set the same. Single-line only if
+        the profile asks for it and the book has no Hebrew."""
+        if typo["paragraph_composer"]:
+            return "HL Composer Optyca"
+        if any(d.scripts["hebrew"].chars for d in self.docs):
+            if not getattr(self, "_composer_noted", False):
+                self.report.append("The book has Hebrew, so the World-Ready composer is used "
+                                   "although the profile asks for the single-line composer "
+                                   "(Hebrew needs it).")
+                self._composer_noted = True
+            return "HL Composer Optyca"
+        return "HL Single"
+
     def _leading(self, size):
         lead = self.profile.get("leading") or {}
         v, unit = lead.get("value"), lead.get("unit", "pt")
@@ -339,7 +355,7 @@ class Exporter:
         lang = LANGUAGES.get(self.profile["front_matter"].get("language"), LANGUAGES["en"])
         body = {"FontStyle": "Regular", "PointSize": size, "FirstLineIndent": indent,
                 "Justification": "LeftJustified", "Hyphenation": bool(typo["hyphenation"]),
-                "Composer": "HL Composer" if typo["paragraph_composer"] else "HL Single",
+                "Composer": self._composer(typo),
                 "AppliedLanguage": lang, "Ligatures": bool(typo["ligatures"])}
         if typo["oldstyle_figures"]:
             body["OTFFigureStyle"] = "ProportionalOldstyle"
