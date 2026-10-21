@@ -106,8 +106,11 @@ writes one.
 - Step 2: Affinity done (all files; footnotes settled as fn-m, rule and spacing as fn-o/p/q).
   DesignCraft not yet.
 - Step 3: g01 (footnotes) opens in Affinity and looks right; confirmed in InDesign and Affinity.
-  g02-g04 (running heads, roman/arabic sections, parent/child masters) validate and match
-  references 02-04 in the inspector; not yet opened in InDesign or Affinity. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
+  g02-g04 confirmed in both programs. g05-g10, g12, g13 (primary text frame, contents style,
+  table, OpenType, baseline grid, Hebrew/Greek, character styles, chapter stories) validate and
+  match their references in the inspector (masters named A-Body where InDesign defaults to
+  A-Parent; g06 writes the contents style and a reserved page, no generated contents, as
+  decided); not yet opened in InDesign or Affinity. g11 (images) not yet written. The base's Fonts.xml is InDesign's from reference 01 (Minion, Myriad,
   Kozuka, Arno); generating it from the fonts used is still to do. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8

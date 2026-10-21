@@ -15,8 +15,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-from docx2idml.idml.model import (Document, Frame, Master, Paragraph, Run, Section, Story,
-                                  Style)
+from docx2idml.idml.model import (CellStyle, Document, Frame, Master, Paragraph, Run, Section,
+                                  Story, Style, Table, TableStyle, TOCStyle)
 from docx2idml.idml.writer import write_idml
 from docx2idml.profile import default_profile
 
@@ -210,9 +210,261 @@ def g04_parent_child_masters():
     return doc
 
 
+def base_doc(pages, name):
+    doc = Document(page_count=pages, name=name)
+    doc.paragraph_styles = body_styles()
+    doc.character_styles = [Style("Italic", attrs={"FontStyle": "Italic"})]
+    doc.footnotes = dict(default_profile()["footnotes"])
+    return doc
+
+
+def g05_primary_text_frame():
+    """A primary text frame on A-Parent (verso and recto, threaded), page frames linked to it
+    by OverrideList pairs, as reference 05 (version 3). Six pages are written, since Affinity
+    adds none for overset text; InDesign reflows by itself."""
+    doc = base_doc(6, "g05-primary-text-frame")
+    a = Master("A", "Parent", frames=[Frame("verso", area(doc, "verso"), [], primary=True),
+                                      Frame("recto", area(doc, "recto"), [], primary=True)])
+    doc.masters = [a]
+    doc.stories = [Story([Paragraph("Chapter Title", [Run("Text in the Primary Frame")]),
+                          Paragraph("Body First", [Run(filler(2600, 0))])],
+                         list(range(6)), linked=True)]
+    return doc
+
+
+def g06_toc():
+    """The contents style of reference 06 (two levels, dot-leader tab, bold level 1). As decided
+    after the Affinity tests, the contents page is reserved with its title only: no generated
+    contents (InDesign users generate it from the style)."""
+    doc = base_doc(7, "g06-toc")
+    _t, left, _b, right = area(doc, "recto")
+    tabs = [("RightAlign", right - left, ". ")]
+    doc.paragraph_styles += [
+        Style("Contents Title", based_on="Chapter Title"),
+        Style("Contents 1", based_on="Body", tabs=tabs,
+              attrs={"FontStyle": "Bold", "FirstLineIndent": 0, "Justification": "LeftAlign",
+                     "SpaceBefore": 6}),
+        Style("Contents 2", based_on="Body", tabs=tabs,
+              attrs={"FirstLineIndent": 0, "LeftIndent": 18, "Justification": "LeftAlign"})]
+    doc.toc_styles = [TOCStyle("Contents", "Contents", "Contents Title",
+                               [("Chapter Title", 1, "Contents 1"), ("Heading A", 2, "Contents 2")])]
+    doc.stories = [Story([Paragraph("Contents Title", [Run("Contents")])], [0], sink=0)]
+    for i, title in enumerate(["Chapter One", "Chapter Two", "A Third Chapter"]):
+        doc.stories.append(Story([
+            Paragraph("Chapter Title", [Run(title)]),
+            Paragraph("Body First", [Run(filler(150, i))]),
+            Paragraph("Heading A", [Run("First Section of " + title)]),
+            Paragraph("Body First", [Run(filler(200, i + 1))]),
+            Paragraph("Heading A", [Run("Second Section")]),
+            Paragraph("Body First", [Run(filler(150, i + 2))])], [1 + 2 * i, 2 + 2 * i], sink=72))
+    return doc
+
+
+def g07_table():
+    """Table, cell and paragraph styles, 40 body rows with a header row, two merged cells, as
+    reference 07."""
+    doc = base_doc(3, "g07-table")
+    doc.paragraph_styles += [
+        Style("Table Body", based_on="Body", leading=12,
+              attrs={"FirstLineIndent": 0, "PointSize": 9.5, "Justification": "LeftAlign",
+                     "Hyphenation": False}),
+        Style("Table Head", based_on="Table Body", attrs={"FontStyle": "Bold"})]
+    doc.colors = [("Table Grey", (0, 0, 0, 12))]
+    insets = {"TextTopInset": 3, "TextLeftInset": 4, "TextBottomInset": 3, "TextRightInset": 4,
+              "TopInset": 3, "BottomInset": 3, "LeftInset": 4, "RightInset": 4}
+    doc.cell_styles = [CellStyle("Head Cell", "Table Head", "Table Grey", dict(insets)),
+                       CellStyle("Body Cell", "Table Body", None, dict(insets))]
+    doc.table_styles = [TableStyle("Book Table", "Head Cell", "Body Cell",
+                                   {"TopBorderStrokeWeight": 1, "BottomBorderStrokeWeight": 1,
+                                    "LeftBorderStrokeWeight": 0, "RightBorderStrokeWeight": 0})]
+    cell = lambda text, style="Table Body": [Paragraph(style, [Run(text)])]
+    rows = [[cell(t, "Table Head") for t in ("Book", "Chapters", "Verses", "Notes")]]
+    for r in range(1, 41):
+        rows.append([cell("Book %d" % r), cell(str(r % 50 + 1)), cell(str(r * 31 % 900)),
+                     cell("A longer note that wraps onto a second line in its cell."
+                          if r % 7 == 0 else "")])
+    rows[5][3] = None                     # merged into the cell to its left
+    _t, left, _b, right = area(doc, "recto")
+    width = (right - left) / 4
+    table = Table(rows, [width] * 4, header_rows=1, style="Book Table", spans={(5, 2): 2})
+    doc.stories = [Story([Paragraph("Chapter Title", [Run("Tables")]),
+                          Paragraph("Body First", [Run(filler(150, 0))]),
+                          Paragraph("Body", [Run(table=table)]),
+                          Paragraph("Body", [Run(filler(200, 3))])], [0, 1, 2], sink=72)]
+    return doc
+
+
+def g08_opentype():
+    """OpenType features, composers, hyphenation, optical margins and a balanced heading, as
+    reference 08."""
+    doc = base_doc(2, "g08-opentype")
+    doc.paragraph_styles += [
+        Style("Body OpenType", based_on="Body",
+              attrs={"Ligatures": True, "OTFFigureStyle": "ProportionalOldstyle",
+                     "KerningMethod": "$ID/Optical"}),
+        Style("Body Lining", based_on="Body",
+              attrs={"Ligatures": False, "OTFFigureStyle": "TabularLining",
+                     "KerningMethod": "$ID/Metrics"}),
+        Style("Body Single-line", based_on="Body", attrs={"Composer": "HL Single"}),
+        Style("Body No Hyphenation", based_on="Body", attrs={"Hyphenation": False}),
+        Style("Balanced Heading", based_on="Chapter Title",
+              attrs={"Justification": "CenterAlign"},
+              props={"BalanceRaggedLines": ("enumeration", "VeeShape")})]
+    doc.character_styles += [Style("Small Caps", attrs={"Capitalization": "SmallCaps"}),
+                             Style("All Small Caps", attrs={"Capitalization": "CapToSmallCap"}),
+                             Style("Discretionary Ligatures",
+                                   attrs={"OTFDiscretionaryLigature": True}),
+                             Style("Fraction", attrs={"OTFFraction": True}),
+                             Style("Ordinal", attrs={"OTFOrdinal": True})]
+    paras = [
+        Paragraph("Balanced Heading",
+                  [Run("A Balanced Heading That Runs Long Enough to Take Two Lines")]),
+        Paragraph("Body OpenType", [Run(
+            "Ligatures: fi fl ff ffi ffl office affluent official. Old-style figures: "
+            "1234567890, 1776, 2026. Kerning optical. \u201cQuoted lines\u201d hang into the "
+            "margin with optical alignment. " + filler(80, 0))]),
+        Paragraph("Body Lining", [Run("Lining figures: 1234567890, 1776, 2026. Ligatures off: "
+                                      "fi fl ff office. Kerning metrics. " + filler(60, 1))]),
+        Paragraph("Body", [Run("Small caps style: "), Run("Chapter and Verse", "Small Caps"),
+                           Run(". All small caps: "), Run("UNESCO, NASB, LXX", "All Small Caps"),
+                           Run(". Discretionary ligatures: "),
+                           Run("ct st", "Discretionary Ligatures"), Run(". Fractions: "),
+                           Run("1/2 3/4", "Fraction"), Run(". Ordinals: "),
+                           Run("1st 2nd 3rd", "Ordinal"), Run(". " + filler(60, 2))]),
+        Paragraph("Body Single-line", [Run("Single-line composer: " + filler(120, 3))]),
+        Paragraph("Body", [Run("Paragraph composer: " + filler(120, 3))]),
+        Paragraph("Body No Hyphenation", [Run("Hyphenation off: " + filler(120, 4))])]
+    doc.stories = [Story(paras, [0, 1], sink=36, optical_margins=11)]
+    return doc
+
+
+def g09_baseline_grid():
+    """Baseline grid from the top margin every 14 pt; body and headings aligned to it; a block
+    quote off the grid, as reference 09."""
+    doc = base_doc(2, "g09-baseline-grid")
+    doc.baseline_grid = {"start": doc.margins["top"], "division": 14, "shown": True}
+    for st in doc.paragraph_styles:
+        if st.name in ("Body", "Body First", "Chapter Title", "Heading A"):
+            st.attrs["GridAlignment"] = "AlignBaseline"
+        if st.name == "Heading A":
+            st.attrs["SpaceBefore"] = 7
+    doc.paragraph_styles.append(
+        Style("Block Quote", based_on="Body", leading=12,
+              attrs={"PointSize": 10, "LeftIndent": 18, "FirstLineIndent": 0,
+                     "GridAlignment": "None", "SpaceBefore": 7, "SpaceAfter": 7}))
+    doc.stories = [Story([
+        Paragraph("Chapter Title", [Run("On the Grid")]),
+        Paragraph("Body First", [Run(filler(150, 0))]),
+        Paragraph("Heading A", [Run("A Heading with Half a Line Before")]),
+        Paragraph("Body First", [Run(filler(120, 1))]),
+        Paragraph("Block Quote", [Run("A block quote set off the grid, at 10 on 12. "
+                                      + filler(60, 2))]),
+        Paragraph("Body", [Run(filler(250, 3))])], [0, 1], sink=72)]
+    return doc
+
+
+GEN = ("\u05D1\u05BC\u05B0\u05E8\u05B5\u05D0\u05E9\u05C1\u05B4\u0596\u05D9\u05EA "
+       "\u05D1\u05BC\u05B8\u05E8\u05B8\u05A3\u05D0 \u05D0\u05B1\u05DC\u05B9\u05D4\u05B4\u0591\u05D9\u05DD "
+       "\u05D0\u05B5\u05A5\u05EA \u05D4\u05B7\u05E9\u05BC\u05C1\u05B8\u05DE\u05B7\u0596\u05D9\u05B4\u05DD "
+       "\u05D5\u05B0\u05D0\u05B5\u05A5\u05EA \u05D4\u05B8\u05D0\u05B8\u05BD\u05E8\u05B6\u05E5\u05C3")
+GEN_PLAIN = "\u05D1\u05E8\u05D0\u05E9\u05D9\u05EA \u05D1\u05E8\u05D0 \u05D0\u05DC\u05D4\u05D9\u05DD"
+JOHN = ("\u1F18\u03BD \u1F00\u03C1\u03C7\u1FC7 \u1F26\u03BD \u1F41 \u03BB\u03CC\u03B3\u03BF\u03C2, "
+        "\u03BA\u03B1\u1F76 \u1F41 \u03BB\u03CC\u03B3\u03BF\u03C2 \u1F26\u03BD \u03C0\u03C1\u1F78\u03C2 "
+        "\u03C4\u1F78\u03BD \u03B8\u03B5\u03CC\u03BD, \u03BA\u03B1\u1F76 \u03B8\u03B5\u1F78\u03C2 "
+        "\u1F26\u03BD \u1F41 \u03BB\u03CC\u03B3\u03BF\u03C2.")
+# The family name InDesign gave the Hebrew font on Beaux's machine (reference 10).
+HEBREW_FONT = "Taamey David CLM (OTF)"
+
+
+def g10_hebrew_greek():
+    """Hebrew (pointed, cantillated) inline and as a right-to-left paragraph; polytonic Greek;
+    direction and language in the styles, as reference 10."""
+    doc = base_doc(2, "g10-hebrew-greek")
+    doc.paragraph_styles += [
+        Style("Body World-Ready", based_on="Body", attrs={"Composer": "HL Composer Optyca"}),
+        Style("Hebrew Block", based_on="Body World-Ready", font=HEBREW_FONT, leading=18,
+              attrs={"FontStyle": "Regular", "PointSize": 13, "FirstLineIndent": 0,
+                     "AppliedLanguage": "$ID/Hebrew", "Justification": "RightAlign",
+                     "CharacterDirection": "RightToLeftDirection",
+                     "ParagraphDirection": "RightToLeftDirection"})]
+    doc.character_styles += [
+        Style("Hebrew", font=HEBREW_FONT, attrs={"FontStyle": "Regular",
+                                                 "AppliedLanguage": "$ID/Hebrew",
+                                                 "CharacterDirection": "RightToLeftDirection"}),
+        Style("Greek", font="Arno Pro", attrs={"FontStyle": "Regular",
+                                               "AppliedLanguage": "$ID/Greek"})]
+    doc.stories = [Story([
+        Paragraph("Chapter Title", [Run("Hebrew and Greek")]),
+        Paragraph("Body World-Ready", [
+            Run("World-Ready composer. Genesis 1:1 reads "), Run(GEN, "Hebrew"),
+            Run(" and the phrase is long enough that it should wrap across a line when set in a "
+                "paragraph of this width, which tests how the bidirectional run breaks. "
+                "Unpointed: "), Run(GEN_PLAIN, "Hebrew"), Run(". John 1:1 reads "),
+            Run(JOHN, "Greek"), Run(" " + filler(40, 0))]),
+        Paragraph("Body", [Run("Paragraph composer (not World-Ready), same text: "),
+                           Run(GEN, "Hebrew"), Run(" and then John: "), Run(JOHN, "Greek"),
+                           Run(".")]),
+        Paragraph("Hebrew Block", [Run(GEN + " " + GEN)]),
+        Paragraph("Body World-Ready", [Run("Greek by language only, in the body font: "),
+                                       Run(JOHN, "Greek")])], [0, 1], sink=72)]
+    return doc
+
+
+def g12_character_styles():
+    """Character styles that set one thing each, inside different paragraph styles, and one
+    local italic, as reference 12."""
+    doc = base_doc(1, "g12-character-styles")
+    doc.paragraph_styles += [
+        Style("Block Quote", based_on="Body", leading=12,
+              attrs={"PointSize": 9.5, "LeftIndent": 18, "FirstLineIndent": 0, "SpaceBefore": 6,
+                     "SpaceAfter": 6}),
+        Style("Sans Heading", based_on="Heading A", font="Myriad Pro",
+              attrs={"FontStyle": "Bold"})]
+    doc.character_styles += [Style("Bold", attrs={"FontStyle": "Bold"}),
+                             Style("Bold Italic", attrs={"FontStyle": "Bold Italic"}),
+                             Style("Small Caps", attrs={"Capitalization": "SmallCaps"}),
+                             Style("Superscript", attrs={"Position": "Superscript"}),
+                             Style("Underline", attrs={"Underline": True}),
+                             Style("No Break", attrs={"NoBreak": True})]
+    runs = lambda: [Run("Body text with "), Run("italic", "Italic"), Run(", "), Run("bold", "Bold"),
+                    Run(", "), Run("bold italic", "Bold Italic"), Run(", "),
+                    Run("Small Caps", "Small Caps"), Run(", a superscript"),
+                    Run("12", "Superscript"), Run(", "), Run("underline", "Underline"),
+                    Run(" and "), Run("a phrase that must not break", "No Break"), Run(". ")]
+    doc.stories = [Story([
+        Paragraph("Chapter Title", [Run("Character Styles")]),
+        Paragraph("Body First", runs() + [Run(filler(50, 0))]),
+        Paragraph("Block Quote", [Run("The same in a smaller paragraph style: ")] + runs()),
+        Paragraph("Sans Heading", [Run("In a sans heading: "), Run("italic", "Italic"),
+                                   Run(" and "), Run("Small Caps", "Small Caps")]),
+        Paragraph("Body", [Run("Local "), Run("italic", attrs={"FontStyle": "Italic"}),
+                           Run(" override (no character style) in this sentence.")])],
+        [0], sink=72)]
+    return doc
+
+
+def g13_chapter_stories():
+    """One story per chapter on B-Opener pages; chapter one overset; a blank verso with no
+    master; chapter two on its own page, as reference 13."""
+    doc = base_doc(6, "g13-chapter-stories")
+    doc.masters = [Master("A", "Body"), Master("B", "Opener", based_on="A-Body")]
+    doc.page_masters = {0: "B-Opener", 3: "", 4: "B-Opener"}
+    doc.stories = [
+        Story([Paragraph("Chapter Title", [Run("Chapter One (overset)")]),
+               Paragraph("Body First", [Run(filler(1500, 0))])], [0, 1, 2], sink=144),
+        Story([Paragraph("Chapter Title", [Run("Chapter Two")]),
+               Paragraph("Body First", [Run(filler(500, 1))])], [4, 5], sink=144)]
+    return doc
+
+
 FILES = [("g01-footnotes", g01_footnotes), ("g02-section-marker-heads", g02_section_marker_heads),
          ("g03-section-numbering", g03_section_numbering),
-         ("g04-parent-child-masters", g04_parent_child_masters)]
+         ("g04-parent-child-masters", g04_parent_child_masters),
+         ("g05-primary-text-frame", g05_primary_text_frame), ("g06-toc", g06_toc),
+         ("g07-table", g07_table), ("g08-opentype", g08_opentype),
+         ("g09-baseline-grid", g09_baseline_grid), ("g10-hebrew-greek", g10_hebrew_greek),
+         ("g12-character-styles", g12_character_styles),
+         ("g13-chapter-stories", g13_chapter_stories)]
 
 
 def main():

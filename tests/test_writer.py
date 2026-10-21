@@ -17,6 +17,7 @@ from docx2idml.idml.model import Document, Paragraph, Run, Section, Story, Style
 from docx2idml.idml.writer import Writer, roman, write_idml
 from idml_check import check, schema_available
 from idml_inspect import inspect
+import make_generated_files as gen
 from make_generated_files import (g01_footnotes, g02_section_marker_heads,
                                   g03_section_numbering, g04_parent_child_masters)
 
@@ -194,6 +195,76 @@ def test_no_master_and_roman_pages():
         ("vi", "verso"), ("vii", "recto"), ("1", "recto"), ("2", "verso")]
     assert [(m["name"], m["based_on"]) for m in info["masters"]] == [
         ("A-Body", None), ("C-Front", ["A-Body"]), ("D-Display", None), ("E-Blank", None)]
+
+
+def test_all_generated_files_validate():
+    why = schema_available()
+    for name, build in gen.FILES:
+        path = write_idml(build(), os.path.join(TMP, name + ".idml"))
+        assert check(path, schema=why is None) == [], name
+
+
+def _parts(doc, name):
+    z = zipfile.ZipFile(write_idml(doc, os.path.join(TMP, name)))
+    return z, {n: etree.fromstring(z.read(n)) for n in z.namelist() if n.endswith(".xml")}
+
+
+def test_primary_frame_and_linked_pages():
+    """g05: master frames threaded verso -> recto, the verso primary; every page frame linked to
+    the master frame of its side by an OverrideList pair (reference 05, version 3)."""
+    _z, parts = _parts(gen.g05_primary_text_frame(), "g05.idml")
+    ms = [r.find("MasterSpread") for n, r in parts.items() if n.startswith("MasterSpreads/")][0]
+    verso, recto = ms.findall("TextFrame")
+    assert ms.get("PrimaryTextFrame") == verso.get("Self")
+    assert verso.get("NextTextFrame") == recto.get("Self")
+    assert recto.get("PreviousTextFrame") == verso.get("Self")
+    info = inspect(_z.filename)
+    for p in info["pages"]:
+        assert [o["master_item"] for o in p["overrides"]] == [
+            recto.get("Self") if p["side"] == "recto" else verso.get("Self")]
+    story = [s for s in info["stories"] if s["start"]][0]
+    assert [f["id"] for f in story["frames"]] == [o["page_item"] for p in info["pages"]
+                                                  for o in p["overrides"]]
+
+
+def test_table():
+    """g07: 41 rows, 4 columns, cells named column:row, one cell spanning two columns (the cell
+    it covers left out), header row, table and cell styles, the grey swatch."""
+    _z, parts = _parts(gen.g07_table(), "g07.idml")
+    table = [t for n, r in parts.items() if n.startswith("Stories/") for t in r.iter("Table")][0]
+    assert (table.get("HeaderRowCount"), table.get("BodyRowCount"), table.get("ColumnCount")) == \
+        ("1", "40", "4")
+    cells = table.findall("Cell")
+    assert len(cells) == 41 * 4 - 1
+    assert cells[0].get("Name") == "0:0" and cells[1].get("Name") == "1:0"
+    merged = [c for c in cells if c.get("ColumnSpan") == "2"]
+    assert [c.get("Name") for c in merged] == ["2:5"]
+    assert "3:5" not in [c.get("Name") for c in cells]
+    assert table.get("AppliedTableStyle") == "TableStyle/Book Table"
+    graphic = parts["Resources/Graphic.xml"]
+    grey = [c for c in graphic.iter("Color") if c.get("Name") == "Table Grey"][0]
+    assert grey.get("ColorValue") == "0 0 0 12"
+    refs = [s.get("SwatchItemRef") for s in parts["designmap.xml"].iter("ColorGroupSwatch")]
+    assert "Color/Table Grey" in refs
+
+
+def test_toc_grid_language_and_optical_margins():
+    _z, parts = _parts(gen.g06_toc(), "g06.idml")
+    toc = [t for t in parts["Resources/Styles.xml"].iter("TOCStyle") if t.get("Name") == "Contents"][0]
+    assert [(e.get("Name"), e.get("Level")) for e in toc.findall("TOCStyleEntry")] == [
+        ("Chapter Title", "1"), ("Heading A", "2")]
+    _z, parts = _parts(gen.g09_baseline_grid(), "g09.idml")
+    gp = parts["Resources/Preferences.xml"].find("GridPreference")
+    assert (gp.get("BaselineStart"), gp.get("BaselineDivision"), gp.get("BaselineGridShown")) == \
+        ("54", "14", "true")
+    _z, parts = _parts(gen.g10_hebrew_greek(), "g10.idml")
+    heb = [s for s in parts["Resources/Styles.xml"].iter("CharacterStyle") if s.get("Name") == "Hebrew"][0]
+    assert heb.get("AppliedLanguage") == "$ID/Hebrew"
+    assert heb.get("CharacterDirection") == "RightToLeftDirection"
+    _z, parts = _parts(gen.g08_opentype(), "g08.idml")
+    prefs = [r.find("Story/StoryPreference") for n, r in parts.items() if n.startswith("Stories/")]
+    assert any(p.get("OpticalMarginAlignment") == "true" and p.get("OpticalMarginSize") == "11"
+               for p in prefs)
 
 
 def test_text_details():

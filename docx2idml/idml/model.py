@@ -16,6 +16,8 @@ class Style:
     font: str = None              # font family, e.g. "Arno Pro"
     leading: object = None        # points, or "Auto"
     next_style: str = None        # paragraph styles only
+    props: dict = field(default_factory=dict)   # other <Properties>: name -> (type, value)
+    tabs: list = field(default_factory=list)    # (alignment, position, leader), e.g. ("RightAlign", 315, ". ")
 
 
 @dataclass
@@ -25,6 +27,7 @@ class Run:
     attrs: dict = field(default_factory=dict)   # local formatting, e.g. {"FontStyle": "Italic"}
     footnote: list = None         # a footnote here: its paragraphs (list of Paragraph)
     special: str = None           # "page_number" or "section_marker", before the text
+    table: object = None          # a Table here (in a paragraph of its own)
 
 
 @dataclass
@@ -35,10 +38,22 @@ class Paragraph:
 
 
 @dataclass
+class Table:
+    rows: list                    # rows of cells; a cell is a list of Paragraphs, or None where a
+                                  # cell to its left spans over it
+    widths: list                  # column widths, points
+    header_rows: int = 0
+    style: str = None             # table style name
+    spans: dict = field(default_factory=dict)   # (row, column) -> columns spanned
+
+
+@dataclass
 class Story:
     paragraphs: list
     pages: list                   # page indexes (0-based) whose frames the story is threaded through
     sink: float = 0               # extra top margin on the first page (chapter openers)
+    linked: bool = False          # page frames made from the master's primary text frames
+    optical_margins: float = None # optical margin alignment at this size, or None for off
 
 
 @dataclass
@@ -57,6 +72,7 @@ class Frame:
     paragraphs: list
     key: str = None               # a name, so a child master can remove it
     valign: str = None            # e.g. "BottomAlign"
+    primary: bool = False         # the master's primary text frame (verso and recto, threaded)
 
 
 @dataclass
@@ -70,6 +86,30 @@ class Master:
     @property
     def name(self):
         return "%s-%s" % (self.prefix, self.base)
+
+
+@dataclass
+class TableStyle:
+    name: str
+    header_cell_style: str = None
+    body_cell_style: str = None
+    attrs: dict = field(default_factory=dict)
+
+
+@dataclass
+class CellStyle:
+    name: str
+    paragraph_style: str = None
+    fill: str = None              # colour name
+    attrs: dict = field(default_factory=dict)   # insets etc.
+
+
+@dataclass
+class TOCStyle:
+    name: str
+    title: str = "Contents"
+    title_style: str = None
+    entries: list = field(default_factory=list)   # (paragraph style, level, format style)
 
 
 @dataclass
@@ -91,6 +131,11 @@ class Document:
     footnote_separator: str = ". "
     footnotes: dict = field(default_factory=dict)      # the profile's footnote settings
     name: str = "Untitled"
+    colors: list = field(default_factory=list)         # (name, (c, m, y, k))
+    table_styles: list = field(default_factory=list)
+    cell_styles: list = field(default_factory=list)
+    toc_styles: list = field(default_factory=list)
+    baseline_grid: dict = None    # {"start": pt, "division": pt, "shown": bool, "relative": "TopOfMargin..."}
 
     def style(self, name, kind="paragraph"):
         for s in (self.paragraph_styles if kind == "paragraph" else self.character_styles):

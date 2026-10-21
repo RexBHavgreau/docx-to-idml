@@ -18,6 +18,8 @@ import zipfile
 
 from lxml import etree
 
+from .model import Paragraph
+
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "base")
 PKG = "http://ns.adobe.com/AdobeInDesign/idml/1.0/packaging"
 MIMETYPE = b"application/vnd.adobe.indesign-idml-package"
@@ -25,6 +27,14 @@ DOM = "21.5"
 NONE_CHAR = "CharacterStyle/$ID/[No character style]"
 ROOT_PARA = "$ID/[No paragraph style]"
 PAGE_GAP = 180                    # vertical space between spreads, as InDesign lays them out
+
+# Order of a style's <Properties> children after BasedOn, AppliedFont and Leading (the schema's).
+PROPS_ORDER = ["UnderlineColor", "UnderlineGapColor", "UnderlineType", "StrikeThroughColor",
+               "StrikeThroughGapColor", "StrikeThroughType", "ParagraphBorderColor",
+               "ParagraphBorderGapColor", "ParagraphBorderType", "SameParaStyleSpacing",
+               "BalanceRaggedLines", "RuleAboveColor", "RuleAboveGapColor", "RuleAboveType",
+               "RuleBelowColor", "RuleBelowGapColor", "RuleBelowType", "SpanSplitColumnCount",
+               "PreviewColor"]
 
 # Special characters: <?ACE n?> processing instructions.
 SPECIAL = {"page_number": "18", "section_marker": "19"}
@@ -100,6 +110,8 @@ class Writer:
         self.layer = dm.find("Layer").get("Self")
         self.styles = _parse(os.path.join(BASE, "Resources", "Styles.xml"))
         self.prefs = _parse(os.path.join(BASE, "Resources", "Preferences.xml"))
+        self.graphic = _parse(os.path.join(BASE, "Resources", "Graphic.xml"))
+        self._write_colors(dm)
         self._write_styles()
         self._write_preferences()
         self.section_ids = [self.ids() for _ in doc.sections]
@@ -111,7 +123,7 @@ class Writer:
         with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
             z.writestr(zipfile.ZipInfo("mimetype"), MIMETYPE, zipfile.ZIP_STORED)
             files = {"designmap.xml": dm, "Resources/Styles.xml": self.styles,
-                     "Resources/Preferences.xml": self.prefs}
+                     "Resources/Preferences.xml": self.prefs, "Resources/Graphic.xml": self.graphic}
             files.update(self.parts)
             for name in ("META-INF/container.xml", "Resources/Graphic.xml", "Resources/Fonts.xml",
                          "XML/Tags.xml", "XML/BackingStory.xml"):
@@ -119,6 +131,26 @@ class Writer:
             for name, root in files.items():
                 z.writestr(name, serialize(root))
         return path
+
+    def _write_colors(self, dm):
+        """CMYK process swatches, cloned from one InDesign wrote, each also listed in the
+        designmap's colour group."""
+        if not self.doc.colors:
+            return
+        template = [c for c in self.graphic.iter("Color") if c.get("Space") == "CMYK"
+                    and c.get("Model") == "Process" and c.get("SwatchColorGroupReference")][0]
+        group = dm.find("ColorGroup")
+        n = len(group.findall("ColorGroupSwatch"))
+        for name, cmyk in self.doc.colors:
+            c = copy.deepcopy(template)
+            ref = "%sColorGroupSwatch%x" % (group.get("Self"), n)
+            n += 1
+            c.set("Self", "Color/%s" % name)
+            c.set("Name", name)
+            c.set("ColorValue", " ".join(_num(v) for v in cmyk))
+            c.set("SwatchColorGroupReference", ref)
+            template.getparent().insert(list(template.getparent()).index(template) + 1, c)
+            etree.SubElement(group, "ColorGroupSwatch", Self=ref, SwatchItemRef="Color/%s" % name)
 
     def _wrap(self, kind, el):
         """<idPkg:Kind> wrapper around a part's main element."""
@@ -155,6 +187,17 @@ class Writer:
             based.set("type", "string")
             based.text = ROOT_PARA if kind == "paragraph" else "$ID/[No character style]"
         self._font_leading(props, s.font, s.leading)
+        for name in sorted(s.props, key=lambda n: PROPS_ORDER.index(n) if n in PROPS_ORDER else 99):
+            typ, value = s.props[name]
+            etree.SubElement(props, name, type=typ).text = _num(value)
+        if s.tabs:
+            tl = etree.SubElement(props, "TabList", type="list")
+            for alignment, position, leader in s.tabs:
+                item = etree.SubElement(tl, "ListItem", type="record")
+                etree.SubElement(item, "Alignment", type="enumeration").text = alignment
+                etree.SubElement(item, "AlignmentCharacter", type="string").text = "."
+                etree.SubElement(item, "Leader", type="string").text = leader or ""
+                etree.SubElement(item, "Position", type="unit").text = _num(position)
         return el
 
     @staticmethod
@@ -174,6 +217,57 @@ class Writer:
         cg = self.styles.find("RootCharacterStyleGroup")
         for s in self.doc.character_styles:
             cg.append(self._style_el(s, "character"))
+        group = self.styles.find("RootCellStyleGroup")
+        for cs in self.doc.cell_styles:
+            el = etree.SubElement(group, "CellStyle", Self="CellStyle/%s" % cs.name,
+                                  ExtendedKeyboardShortcut="0 0 0")
+            for k, v in cs.attrs.items():
+                el.set(k, _num(v))
+            if cs.paragraph_style:
+                el.set("AppliedParagraphStyle", "ParagraphStyle/%s" % cs.paragraph_style)
+            if cs.fill:
+                el.set("FillColor", "Color/%s" % cs.fill)
+            el.set("KeyboardShortcut", "0 0")
+            el.set("Name", cs.name)
+            etree.SubElement(etree.SubElement(el, "Properties"), "BasedOn",
+                             type="string").text = "$ID/[None]"
+        group = self.styles.find("RootTableStyleGroup")
+        for ts in self.doc.table_styles:
+            el = etree.SubElement(group, "TableStyle", Self="TableStyle/%s" % ts.name,
+                                  ExtendedKeyboardShortcut="0 0 0", Name=ts.name)
+            for k, v in ts.attrs.items():
+                el.set(k, _num(v))
+            if ts.header_cell_style:
+                el.set("HeaderRegionSameAsBodyRegion", "false")
+                el.set("HeaderRegionCellStyle", "CellStyle/%s" % ts.header_cell_style)
+            if ts.body_cell_style:
+                el.set("BodyRegionCellStyle", "CellStyle/%s" % ts.body_cell_style)
+            el.set("KeyboardShortcut", "0 0")
+            etree.SubElement(etree.SubElement(el, "Properties"), "BasedOn",
+                             type="string").text = "$ID/[No table style]"
+        tocs = list(self.styles.iter("TOCStyle"))
+        after = tocs[-1] if tocs else None
+        for toc in self.doc.toc_styles:
+            el = etree.Element("TOCStyle", Self="TOCStyle/%s" % toc.name, Title=toc.title,
+                               Name=toc.name, RunIn="false", IncludeHidden="false",
+                               IncludeBookDocuments="false", CreateBookmarks="true",
+                               SetStoryDirection="Horizontal", NumberedParagraphs="ExcludeNumbers",
+                               RemoveForcedLineBreak="false", MakeAnchor="false")
+            if toc.title_style:
+                el.set("TitleStyle", "ParagraphStyle/%s" % toc.title_style)
+            for n, (style, level, fmt) in enumerate(toc.entries):
+                e = etree.SubElement(el, "TOCStyleEntry", Self="%sTOCStyleEntry%d" % (self.ids(), n),
+                                     Name=style, Level=str(level), PageNumberPosition="AfterEntry",
+                                     Separator="$ID/^t", SortAlphabet="false")
+                pr = etree.SubElement(e, "Properties")
+                etree.SubElement(pr, "FormatStyle", type="object").text = "ParagraphStyle/%s" % fmt
+                etree.SubElement(pr, "PageNumberStyle", type="string").text = "$ID/[Same Style]"
+                etree.SubElement(pr, "SeparatorStyle", type="string").text = "$ID/[Same Style]"
+            if after is not None:
+                after.addnext(el)
+            else:
+                self.styles.append(el)
+            after = el
 
     def _write_preferences(self):
         doc, p = self.doc, self.prefs
@@ -212,6 +306,14 @@ class Writer:
             fo.set(prefix + "LineWeight", "0.5")
             fo.set(prefix + "Offset", "0")
             fo.set(prefix + "LeftIndent", "0")
+        grid = doc.baseline_grid
+        if grid:
+            gp = p.find("GridPreference")
+            gp.set("BaselineStart", _num(grid.get("start", doc.margins["top"])))
+            gp.set("BaselineDivision", _num(grid["division"]))
+            gp.set("BaselineGridShown", _num(grid.get("shown", True)))
+            gp.set("BaselineGridRelativeOption",
+                   grid.get("relative", "TopOfMarginOfBaselineGridRelativeOption"))
         restart = fo.find("Properties/RestartNumbering")
         if restart is not None:
             restart.text = ("DontRestart" if fn.get("numbering") == "continuous"
@@ -341,6 +443,7 @@ class Writer:
             out[m.name] = self.ids()
         frame_ids = {}            # (master name, frame key, side) -> frame id
         self.master_stories = []  # (story id, paragraphs)
+        self.primary_frames = {}  # master name -> {side: primary frame element}
         for m in self._parents_first():
             ms = etree.Element("MasterSpread", self.snip["MasterSpread"].attrib)
             mid = out[m.name]
@@ -366,14 +469,33 @@ class Writer:
                 page.set("OverrideList", " ".join(pairs))
                 ms.append(page)
                 pages[side] = x
+            primary_story = None
             for fr in m.frames:
                 x = pages.get(fr.side, pages.get("recto"))
                 top, left, bottom, right = fr.bounds
-                sid = self.ids()
+                if fr.primary:
+                    # One story threaded through the master's verso and recto frames.
+                    new = primary_story is None
+                    primary_story = primary_story or self.ids()
+                    sid = primary_story
+                else:
+                    new, sid = True, self.ids()
                 f = self._frame_el(sid, x + left, -self.doc.height / 2 + top, right - left,
                                    bottom - top, master=True, valign=fr.valign)
                 ms.append(f)
-                self.master_stories.append((sid, fr.paragraphs))
+                if new:
+                    self.master_stories.append(
+                        (sid, fr.paragraphs or [Paragraph("$ID/NormalParagraphStyle")]))
+                if fr.primary:
+                    prev = self.primary_frames.get(m.name, {})
+                    if prev:
+                        last = list(prev.values())[-1]
+                        last.set("NextTextFrame", f.get("Self"))
+                        f.set("PreviousTextFrame", last.get("Self"))
+                    else:
+                        ms.set("PrimaryTextFrame", f.get("Self"))
+                    prev[fr.side] = f
+                    self.primary_frames[m.name] = prev
                 if fr.key:
                     frame_ids[(m.name, fr.key, fr.side)] = f.get("Self")
             self.parts["MasterSpreads/MasterSpread_%s.xml" % mid] = self._wrap("MasterSpread", ms)
@@ -403,6 +525,8 @@ class Writer:
         story_ids = [self.ids() for _ in doc.stories]
         frames = {k: [] for k in range(len(doc.stories))}
         spreads = []
+        page_els = {}
+        names_by_id = {v: k for k, v in masters.items()}
         for k, group in enumerate(self._spreads()):
             sp = etree.Element("Spread", self.snip["Spread"].attrib)
             for child in self.snip["Spread"]:
@@ -420,6 +544,7 @@ class Writer:
                                      self.section_ids[0])
                 self._descriptor(page, *numbers[i])
                 sp.append(page)
+                page_els[i] = (page, names_by_id.get(mid))
             for i in group:
                 for k2, story in enumerate(doc.stories):
                     if i in story.pages:
@@ -432,6 +557,14 @@ class Writer:
                         f = self._frame_el(story_ids[k2], left, top, self.measure, height)
                         sp.append(f)
                         frames[k2].append(f)
+                        if story.linked:
+                            page, mname = page_els[i]
+                            side = "recto" if recto else "verso"
+                            mf = self.primary_frames.get(mname, {}).get(side)
+                            if mf is not None:
+                                pairs = (page.get("OverrideList") or "").split()
+                                page.set("OverrideList",
+                                         " ".join(pairs + [mf.get("Self"), f.get("Self")]))
             self.parts["Spreads/Spread_%s.xml" % sid] = self._wrap("Spread", sp)
             spreads.append(sid)
         for k2, fl in frames.items():
@@ -445,12 +578,17 @@ class Writer:
 
     def _write_stories(self, frames):
         out = []
-        todo = [(self.story_ids[k], story.paragraphs) for k, story in enumerate(self.doc.stories)]
-        for sid, paragraphs in self.master_stories + todo:
+        todo = [(self.story_ids[k], story.paragraphs, story)
+                for k, story in enumerate(self.doc.stories)]
+        for sid, paragraphs, story in [(a, b, None) for a, b in self.master_stories] + todo:
             st = etree.Element("Story", self.snip["Story"].attrib)
             for child in self.snip["Story"]:
                 st.append(copy.deepcopy(child))
             st.set("Self", sid)
+            if story is not None and story.optical_margins:
+                pref = st.find("StoryPreference")
+                pref.set("OpticalMarginAlignment", "true")
+                pref.set("OpticalMarginSize", _num(story.optical_margins))
             for n, para in enumerate(paragraphs):
                 st.append(self._paragraph(para, last=(n == len(paragraphs) - 1)))
             self.parts["Stories/Story_%s.xml" % sid] = self._wrap("Story", st)
@@ -489,6 +627,12 @@ class Writer:
             c.append(pi)
             psr.append(num)
         for run in para.runs:
+            if run.table is not None:
+                csr = self._csr(None)
+                csr.append(self._table(run.table))
+                etree.SubElement(csr, "Content")
+                psr.append(csr)
+                continue
             if run.footnote is not None:
                 csr = self._csr(self.doc.footnote_marker_style
                                 if self.doc.style(self.doc.footnote_marker_style, "character")
@@ -511,11 +655,45 @@ class Writer:
             else:
                 self._content(csr, run.text)
             psr.append(csr)
+        if not len(psr):
+            psr.append(self._csr(None))
         if not last:
-            if not len(psr) or psr[-1].find("Footnote") is not None:
+            if psr[-1].find("Footnote") is not None:
                 psr.append(self._csr(None))
             etree.SubElement(psr[-1], "Br")
         return psr
+
+    def _table(self, t):
+        """A table as InDesign writes it: rows, columns, then cells row by row, named
+        "column:row"; a cell covered by a span to its left is left out."""
+        tid = self.ids()
+        ncols = len(t.widths)
+        el = etree.Element("Table", Self=tid, HeaderRowCount=str(t.header_rows),
+                           FooterRowCount="0", NumHeaderColumns="0",
+                           HeaderColumnsPosition="HeaderColumnsLeft",
+                           BodyRowCount=str(len(t.rows) - t.header_rows), ColumnCount=str(ncols),
+                           TableDirection="LeftToRightDirection")
+        if t.style:
+            el.set("AppliedTableStyle", "TableStyle/%s" % t.style)
+        for r in range(len(t.rows)):
+            etree.SubElement(el, "Row", Self="%sRow%x" % (tid, r), Name=str(r))
+        for c, w in enumerate(t.widths):
+            etree.SubElement(el, "Column", Self="%sColumn%x" % (tid, c), Name=str(c),
+                             SingleColumnWidth=_num(w))
+        for r, row in enumerate(t.rows):
+            for c in range(ncols):
+                paras = row[c] if c < len(row) else []
+                if paras is None:
+                    continue
+                cell = etree.SubElement(el, "Cell", Self="%si%x" % (tid, r * ncols + c),
+                                        Name="%d:%d" % (c, r), RowSpan="1",
+                                        ColumnSpan=str(t.spans.get((r, c), 1)),
+                                        CellType="TextTypeCell",
+                                        AppliedCellStyle="CellStyle/$ID/[None]",
+                                        AppliedCellStylePriority="0")
+                for n, para in enumerate(paras):
+                    cell.append(self._paragraph(para, last=(n == len(paras) - 1)))
+        return el
 
     def _footnote(self, paragraphs):
         fn = etree.Element("Footnote")
