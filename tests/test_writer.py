@@ -162,10 +162,9 @@ def test_running_heads():
     """g02: master frames carry the page number and section marker, as reference 02."""
     info = inspect(write_idml(g02_section_marker_heads(), os.path.join(TMP, "g02.idml")))
     assert [(m["name"], len(m["text_frames"])) for m in info["masters"]] == [("A-Body", 2)]
-    heads = sorted(str(s.get("special_characters")) for s in info["stories"]
-                   if s.get("special_characters"))
-    assert heads == ["{'current page number': 1, 'section marker': 1}",
-                     "{'current page number': 1}"]
+    heads = [s["special_characters"] for s in info["stories"] if s.get("special_characters")]
+    assert sorted(heads, key=len) == [{"current page number": 1},
+                                      {"current page number": 1, "section marker": 1}]
     assert [s["marker"] for s in info["sections"]] == [
         "First Chapter", "Second Chapter", "A Third Chapter with a Much Longer Title Than the Others"]
 
