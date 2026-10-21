@@ -71,6 +71,13 @@ def test_designmap_keeps_aid_instruction():
     assert b'<?aid style="50" type="document"' in head
 
 
+def test_pages_per_document_stays_one():
+    """InDesign added pages at the start when PagesPerDocument was the real page count."""
+    path = write_idml(g01_footnotes(), os.path.join(TMP, "ppd.idml"))
+    prefs = etree.fromstring(zipfile.ZipFile(path).read("Resources/Preferences.xml"))
+    assert prefs.find("DocumentPreference").get("PagesPerDocument") == "1"
+
+
 def test_g01_validates():
     path = write_idml(g01_footnotes(), os.path.join(TMP, "g01.idml"))
     why = schema_available()

@@ -178,7 +178,9 @@ class Writer:
         dp.set("PageWidth", _num(doc.width))
         dp.set("PageHeight", _num(doc.height))
         dp.set("FacingPages", _num(doc.facing))
-        dp.set("PagesPerDocument", str(doc.page_count))
+        # PagesPerDocument stays as InDesign writes it (1): it is the page count for a new
+        # document, not this one's. Set to the real count, InDesign adds that many pages before
+        # the file's own when opening it.
         mp = p.find("MarginPreference")
         m = doc.margins
         for k, v in (("Top", m["top"]), ("Bottom", m["bottom"]), ("Left", m["inside"]),
