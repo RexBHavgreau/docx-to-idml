@@ -15,6 +15,10 @@ version 4) is removed.
   fn-c-note-formatting  note paragraphs also carry the Footnote style's settings directly
   fn-d-note-local-italic italic inside notes as local formatting, not the Italic style
   fn-e-all              b + c + d together
+  fn-f-note-break       each note paragraph ends with a paragraph break (InDesign writes none)
+  fn-g-renamed-styles   the note styles renamed "Note Text" and "Note Callout", in case
+                        Affinity's own notes style named "Footnote" takes over
+  fn-h-renamed-break    f + g
 """
 
 import os
@@ -61,8 +65,21 @@ def set_props(el, props):
             child.text = text
 
 
+RENAMES = [('"ParagraphStyle/Footnote"', '"ParagraphStyle/Note Text"'),
+           ('Name="Footnote"', 'Name="Note Text"'),
+           ('"CharacterStyle/Footnote Reference"', '"CharacterStyle/Note Callout"'),
+           ('Name="Footnote Reference"', 'Name="Note Callout"')]
+
+
+def rename(xml):
+    text = xml.decode("utf-8")
+    for a, b in RENAMES:
+        text = text.replace(a, b)
+    return text.encode("utf-8")
+
+
 def transform(story_xml, plain_callout=False, local_superscript=False, note_format=None,
-              note_local_italic=False):
+              note_local_italic=False, note_break=False):
     root = etree.fromstring(story_xml)
     for csr in root.iter("CharacterStyleRange"):
         # The stray local italic after the Italic run in note 1.
@@ -80,6 +97,9 @@ def transform(story_xml, plain_callout=False, local_superscript=False, note_form
                     for k, v in attrs.items():
                         csr.set(k, v)
                     set_props(csr, props)
+        if note_break:
+            last = list(fn.iter("CharacterStyleRange"))[-1]
+            etree.SubElement(last, "Br")
         if note_local_italic:
             for csr in fn.iter("CharacterStyleRange"):
                 if csr.get("AppliedCharacterStyle") == "CharacterStyle/Italic":
@@ -102,6 +122,9 @@ VARIANTS = [
     ("fn-c-note-formatting", {"note_format": True}, False),
     ("fn-d-note-local-italic", {"note_local_italic": True}, False),
     ("fn-e-all", {"local_superscript": True, "note_format": True, "note_local_italic": True}, True),
+    ("fn-f-note-break", {"note_break": True}, False),
+    ("fn-g-renamed-styles", {"rename": True}, False),
+    ("fn-h-renamed-break", {"rename": True, "note_break": True}, False),
 ]
 
 
@@ -113,6 +136,7 @@ def main():
     bad = 0
     for name, opts, plain_marker in VARIANTS:
         opts = dict(opts)
+        renamed = opts.pop("rename", False)
         if opts.get("note_format"):
             opts["note_format"] = fmt
         path = os.path.join(OUT, name + ".idml")
@@ -123,6 +147,8 @@ def main():
                     data = transform(data, **opts)
                 elif info.filename == "Resources/Preferences.xml" and plain_marker:
                     data = no_marker_style(data)
+                if renamed and info.filename.endswith(".xml"):
+                    data = rename(data)
                 if info.filename == "mimetype":
                     z.writestr(info, data, zipfile.ZIP_STORED)
                 else:

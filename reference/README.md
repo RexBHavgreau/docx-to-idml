@@ -89,7 +89,7 @@ summarize one with `python tools/idml_inspect.py`. The `.indd` and PDFs can stay
 Affinity mishandles the footnotes in 01 even though the IDML is clean: body text after a
 callout shows "Footnote Reference", note 1 loses its formatting at the italic, and later notes
 lose the Footnote style. To find the structure Affinity reads correctly,
-`python tools/make_footnote_variants.py` makes six variants of 01 in `reference/variants/`,
+`python tools/make_footnote_variants.py` makes nine variants of 01 in `reference/variants/`,
 each changing one thing (all pass the schema):
 
 | File | What changes | Affinity: body text after callouts plain? | Note 1 right through the italic? | Notes 2-3 keep Footnote style or look right? | Notes |
@@ -100,6 +100,9 @@ each changing one thing (all pass the schema):
 | fn-c-note-formatting | Note text also carries the Footnote style's settings (size, indent, font) directly | | | **Formatting kept; only note 1 keeps the style name "Footnote"** | |
 | fn-d-note-local-italic | Italic inside notes as local formatting, not the Italic style | | | | |
 | fn-e-all | b + c + d together | | | **Formatting kept; only note 1 keeps the style name "Footnote"** | |
+| fn-f-note-break | Each note paragraph ends with a paragraph break (InDesign writes none) | | | | |
+| fn-g-renamed-styles | Note styles renamed "Note Text" and "Note Callout" (in case Affinity's own "Footnote" style takes over) | | | | |
+| fn-h-renamed-break | f + g together | | | | |
 
 For each: open in Affinity, click into the body text after the first callout and look at the
 character style; click into notes 1, 2 and 3 and look at the paragraph style and size (9 pt);

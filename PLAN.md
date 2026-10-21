@@ -191,6 +191,8 @@ The 13 reference files from InDesign, opened in the current Affinity app by Beau
 
 **Variant results so far (Beaux, October 21):** fn-c and fn-e (note text also formatted directly) keep the notes' look in Affinity; in both, only note 1 keeps the paragraph style name "Footnote", later notes show [Basic Paragraph]. So Affinity applies the note style to the first note only; direct formatting is the way to make every note look right there. Still to report: body text after callouts in fn-a and fn-b (plain, or "Footnote Reference"?), and whether the first note of chapter two (a second story) keeps the style.
 
+Beaux confirmed the same footnote fault in an IDML exported from a real InDesign document, so it is Affinity's IDML reader, not the generator. Three more variants test the two file-side ideas left: a paragraph break ending each note (fn-f), and note styles renamed away from "Footnote" in case Affinity's own notes style takes over (fn-g, fn-h). If neither keeps the style, the pathway is direct formatting on note text for Affinity books (fn-c), plus re-applying the style in Affinity if it allows that in one step.
+
 **Open: footnote text in Affinity.** Options: (a) also write the Footnote style's settings (font, size, leading, indent) directly on the footnote text, so it looks right in Affinity even without the style (InDesign would show the style with overrides); (b) leave it to the user to apply the Footnote style to the notes in Affinity in one step, if Affinity allows that; (c) (a) only when the profile says the book is for Affinity.
 
 Beaux's reminders, already in the plan: chapter opener pages carry no running heads (02 had them only on the test's A master), and blank pages carry nothing, neither heads nor folio (E-Blank).
