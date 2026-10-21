@@ -56,10 +56,11 @@ keep it up to date when decisions change.
   `HL Composer Optyca` (World-Ready). They are InDesign's own, not plug-ins.
 - IDML: a parent-master item removed on a child master, or a master item removed on a page,
   is an `OverrideList` pair with `n` as the page item.
-- Affinity reads a footnote properly only if its paragraph has two or more CharacterStyleRanges
-  (single-run notes lose their style and settings). Workaround (fn-i, confirmed for the style
-  name): the number `<?ACE 4?>` and separator in a run of their own. The generator always does
-  this.
+- Footnotes are written as in `reference/variants/fn-m-split-formatting.idml` (decided after
+  Affinity tests, see PLAN.md): Footnote paragraph style; the number `<?ACE 4?>` and separator in
+  a run of their own (Affinity breaks single-run notes); the Footnote style's font, size,
+  leading, indent and alignment also on every note run (Affinity otherwise lays the root style
+  `[No paragraph style]` over note text). Style edits still reach every note in both programs.
 - IDML: a page frame made from a master frame is linked on the `<Page>` element,
   `OverrideList="<master item> <page item> ..."` (pairs), not on the frame; the frame itself is
   an ordinary `TextFrame` (reference file 05).
@@ -83,10 +84,8 @@ On Windows set `PYTHONUTF8=1`. `test_preflight` includes a LibreOffice round tri
 writes one.
 
 ## Not yet checked
-- Step 2: Affinity done (compatibility table in PLAN.md) except footnotes: Affinity mishandles
-  single-run footnotes (see Conventions); variants fn-i and fn-j in `reference/variants/`
-  (`tools/make_footnote_variants.py`) test the workaround, waiting on Beaux's check. 08, 10, 12 rebuilt (v4)
-  and clean; their Affinity check is still to redo. DesignCraft not yet. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
+- Step 2: Affinity done, footnotes settled (fn-m). 08 and 10 (rebuilt clean in v4) not yet
+  rechecked in Affinity; 12 rechecked, fine. DesignCraft not yet. `reference/make_reference_files.jsx` v3 made the last file (05); all 13
   are in `reference/idml/` and validate. ExtendScript is
   ES3: no let/const, arrow functions, forEach/indexOf/map, trim. The file is saved as UTF-8
   with a byte-order mark.

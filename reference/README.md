@@ -119,3 +119,8 @@ footnote (settings available, style applied) only when the note's text had two o
 runs (e.g. it contained italic); notes written as a single run were broken. fn-i and fn-j test
 the workaround: the number in its own run. Check every note: settings available, Footnote style
 shown, and a change to the document-wide footnote style reaching all notes.
+
+**Result (October 21):** fn-m (number in its own run, Footnote settings also written on the note
+text) works in Affinity and InDesign, and editing the Footnote style reaches every note in both.
+The generator writes footnotes that way. fn-n confirmed the cause of the rest: Affinity lays the
+root style `[No paragraph style]` over note text.

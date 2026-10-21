@@ -55,7 +55,9 @@ The main use is preparing books for **KDP print**, but the tool is not tied to o
 - **Style conflicts across files** (the same style name defined differently in two files) are reported in preflight. The style map applies by name, so one mapping covers every file.
 - Images, footnotes and section settings are collected from every file. Footnote numbering restarts per chapter by default.
 
-### Target programs (proposed October 21, 2026)
+### Target programs (proposed October 21, 2026; not needed for now)
+*Since fn-m works in both programs, one output serves all; the checkboxes are set aside unless a later finding needs a per-program difference. The report still gives program-specific advice (e.g. Hebrew: use InDesign).*
+
 - The user ticks the programs the book is for: **InDesign, Affinity, DesignCraft** (Scribus only if wanted; it would need its own pass through the reference files). Each ticked program gets its own file (`Book (InDesign).idml`, `Book (Affinity).idml`); none ticked gives one "any program" file with every workaround on. The choice is saved in the profile.
 - Differences come from one table of per-program workarounds, so each compatibility finding is one entry. Known so far: footnote formatting written directly on note text for Affinity and "any" (InDesign stays clean); the footnote number always in its own run; Hebrew warnings by program; fewer buffer pages for InDesign (smart text reflow adds pages), the full estimate plus buffer for the others; the TOC style written for InDesign and "any".
 - The cross-program rule still holds: every output works in every program; targets only add workarounds, never InDesign-only features.
@@ -176,7 +178,7 @@ The 13 reference files from InDesign, opened in the current Affinity app by Beau
 
 | Feature (file) | Affinity | Decision |
 |---|---|---|
-| Footnotes (01) | **Works**: at the page foot, numbering restarts per section, a long note splits. **The footnote text loses its paragraph style**: Affinity shows [Basic Paragraph], though InDesign writes `AppliedParagraphStyle="ParagraphStyle/Footnote"` on every note paragraph | Use footnotes as planned. Fallback for the lost style still to choose (see below) |
+| Footnotes (01) | **Works**: at the page foot, numbering restarts per section, a long note splits. As InDesign writes them, notes lose their style or fall back to the root style's font and size | **Written as in fn-m** (see the decision below): works in both programs, and style edits reach every note |
 | Section-marker running heads (02) | **Works** | Recto heads from section markers, one section per chapter, as planned |
 | Roman/arabic sections, display pages without folio (03) | **Works**. The odd placing of pages in Affinity copies InDesign's own spreads: the front matter ended on vii, so InDesign put chapter 1 alone on a recto spread and page 2 alone on the next | As planned. The generator inserts a blank verso (E-Blank) before a recto opener, so spreads stay in pairs |
 | Parent/child masters (04) | **Works**: B-Opener stays based on A-Body, heads removed, folio dropped | B-Opener based on A-Body; no per-chapter master fallback needed |
@@ -210,7 +212,13 @@ Beaux confirmed the same footnote fault in an IDML exported from a real InDesign
 
 **fn-m and fn-n result (Beaux, October 21):** **fn-m works perfectly in Affinity**: every note 9 pt Arno, Footnote style, no "+". fn-n confirms the cause: the faulty text (from "in it" in note 1 on) became Arno Pro 10 pt with a "+", i.e. Affinity lays the root style `[No paragraph style]` over that note text. Last check before deciding: editing the Footnote style (9 → 10 pt) in fn-m, in Affinity and in InDesign (does InDesign show a "+" on opening?). If notes follow the style in both, fn-m is how the generator writes every footnote and per-program outputs aren't needed for footnotes.
 
-**Open: footnote text in Affinity.** Options: (a) also write the Footnote style's settings (font, size, leading, indent) directly on the footnote text, so it looks right in Affinity even without the style (InDesign would show the style with overrides); (b) leave it to the user to apply the Footnote style to the notes in Affinity in one step, if Affinity allows that; (c) (a) only when the profile says the book is for Affinity.
+**Decided (October 21): footnotes are written as in fn-m, for every program.** Editing the Footnote style (9 → 10 pt) reached every note in both Affinity and InDesign, so the directly written settings don't block style changes. The generator writes each note as:
+- the note paragraph in the Footnote style (`FootnoteOption FootnoteTextStyle` also set to it);
+- the footnote number `<?ACE 4?>` and the separator in a run of their own (so every note has at least two runs; single-run notes are broken in Affinity);
+- the Footnote style's font, size, leading, indent and alignment also written on every run of note text (Affinity otherwise lays the root style over note text);
+- italic and other character formatting in notes as usual.
+
+~~**Open: footnote text in Affinity.**~~ Settled by the decision above. Options: (a) also write the Footnote style's settings (font, size, leading, indent) directly on the footnote text, so it looks right in Affinity even without the style (InDesign would show the style with overrides); (b) leave it to the user to apply the Footnote style to the notes in Affinity in one step, if Affinity allows that; (c) (a) only when the profile says the book is for Affinity.
 
 Beaux's reminders, already in the plan: chapter opener pages carry no running heads (02 had them only on the test's A master), and blank pages carry nothing, neither heads nor folio (E-Blank).
 
