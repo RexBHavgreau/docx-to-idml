@@ -61,19 +61,19 @@ Result: **works**, **partly** (say what differs) or **lost**.
 
 | File | What to check in Affinity | Result | Notes |
 |---|---|---|---|
-| 01-footnotes | Notes at the page foot; numbers restart at 1 in chapter two; the long note splits (or is kept whole); marker style still "Footnote Reference" | | |
-| 02-section-marker-heads | Recto heads change with each section; the long title; Affinity's Section Name field | | |
-| 03-section-numbering | Folio on the contents page reads "v"; chapter one reads "1"; no folio on display pages | | |
-| 04-parent-child-masters | B-Opener still based on A-Body (Master panel); no heads on opener pages; folio at the foot | | |
-| 05-primary-text-frame | Pages and threading kept; text flows on when more is added (does Affinity add pages?) | | |
-| 06-toc | Entries, bold, dot leader and page numbers at the tab; can the TOC be updated in Affinity? | | |
-| 07-table | Styles; header row repeats on page 2; merged cells | | |
-| 08-opentype | Each feature in turn: ligatures, figures, small caps, fractions, ordinals, hyphenation, optical margins, balanced heading | | |
-| 09-baseline-grid | Grid shown at the same place; text on the grid; the off-grid block quote | | |
-| 10-hebrew-greek | Expect Hebrew to fail (letters reversed). Check that Greek is kept and the English around the Hebrew is not disturbed | | |
-| 11-images | Inline image stays anchored and moves with the text; caption; wrap on the free image | | |
-| 12-character-styles | Each styled word keeps the paragraph's font and size and changes only its own attribute | | |
-| 13-chapter-stories | Overset in chapter one reported; chapter two on its own page; blank verso kept | | |
+| 01-footnotes | Notes at the page foot; numbers restart at 1 in chapter two; the long note splits (or is kept whole); marker style still "Footnote Reference" | Yes. Notes at the page foot. Footnotes have no paragraph style in Affinity. Numbering restarts at the next chapter. | Long note splits (but I think this is a setting in Affinity).|
+| 02-section-marker-heads | Recto heads change with each section; the long title; Affinity's Section Name field | Works. | But note that chapter opening pages should have no headings. If those were only set for test purposes, that is fine, but only regular pages in the chapter should have running headers. |
+| 03-section-numbering | Folio on the contents page reads "v"; chapter one reads "1"; no folio on display pages | Correct. | On this one, the pages are a bit scattered in the layout relative to one another. The internal content is fair, though. |
+| 04-parent-child-masters | B-Opener still based on A-Body (Master panel); no heads on opener pages; folio at the foot | Correct. Though a blank page should have no text content, neither a page number nor a header. | |
+| 05-primary-text-frame | Pages and threading kept; text flows on when more is added (does Affinity add pages?) | No. | Affinity does not automatically add pages, even in native Affinity files. But output is identical to the InDesign output, at least superficially.|
+| 06-toc | Entries, bold, dot leader and page numbers at the tab; can the TOC be updated in Affinity? | Formatting is inconsistent, and page numbers inexact or missing. Dot leader appears with number. Cannot be updated, only replaced using styles, but no hierarchy via indents appears; all headings appear at the same level in the TOC. | |
+| 07-table | Styles; header row repeats on page 2; merged cells | No header, but maybe I don't know what you mean. Merged cells are there. | |
+| 08-opentype | Each feature in turn: ligatures, figures, small caps, fractions, ordinals, hyphenation, optical margins, balanced heading | Works. | |
+| 09-baseline-grid | Grid shown at the same place; text on the grid; the off-grid block quote | Correct. | |
+| 10-hebrew-greek | Expect Hebrew to fail (letters reversed). Check that Greek is kept and the English around the Hebrew is not disturbed | Hebrew fails as expected. | This is Affinity's fault, not the converter's. |
+| 11-images | Inline image stays anchored and moves with the text; caption; wrap on the free image | All correct. | |
+| 12-character-styles | Each styled word keeps the paragraph's font and size and changes only its own attribute | Looks right. | |
+| 13-chapter-stories | Overset in chapter one reported; chapter two on its own page; blank verso kept | Yes. | |
 
 DesignCraft is checked later by script (its CLI exports each page as PNG).
 
