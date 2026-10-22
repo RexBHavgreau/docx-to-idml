@@ -246,6 +246,59 @@ def test_update_check_at_every_start():
         updates.check, messagebox.askyesno = real_check, real_ask
 
 
+def test_style_mapping_panel():
+    """All styles in one panel after the automatic mapping; the user's choices are saved in
+    the profile and used by the export."""
+    from docx2idml import gui
+    app, root = _app()
+    try:
+        app._add(_files())
+        app.run_preflight()
+        _wait(app, root)
+        end = time.time() + 5
+        while getattr(app, "mapping_panel", None) is None and time.time() < end:
+            root.update()
+            time.sleep(0.02)
+        assert app.mapping_panel, "the panel opens after the first preflight"
+        panel = gui.StyleMappingPanel(app)            # replaces the open one
+        assert len([w for w in root.winfo_children() if isinstance(w, tk.Toplevel)]) == 1
+        rows = {w: (iv, rv, lv) for w, iv, rv, lv, _i in panel.rows}
+        assert rows["Epigraph"][0].get() == gui.OWN
+        assert rows["Heading 1"][0].get() == "Chapter Title"
+        iv, rv, lv = rows["Epigraph"]
+        iv.set("Block Quote")
+        panel._role_for(iv, rv)                       # a book style sets its role
+        assert rv.get() == "quote"
+        chars = {w: cv for w, cv, _i in panel.char_rows}
+        chars["Scripture Ref"].set("Small Caps")
+        panel.ok()
+        _wait(app, root)
+        sm = app.profile["style_map"]
+        assert sm["paragraph"]["Epigraph"]["idml"] == "Block Quote"
+        assert sm["paragraph"]["Epigraph"]["role"] == "quote"
+        assert "Normal" not in sm["paragraph"]         # unchanged rows aren't saved
+        assert sm["character"]["Scripture Ref"] == "Small Caps"
+        assert app.report is not None                 # read again with the new map
+        from docx2idml.export import Exporter
+        ex = Exporter(app.book.files, app.profile)
+        try:
+            doc = ex.build()
+            styles = {p.style for st in doc.stories for p in st.paragraphs}
+            assert "Block Quote" in styles and "Epigraph" not in styles
+            runs = [r for st in doc.stories for p in st.paragraphs for r in p.runs
+                    if "Lev 26:12" in r.text]
+            assert runs and runs[0].style == "Small Caps"
+        finally:
+            ex.cleanup()
+        # Back to the automatic mapping.
+        gui.StyleMappingPanel(app).reset()
+        _wait(app, root)
+        assert "Epigraph" not in app.profile["style_map"]["paragraph"]
+        assert "Scripture Ref" not in app.profile["style_map"]["character"]
+    finally:
+        app.quit(force=True)
+
+
 def test_cleanup_after_update():
     """The new version offers to delete older copies and retarget shortcuts; declined copies
     aren't asked about again."""

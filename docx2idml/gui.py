@@ -215,6 +215,151 @@ class Form:
             _set(data, path, value)
 
 
+OWN, LEAVE_OUT, NONE = "(its own name)", "(leave out)", "(no character style)"
+
+
+class StyleMappingPanel:
+    """All the manuscript's styles in one window, with the IDML style each becomes (as
+    InDesign's Place > Style Mapping): the automatic mapping first, the user's choices over
+    it. Saved in the profile's style map."""
+
+    def __init__(self, app):
+        from .export import BOOK_STYLE_ROLES, CHAR_STYLES
+        self.app, self.roles = app, BOOK_STYLE_ROLES
+        rep = app.report
+        tpl_para, tpl_char = [], []
+        path = app.profile.get("styles_template")
+        if path:
+            try:
+                from .template import read_template
+                tp, tc, _notes = read_template(path)
+                tpl_para, tpl_char = sorted(tp), sorted(tc)
+            except Exception:
+                pass
+        para_choices = [OWN] + list(BOOK_STYLE_ROLES) + \
+            [n for n in tpl_para if n not in BOOK_STYLE_ROLES] + [LEAVE_OUT]
+        char_choices = [OWN, NONE] + [n for n in CHAR_STYLES if n != "No Break"] + \
+            [n for n in tpl_char if n not in CHAR_STYLES]
+        old = getattr(app, "mapping_panel", None)
+        if old is not None and old.top.winfo_exists():
+            old.top.destroy()                         # one panel at a time
+        top = self.top = tk.Toplevel(app.root)
+        app.mapping_panel = self
+        top.title("Style mapping")
+        top.geometry("1000x620")
+        top.transient(app.root)
+        ttk.Label(top, padding=(10, 8, 10, 4), wraplength=960, justify="left", text=(
+            "The styles found in the manuscript and the IDML style each becomes, as the tool "
+            "mapped them. Change any of them here: choose a book style, a style from your "
+            "template, or \u201c%s\u201d to keep the Word style under its own name. Choosing a "
+            "book style sets the role to match. Rows marked \u26a0 were guessed; check them. "
+            "The mapping is saved in the profile (Profile > Save profile keeps it for the "
+            "series)." % OWN)).pack(fill="x")
+        outer = ttk.Frame(top)
+        outer.pack(fill="both", expand=True, padx=10)
+        canvas = tk.Canvas(outer, highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        grid = ttk.Frame(canvas)
+        grid.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=grid, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        sb.pack(side="left", fill="y")
+        heads = ("", "Word style", "Paragraphs", "IDML style", "Role", "Look", "Mapped by")
+        for c, h in enumerate(heads):
+            ttk.Label(grid, text=h, font=("TkDefaultFont", 9, "bold")).grid(
+                row=0, column=c, sticky="w", padx=4, pady=(0, 4))
+        self.rows = []          # paragraph rows: (word, idml var, role var, look var, initial)
+        r = 1
+        for s in rep.paragraph_styles:
+            idml = s.word if s.idml == s.word and s.idml not in BOOK_STYLE_ROLES else s.idml
+            shown = OWN if idml == s.word and s.word not in BOOK_STYLE_ROLES else \
+                (idml or LEAVE_OUT)
+            look = app._look(s.word, s.idml, s.role)
+            iv, rv, lv = tk.StringVar(value=shown), tk.StringVar(value=s.role), \
+                tk.StringVar(value=LOOKS[look])
+            ttk.Label(grid, text="\u26a0" if s.warning else "").grid(row=r, column=0)
+            ttk.Label(grid, text=s.word).grid(row=r, column=1, sticky="w", padx=4)
+            ttk.Label(grid, text=str(s.count)).grid(row=r, column=2, sticky="e", padx=4)
+            box = ttk.Combobox(grid, textvariable=iv, values=para_choices, width=24)
+            box.grid(row=r, column=3, padx=4, pady=1)
+            ttk.Combobox(grid, textvariable=rv, values=ROLES, state="readonly", width=11).grid(
+                row=r, column=4, padx=4)
+            ttk.Combobox(grid, textvariable=lv, values=list(LOOKS.values()), state="readonly",
+                         width=20).grid(row=r, column=5, padx=4)
+            ttk.Label(grid, text=s.source).grid(row=r, column=6, sticky="w", padx=4)
+            box.bind("<<ComboboxSelected>>", lambda e, iv=iv, rv=rv: self._role_for(iv, rv))
+            self.rows.append((s.word, iv, rv, lv, (shown, s.role, LOOKS[look])))
+            r += 1
+        self.char_rows = []
+        chars = [c for c in rep.character_styles if c.role != "skip"]
+        if chars:
+            ttk.Label(grid, text="Character styles", font=("TkDefaultFont", 9, "bold")).grid(
+                row=r, column=1, sticky="w", padx=4, pady=(12, 4))
+            r += 1
+            for c in chars:
+                shown = OWN if c.idml == c.word else (c.idml or NONE)
+                cv = tk.StringVar(value=shown)
+                ttk.Label(grid, text="\u26a0" if c.warning else "").grid(row=r, column=0)
+                ttk.Label(grid, text=c.word).grid(row=r, column=1, sticky="w", padx=4)
+                ttk.Label(grid, text=str(c.count)).grid(row=r, column=2, sticky="e", padx=4)
+                ttk.Combobox(grid, textvariable=cv, values=char_choices, width=24).grid(
+                    row=r, column=3, padx=4, pady=1)
+                ttk.Label(grid, text=c.source).grid(row=r, column=6, sticky="w", padx=4)
+                self.char_rows.append((c.word, cv, shown))
+                r += 1
+        buttons = ttk.Frame(top, padding=10)
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="Back to the automatic mapping",
+                   command=self.reset).pack(side="left")
+        ttk.Button(buttons, text="Cancel", command=top.destroy).pack(side="right")
+        ttk.Button(buttons, text="Use this mapping", command=self.ok).pack(side="right", padx=6)
+
+    def _role_for(self, iv, rv):
+        """A book style sets its role (Heading B: a heading at level 2...)."""
+        if iv.get() in self.roles:
+            rv.set(self.roles[iv.get()][0])
+
+    def ok(self):
+        """Save the rows changed from the automatic mapping (and keep earlier choices)."""
+        sm = self.app.profile.setdefault("style_map", {})
+        para, char = sm.setdefault("paragraph", {}), sm.setdefault("character", {})
+        changed = 0
+        for word, iv, rv, lv, initial in self.rows:
+            now = (iv.get().strip(), rv.get(), lv.get())
+            if now == initial:
+                continue
+            idml = word if now[0] == OWN else (None if now[0] == LEAVE_OUT else now[0])
+            role = "skip" if now[0] == LEAVE_OUT else now[1]
+            level = self.roles.get(now[0], (None, 0))[1] if role == "heading" else 0
+            if role == "heading" and not level:
+                level = 1
+            look = [k for k, v in LOOKS.items() if v == now[2]] or ["book"]
+            para[word] = {"idml": idml, "role": role, "level": level, "look": look[0]}
+            changed += 1
+        for word, cv, initial in self.char_rows:
+            now = cv.get().strip()
+            if now == initial:
+                continue
+            char[word] = word if now == OWN else (None if now == NONE else now)
+            changed += 1
+        self.top.destroy()
+        if changed:
+            self.app.mapping_changed(changed)
+
+    def reset(self):
+        """Forget the choices made for these styles; the automatic mapping comes back."""
+        sm = self.app.profile.setdefault("style_map", {})
+        from .stylemap import norm
+        names = {norm(w) for w, *_ in self.rows} | {norm(w) for w, *_ in self.char_rows}
+        for kind in ("paragraph", "character"):
+            m = sm.get(kind) or {}
+            for k in [k for k in m if norm(k) in names]:
+                del m[k]
+        self.top.destroy()
+        self.app.mapping_changed(0, reopen=True)
+
+
 class App:
     def __init__(self, root, dnd=False):
         self.root = root
@@ -326,7 +471,8 @@ class App:
                           ("Move to top", lambda: self.move("top")),
                           ("Move to bottom", lambda: self.move("bottom")), (None, None),
                           ("Sort by filename", self.sort_files),
-                          ("Run preflight", self.run_preflight)):
+                          ("Run preflight", self.run_preflight),
+                          ("Map styles...", self.open_mapping)):
             if text is None:
                 ttk.Separator(btns).pack(fill="x", pady=6)
             else:
@@ -444,6 +590,8 @@ class App:
             self.styles.heading(c, text=t)
             self.styles.column(c, width=w)
         self.styles.pack(fill="both", expand=True, pady=4)
+        ttk.Button(tab, text="Map all the styles in one window...",
+                   command=self.open_mapping).pack(anchor="w")
         self.styles.bind("<Double-1>", self._edit_style)
 
     def _report_tab(self):
@@ -1034,8 +1182,25 @@ class App:
                 len(rep.warnings), "" if len(rep.warnings) == 1 else "s"))
         self._run(lambda: preflight(files, prof), done, "Reading the manuscript...")
 
+    def open_mapping(self):
+        """The style mapping panel (runs preflight first if needed)."""
+        self._need_report(lambda: StyleMappingPanel(self))
+
+    def mapping_changed(self, n, reopen=False):
+        """After the panel: read the manuscript again with the new map (the outline depends
+        on it), then show the result."""
+        self.report = None
+        self.status.set("%d style%s mapped by you. Save the profile to keep the mapping." % (
+            n, "" if n == 1 else "s") if n else "Back to the automatic mapping.")
+        self._need_report(lambda: StyleMappingPanel(self) if reopen else None)
+
     def _preflighted(self, rep):
         self.report = rep
+        # The first time a set of files is read, show the mapping to check.
+        files = tuple(self.book.files)
+        if getattr(self, "_mapped_files", None) != files and rep.paragraph_styles:
+            self._mapped_files = files
+            self.root.after(100, lambda: StyleMappingPanel(self) if self.report is rep else None)
         # (title, kind as detected): the book settings' choices are applied when shown.
         self.units = [(u.title, kind_key(u)) for u in rep.outline.units] if rep.outline else []
         self._refresh_files()

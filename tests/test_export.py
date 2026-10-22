@@ -576,6 +576,19 @@ def test_custom_style_look_from_style_map():
         ex.cleanup()
 
 
+def test_book_style_roles_are_book_styles():
+    """Every style the mapping panel offers is one the export makes."""
+    from docx2idml.export import BOOK_STYLE_ROLES
+    ex = Exporter(_files(), default_profile())
+    try:
+        ex.build()
+        ex._book_styles()
+        made = {s.name for s in ex.doc.paragraph_styles}
+        assert set(BOOK_STYLE_ROLES) <= made, set(BOOK_STYLE_ROLES) - made
+    finally:
+        ex.cleanup()
+
+
 def test_two_papers_with_bibliographies():
     """Two articles not prepared as a book: each a Title, Heading 2 sections and a
     bibliography. Each paper is a unit of its own; bibliography styling stops at the end of

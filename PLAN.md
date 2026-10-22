@@ -64,7 +64,7 @@ The main use is preparing books for **KDP print**, but the tool is not tied to o
 
 ### Preflight, style map and profiles
 - **Preflight** reads every input file and reports all paragraph and character styles in use, direct-formatting hotspots, and items version 1 doesn't carry over (text boxes, floating shapes, tracked changes, equations, unusual fields, XE index fields, endnotes). Nothing disappears silently.
-- **Style map:** Word style → IDML style. Defaults cover Word's built-ins (Normal, Heading 1–3, Quote, Footnote Text, Caption, etc.). Unknown styles are mapped by the user or fall back to body text with a warning.
+- **Style map:** Word style → IDML style. Defaults cover Word's built-ins (Normal, Heading 1–3, Quote, Footnote Text, Caption, etc.). Unknown styles are mapped by the user or fall back to body text with a warning. All styles are shown together in a style mapping panel after the automatic mapping (0.3.1), where the user picks the IDML style, role and look for each.
 - **Profiles** save everything the user sets (style map, trim, margins, fonts, leading, head pattern, notice library, front-matter defaults) so the next book in a series is one click.
   - Defaults are neutral, not tied to any one publisher.
   - Stored in the tool's settings folder, with Export/Import buttons for sharing or keeping a profile beside a series' manuscripts.

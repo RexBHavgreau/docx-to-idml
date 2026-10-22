@@ -2,6 +2,14 @@
 
 ## 0.3.1 (not yet released)
 
+- Style mapping in one window (as InDesign's style mapping when placing a Word file): after
+  the automatic mapping, every paragraph and character style found in the manuscript is
+  listed with how often it's used and the IDML style it becomes. Choose another book style,
+  keep the style under its own name, or leave its paragraphs out; for paragraph styles also
+  the role (heading, quotation, note...) and the look. Styles the program had to guess are
+  marked ⚠. It opens the first time a set of files is read, and from "Map styles..." (Files
+  tab) or the Style map tab. "Back to the automatic mapping" forgets the choices. Choices
+  are saved in the profile.
 - After an update, the new version offers to delete the old copy and to point desktop and
   Start-menu shortcuts and taskbar pins that opened it at itself (as Indicat does). A copy
   you choose to keep isn't asked about again.

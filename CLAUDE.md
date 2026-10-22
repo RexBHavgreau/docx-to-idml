@@ -181,6 +181,12 @@ keep it up to date when decisions change.
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.
+- Style mapping panel (0.3.1, `gui.StyleMappingPanel`): all styles in one window after the
+  automatic mapping, opened once per set of files after preflight and by the "Map styles..."
+  buttons. Only rows changed from the automatic mapping are saved, as profile `style_map`
+  entries ({"idml", "role", "level", "look"}; a character entry is a name or None for no
+  style); choices are `export.BOOK_STYLE_ROLES` plus a style template's styles. Preflight runs
+  again after OK, since the outline depends on the map.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
