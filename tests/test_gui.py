@@ -80,6 +80,19 @@ def test_preflight_export_and_book_file():
         assert "PREFLIGHT" in app.text.get("1.0", "end")
         # Running heads table, with a short title.
         assert app.heads.get_children()
+        # A unit's kind, changed by the user, and changed back.
+        app.set_kind("Covenant and Community", "endorsements")
+        assert app.book.settings["unit_kinds"] == {"Covenant and Community": "endorsements"}
+        assert app.heads.set("Covenant and Community", "kind") == "endorsements (set by you)"
+        assert app.heads.set("Covenant and Community", "head") == "(no running heads)"
+        app.set_kind("Covenant and Community", "chapter")
+        assert app.book.settings["unit_kinds"] == {}
+        # The style map shows each style's look; one can be switched.
+        assert app.styles.set("Epigraph", "look") == "Word's, in book terms"
+        assert app.styles.set("Normal", "look") == "the book style's"
+        app.set_style("Epigraph", "Epigraph", "body", "book")
+        assert app.profile["style_map"]["paragraph"]["Epigraph"]["look"] == "book"
+        assert app.styles.set("Epigraph", "look") == "the book style's"
         app.book.settings["short_titles"] = {"The Formula in the Prophets": "The Formula"}
         app._refresh_heads()
         assert app.heads.set("The Formula in the Prophets", "head") == "The Formula"
@@ -89,6 +102,9 @@ def test_preflight_export_and_book_file():
         var = app.front_form.vars[("isbn_print",)][0]
         var.set("978-0-000-00000-0")
         assert app.front_form.vars[("title",)][0].get() == "The Covenant Formula"
+        sources = app.front_sources.get()
+        assert "Title: \u201cThe Covenant Formula\u201d, from style Title in 00 Front.docx" in sources
+        assert "Author: \u201cA. N. Author\u201d, from title page text" in sources
         # A profile setting from the form.
         app.profile_forms[0].vars[("page", "trim")][0].set("5.5x8.5")
         out = os.path.join(TMP, "out")
@@ -150,6 +166,48 @@ def test_font_dropdowns():
         app._forms_to_profile()
         assert app.profile["fonts"]["body"] == (installed[0] if installed else None)
         assert app.profile["fonts"]["notes"] is None
+    finally:
+        app.quit(force=True)
+
+
+def test_leading_note():
+    app, root = _app()
+    try:
+        app.update_margins()
+        note = app.leading_note.get()
+        assert note.startswith("Suggested for 11 pt") and "standard 13.5" in note
+        form = app.profile_forms[1]
+        form.vars[("body_size",)][0].set("10")
+        form.vars[("leading", "feel")][0].set("tight")
+        app.update_margins()
+        assert "Suggested for 10 pt" in app.leading_note.get()
+        assert "(tight)" in app.leading_note.get()
+        app._forms_to_profile()
+        assert app.profile["body_size"] == 10 and app.profile["leading"]["feel"] == "tight"
+    finally:
+        app.quit(force=True)
+
+
+def test_calculated_margins_shown_and_filled():
+    app, root = _app()
+    try:
+        app.update_margins()
+        form = app.profile_forms[0]
+        lab, _text = form.labels[("page", "margins", "inside")]
+        assert "calculated" in str(lab.cget("text"))
+        note = app.margin_note.get()
+        assert note.startswith("Calculated margins (in): top ") and "about 200 pages" in note
+        g, _pages, _found = app.calculated()
+        form.vars[("page", "trim")][0].set("5x8")
+        g2, _p, _f = app.calculated()
+        assert g2.measure != g.measure or g2.margins != g.margins
+        form.vars[("page", "margins", "top")][0].set("1")
+        app.fill_margins()
+        assert form.vars[("page", "margins", "top")][0].get() == "1"       # kept as typed
+        inside = float(form.vars[("page", "margins", "inside")][0].get())
+        assert abs(inside - g2.margins["inside"] / 72) < 0.01
+        app._forms_to_profile()
+        assert app.profile["page"]["margins"]["top"] == 1
     finally:
         app.quit(force=True)
 

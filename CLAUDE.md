@@ -102,6 +102,15 @@ keep it up to date when decisions change.
   an ordinary `TextFrame` (reference file 05).
 - The two InDesign files from the brief (the Assumption article and its cut-down) are a real
   article: use them for analysis only; don't commit them.
+- Nothing from Word's formatting goes into the styles (Beaux, 0.3.0): Word paragraph styles
+  give names and roles only. A custom style kept under its own name with role body (no book
+  counterpart) keeps its distinct look in book terms (`Exporter._word_look`: alignment,
+  indents scaled by book/Word measure, face, caps, size/space scaled by book/Word body size;
+  no fonts); others are `Style(name, base)` with no attributes. Style map entries may carry
+  "look": "word" or "book" to override. Fonts
+  not set (profile or template) are `fonts.book_font()` / `fonts.script_font()` (installed
+  book fonts in order), never Word's. Kept from Word: emphasis and character styles in the
+  text, direct center/right alignment of a line. Body First = a unit's first body paragraph.
 - Export (step 4): direct italic, bold, small caps, capitals, super/subscript, underline and
   strikethrough become character styles (Italic, Bold, Bold Italic, Small Caps...), worked out
   against the paragraph style (italic in a bold heading is Bold Italic; Word's toggle rule for
@@ -149,6 +158,20 @@ keep it up to date when decisions change.
 - Spare pages: profile `page.spare_pages` 0 (default, Beaux), 1 or 2. Chapter Title has
   StartParagraph NextOddPage (NextPage for chapters on the next page); Chapter Subtitle resets
   it to Anywhere. Profile version 4.
+- Unit kinds (0.3.0): the user can set a unit's kind (outline `KINDS`: chapter, part, front,
+  back, display, endorsements) in the Running heads tab; saved as book settings
+  `unit_kinds` {unit title: key}, applied by `outline.apply_kinds` after the outline is built.
+  Endorsements (display, type "endorsements") are detected by title and placed before the
+  half-title; so is text before the title line (outline: the title page is found by its
+  Title-style line when no style-detected unit came before; units before it become
+  endorsements). The window shows the calculated margins beside the margin fields
+  (`export.calculated_margins`), with a button to fill them in.
+- Size and leading (0.3.0): profile `body_size` (11) and `leading.feel` (tight/standard/open;
+  version 5). `layout.leading_suggestions` gives the ranges (11 pt: 12.5-13 / 13.5-14 /
+  14.5-15) shifted by x-height (`fonts.x_height`, OS/2) and line length; `export.leading_for`
+  uses an exact value if set, else the middle of the feel's range. Baseline grid (profile
+  `baseline_grid`): Body GridAlignment AlignBaseline, grid = body leading from the top margin;
+  styles with other leading set to None (as g09).
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.
@@ -179,7 +202,9 @@ python tests/test_gui.py             # needs a display: on Linux, xvfb-run (and 
 ```
 
 Run them all before pushing; CI (`.github/workflows/tests.yml`) runs them on Windows and Linux.
-On Windows set `PYTHONUTF8=1`. `test_preflight` includes a LibreOffice round trip when
+On Windows set `PYTHONUTF8=1`. Tests must not depend on which fonts are installed: CI's
+Windows has book fonts (Palatino, Georgia) that this Linux machine lacks, and their x-height
+and widths change leading and estimates (0.3.0's leading test failed there for that reason). `test_preflight` includes a LibreOffice round trip when
 `soffice` is installed; LibreOffice refuses a theme without a color scheme, so the test builder
 writes one.
 
@@ -206,9 +231,10 @@ writes one.
 - Step 5: e01 with the layout: text flows right, text width fine, folios right (Beaux). Spare
   pages the text doesn't reach keep their folio (they are text pages). Bleed not yet checked.
 - Step 6: e01 with front matter and running heads: validates, not yet opened.
-- Step 7: the window tested under Xvfb here and by its tests on GitHub's Windows runner; the
-  .exe builds there (about 19 MB, carries the base files) but hasn't been opened by hand. The
-  updater is tested with a fake GitHub only (no release published yet).
+- Step 7: the window tested under Xvfb here and by its tests on GitHub's Windows runner.
+  Released: v0.2.0 (October 21, the first release with the .exe, docx-to-idml-0.2.0.exe,
+  built by the tag's workflow from main). The updater's real run (0.2.0 finding a later
+  release, download, digest, old-copy cleanup) waits for the next release.
 - Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
   the No Break style and the local NoBreak attribute?
 - 0.2.0 additions not yet opened: StartParagraph NextOddPage on Chapter Title (does Affinity

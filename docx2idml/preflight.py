@@ -328,9 +328,6 @@ def _warnings(rep, docs):
         info, left_out = ITEM_INFO.get(kind, ("", False))
         if kind != "endnotes" and not left_out:
             w.append("%s: %s" % (_count(kind, len(entries)), info))
-    if rep.fonts.get("template_default"):
-        w.append("The body font is %s, probably the Word template's default. Choose the "
-                 "book's body font in the profile." % rep.fonts["body"])
     if rep.direct.get("hotspot_paragraphs"):
         n = rep.direct["hotspot_paragraphs"]
         w.append("%s by direct formatting instead of styles (listed below). %s follow the "

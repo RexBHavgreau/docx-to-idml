@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import APP_NAME
 
-PROFILE_VERSION = 4
+PROFILE_VERSION = 5
 
 DEFAULT_PROFILE = {
     "profile_version": PROFILE_VERSION,
@@ -34,7 +34,9 @@ DEFAULT_PROFILE = {
     "styles_template": None,           # an IDML whose styles replace the tool's of the same name
     "fonts": {"body": None, "headings": None, "notes": None, "display": None,
               "hebrew": None, "greek": None},
-    "leading": {"unit": "pt", "value": None},   # pt, multiple or percent
+    "body_size": 11,                   # points
+    # feel: tight, standard or open, used when no value is set; value in pt, multiple or percent
+    "leading": {"unit": "pt", "value": None, "feel": "standard"},
     "baseline_grid": False,
     "running_heads": {
         "verso": "book_title",         # book_title, part, chapter, author, custom
@@ -139,7 +141,17 @@ def _from_3(data):
     return data
 
 
-MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2, 3: _from_3}   # version n -> function that upgrades it to n + 1
+def _from_4(data):
+    """Version 4: the body size was always 11 pt; automatic leading was about 1.27 times it
+    (now "standard", about 1.25)."""
+    data.setdefault("body_size", 11)
+    lead = data.setdefault("leading", {})
+    if isinstance(lead, dict):
+        lead.setdefault("feel", "standard")
+    return data
+
+
+MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2, 3: _from_3, 4: _from_4}   # version n -> function that upgrades it to n + 1
 
 
 def migrate(data):

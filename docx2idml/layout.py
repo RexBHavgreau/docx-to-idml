@@ -171,3 +171,32 @@ def page_count_notes(pages):
 
 def ceil_pages(height, text_height):
     return max(1, math.ceil(height / text_height))
+
+
+# Leading as a share of the body size, for tight, standard and open setting (at 11 pt about
+# 12.5-13, 13.5-14 and 14.5-15), before the shifts for x-height and measure.
+LEADING_RATIOS = {"tight": (1.14, 1.18), "standard": (1.23, 1.27), "open": (1.32, 1.36)}
+TYPICAL_X_HEIGHT = 0.46     # ems: a book serif's
+
+
+def leading_suggestions(size, x_height=None, cpl=TARGET_CPL, font=None):
+    """({feel: (low, high, pick)}, explanation). A large x-height and long lines want more
+    leading; a small x-height and short lines can take less."""
+    shift, why = 0.0, []
+    if x_height:
+        shift += (x_height - TYPICAL_X_HEIGHT) * 1.0
+        if x_height >= TYPICAL_X_HEIGHT + 0.03:
+            why.append("%s has a large x-height, so a little more leading" % (font or "the font"))
+        elif x_height <= TYPICAL_X_HEIGHT - 0.03:
+            why.append("%s has a small x-height, so a little less leading" % (font or "the font"))
+    if cpl:
+        shift += (cpl - TARGET_CPL) * 0.002
+        if cpl >= TARGET_CPL + 6:
+            why.append("long lines (%d characters) want more leading" % round(cpl))
+        elif cpl <= TARGET_CPL - 6:
+            why.append("short lines (%d characters) can take less" % round(cpl))
+    out = {}
+    for feel, (lo, hi) in LEADING_RATIOS.items():
+        a, b = _half(size * (lo + shift)), _half(size * (hi + shift))
+        out[feel] = (a, b, _half(size * ((lo + hi) / 2 + shift)))
+    return out, "; ".join(why)

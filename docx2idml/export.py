@@ -35,7 +35,7 @@ from .docx_reader import is_greek, is_hebrew, read_docx
 from .idml.images import image_info
 from .idml.model import (CellStyle, Document, Frame, Image, Master, Paragraph, Run, Section,
                          Story, Style, Table, TableStyle, TOCStyle)
-from .outline import _BACK, Unit, build_outline, title_key
+from .outline import _BACK, Unit, apply_kinds, build_outline, title_key
 from .stylemap import StyleMap, norm
 from .template import TemplateError, apply_template, read_template
 
@@ -43,10 +43,6 @@ BLEED = 9                   # 0.125 in, KDP's bleed
 TRIMS = {"5x8": (5, 8), "5.25x8": (5.25, 8), "5.5x8.5": (5.5, 8.5), "6x9": (6, 9),
          "7x10": (7, 10), "8.5x11": (8.5, 11), "A5": (5.83, 8.27)}
 LANGUAGES = {"en": "$ID/English: USA", "es": "$ID/Spanish: Castilian"}
-# Fonts Word's templates give a document by default: kept if the profile sets none, but noted.
-TEMPLATE_FONTS = {"calibri", "calibri light", "cambria", "aptos", "aptos display", "aptos narrow",
-                  "times new roman", "arial", "helvetica", "segoe ui"}
-HEBREW_FALLBACK = "SBL Hebrew"
 FONT_STYLES = {(False, False): "Regular", (False, True): "Italic", (True, False): "Bold",
                (True, True): "Bold Italic"}
 # Character styles the exporter makes from Word's formatting.
@@ -91,6 +87,55 @@ class Block:
     @property
     def title(self):
         return self.unit.title if self.unit else ""
+
+
+BODY_SIZE = 11
+
+
+def body_size(profile):
+    try:
+        size = float(profile.get("body_size") or BODY_SIZE)
+    except (TypeError, ValueError):
+        return BODY_SIZE
+    return size if 6 <= size <= 24 else BODY_SIZE
+
+
+def leading_for(profile, size=None, x_height=None, cpl=layout.TARGET_CPL):
+    """The body leading in points: the profile's value (points, a multiple or a percent), else
+    the middle of the suggested range for its feel (tight, standard, open), shifted for the
+    font's x-height and the line length."""
+    size = size or body_size(profile)
+    lead = profile.get("leading") or {}
+    v, unit = lead.get("value"), lead.get("unit", "pt")
+    if not v:
+        feel = lead.get("feel") if lead.get("feel") in layout.LEADING_RATIOS else "standard"
+        return layout.leading_suggestions(size, x_height, cpl)[0][feel][2]
+    if unit == "multiple":
+        return _half(size * v)
+    if unit == "percent":
+        return _half(size * v / 100)
+    return v
+
+
+def calculated_margins(profile, pages=200, text=None):
+    """The margins the export would calculate (before any set in the profile), for showing
+    the user: (layout.Geometry, body font found installed?)."""
+    page = profile["page"]
+    if page.get("trim") == "custom" and page.get("custom_width") and page.get("custom_height"):
+        w, h = page["custom_width"], page["custom_height"]
+    else:
+        w, h = TRIMS.get(page.get("trim"), TRIMS["6x9"])
+    found = fonts.find_font((profile.get("fonts") or {}).get("body") or fonts.book_font())
+    avg, xh = fonts.FALLBACK_WIDTH, None
+    if found:
+        try:
+            avg = fonts.average_width(found, text)
+            xh = fonts.x_height(found)
+        except Exception:
+            found = None
+    size = body_size(profile)
+    return layout.geometry(_half(w * 72), _half(h * 72), size,
+                           leading_for(profile, size, xh), avg, pages), bool(found)
 
 
 class ExportError(Exception):
@@ -170,6 +215,7 @@ class Exporter:
         self.paths = [str(p) for p in paths]
         self.profile = profile or profiles.default_profile()
         self.settings = settings or {}
+        self.x_height = None
         self.tpl = None
         path = self.profile.get("styles_template")
         if path:
@@ -187,7 +233,8 @@ class Exporter:
         if not self.paths:
             raise ExportError("No .docx files to export.")
         self.docs = [read_docx(p) for p in self.paths]
-        self.outline = build_outline(self.docs, self.sm)
+        self.outline = apply_kinds(build_outline(self.docs, self.sm),
+                                   self.settings.get("unit_kinds"))
         self.doc = Document(name=self.outline.title or os.path.splitext(
             os.path.basename(self.paths[0]))[0])
         self.tmp = tempfile.mkdtemp(prefix="docx2idml-")
@@ -245,9 +292,11 @@ class Exporter:
                 text.append(p.text)
                 n += len(p.text)
         found = fonts.find_font(self.fonts["body"])
+        self.x_height = None
         if found:
             try:
                 self.avg_width = fonts.average_width(found, " ".join(text))
+                self.x_height = fonts.x_height(found)
                 return
             except Exception:
                 pass
@@ -273,22 +322,6 @@ class Exporter:
         doc.margins = g.margins
         self.measure, self.text_height = g.measure, g.text_height
 
-    def _word_font(self, names):
-        """The font Word gives the first of these styles found in any file."""
-        for doc in self.docs:
-            for sid, st in doc.styles.items():
-                if norm(st.name) in names:
-                    f = doc.resolve_font(sid)
-                    if f:
-                        return f
-        for doc in self.docs:
-            sid = doc.default_style.get("paragraph")
-            if sid:
-                f = doc.resolve_font(sid)
-                if f:
-                    return f
-        return None
-
     def _fonts(self):
         pf = dict(self.profile["fonts"])
         # A style template's fonts count as chosen (the profile's own still win).
@@ -296,36 +329,30 @@ class Exporter:
                             ("notes", "Footnote")):
             if not pf.get(role) and self._template_font(style):
                 pf[role] = self._template_font(style)
-        body = pf.get("body") or self._word_font({"normal"}) or "Minion Pro"
-        if not pf.get("body"):
-            note = " (a Word template default; choose a book font in the profile)" \
-                if body.casefold() in TEMPLATE_FONTS else ""
-            self.report.append("Body font: %s, from Word%s." % (body, note))
-        heads = pf.get("headings")
-        if not heads:
-            word = self._word_font({"heading 1"})
-            heads = word if word and word.casefold() not in TEMPLATE_FONTS else body
+        # Fonts not set in the profile (or a template) are book fonts installed here, never
+        # Word's: a manuscript's fonts are its author's or its template's, not the book's.
+        body = pf.get("body")
+        if not body:
+            body = fonts.book_font()
+            self.report.append("Body font: %s (no font set in the profile; a book font "
+                               "installed on this computer). Choose another in Layout profile "
+                               "> Type." % body)
+        heads = pf.get("headings") or body
         notes = pf.get("notes") or body
         display = pf.get("display") or heads
         heb = pf.get("hebrew")
         if not heb:
-            found = {}
-            for d in self.docs:
-                for f, n in d.scripts["hebrew"].fonts.items():
-                    if f != "(style font)":
-                        found[f] = found.get(f, 0) + n
-            heb = max(found, key=found.get) if found else HEBREW_FALLBACK
+            heb = fonts.script_font("hebrew")
             if any(d.scripts["hebrew"].chars for d in self.docs):
-                self.report.append("Hebrew font: %s%s." % (
-                    heb, ", from Word" if found else " (none set in Word or the profile)"))
+                self.report.append("Hebrew font: %s (none set in the profile)." % heb)
         grk = pf.get("greek")
-        if not grk:
-            found = {}
-            for d in self.docs:
-                for f, n in d.scripts["greek"].fonts.items():
-                    if f != "(style font)" and f.casefold() not in TEMPLATE_FONTS:
-                        found[f] = found.get(f, 0) + n
-            grk = max(found, key=found.get) if found else None
+        if not grk and any(d.scripts["greek"].chars for d in self.docs):
+            # The body font if it has Greek letters (polytonic too), else a Greek font.
+            found = fonts.find_font(body)
+            if not (found and fonts.has_char(found, 0x1F00)):
+                grk = fonts.script_font("greek")
+                self.report.append("Greek font: %s (the body font has no polytonic Greek; "
+                                   "none set in the profile)." % grk)
         self.fonts = {"body": body, "headings": heads, "notes": notes, "display": display,
                       "hebrew": heb, "greek": grk}
 
@@ -348,20 +375,13 @@ class Exporter:
         return "HL Single"
 
     def _leading(self, size):
-        lead = self.profile.get("leading") or {}
-        v, unit = lead.get("value"), lead.get("unit", "pt")
-        if not v:
-            return _half(size * 1.27)
-        if unit == "multiple":
-            return _half(size * v)
-        if unit == "percent":
-            return _half(size * v / 100)
-        return v
+        cpl = self.geo.cpl if getattr(self, "geo", None) else layout.TARGET_CPL
+        return leading_for(self.profile, size, self.x_height, cpl)
 
     def _book_styles(self):
         typo = self.profile["typography"]
         f = self.fonts
-        size = 11
+        size = body_size(self.profile)
         lead = self._leading(size)
         self.body_size, self.body_lead = size, lead
         indent = _half(size * 1.5)
@@ -504,8 +524,8 @@ class Exporter:
         return None, None
 
     def _custom_paragraph_style(self, mapping, docx, style_id):
-        """A Word style kept under its own name: based on its parent's IDML style (or its
-        role's), with what Word sets on it."""
+        """A Word style kept under its own name, based on its parent's IDML style (or its
+        role's book style)."""
         name = mapping.idml
         if name in self.builtin or name in self.custom:
             return
@@ -520,13 +540,44 @@ class Exporter:
                 base = pm.idml
             elif pm.idml in self.builtin:
                 base = pm.idml if pm.role == mapping.role else base
-        self.custom[name] = Style(name, base)   # placeholder, against loops
-        attrs, props = {}, st.props if st else {}
+        # The name and the place in the book come from Word; the look is the book style's
+        # it is based on (Word's alignment, indents, spacing and sizes are a manuscript's).
+        # A style with no book counterpart (a special paragraph the author set up, based on
+        # Normal) keeps what makes it distinct, in book terms; never Word's fonts. The style
+        # map's "look" setting overrides either way.
+        attrs, leading = {}, None
+        if self._look(mapping) == "word" and st is not None:
+            attrs, leading = self._word_look(docx, style_id, st, base)
+        self.custom[name] = Style(name, base, attrs, leading=leading)
+        self.doc.paragraph_styles.append(self.custom[name])
+
+    def _look(self, mapping):
+        """"word" to keep a custom style's distinct look, "book" for the book style's. By
+        default only styles with no book counterpart (role body, kept under their own name)
+        keep their look."""
+        entry = self.sm.paragraph.get(norm(mapping.word))
+        if isinstance(entry, dict) and entry.get("look") in ("word", "book"):
+            return entry["look"]
+        return "word" if mapping.role == "body" and mapping.idml == mapping.word else "book"
+
+    def _word_look(self, docx, style_id, st, base):
+        """What a Word style sets on itself, in book terms: alignment; indents in proportion
+        to the book's line against Word's; italic, bold, capitals; size and space in
+        proportion to the body size. (attrs, leading)."""
+        attrs, props = {}, st.props
         jc = _prop(props.get("jc"), "val")
         just = {"center": "CenterAlign", "right": "RightAlign", "end": "RightAlign",
                 "both": "LeftJustified", "left": "LeftAlign", "start": "LeftAlign"}.get(jc)
         if just:
             attrs["Justification"] = just
+            if just in ("CenterAlign", "RightAlign"):
+                attrs["FirstLineIndent"] = 0
+        sec = docx.sections[0] if docx.sections else None
+        word_measure = None
+        if sec and sec.page_width:
+            m = sec.margins
+            word_measure = (sec.page_width - m.get("left", 1) - m.get("right", 1)) * 72
+        scale = min(1.0, self.measure / word_measure) if word_measure else 1.0
         ind = props.get("ind")
         if ind:
             for key, attr in (("left", "LeftIndent"), ("start", "LeftIndent"),
@@ -534,16 +585,18 @@ class Exporter:
                               ("firstLine", "FirstLineIndent")):
                 v = _twips(ind, key)
                 if v is not None:
-                    attrs[attr] = _half(v)
+                    attrs[attr] = _half(v * scale)
             hanging = _twips(ind, "hanging")
             if hanging is not None:
-                attrs["FirstLineIndent"] = -_half(hanging)
+                attrs["FirstLineIndent"] = -_half(hanging * scale)
+        normal = docx.resolve_size(docx.default_style.get("paragraph")) or 12
+        size_scale = self.body_size / normal
         sp = props.get("spacing")
         if sp:
             for key, attr in (("before", "SpaceBefore"), ("after", "SpaceAfter")):
                 v = _twips(sp, key)
                 if v is not None:
-                    attrs[attr] = _half(min(v, 72))
+                    attrs[attr] = _half(min(v * size_scale, 2 * self.body_lead))
         bold, italic = props.get("b"), props.get("i")
         if bold is not None or italic is not None:
             base_fs = self._resolved_attrs(base).get("FontStyle", "Regular")
@@ -557,16 +610,12 @@ class Exporter:
         if "keepNext" in props and _toggle(props["keepNext"]):
             attrs["KeepWithNext"] = 2
         leading = None
-        if "sz" in props and st and st.based_on:
-            ratio = docx.resolve_size(style_id) / docx.resolve_size(st.based_on)
+        if "sz" in props:
+            ratio = docx.resolve_size(style_id) / normal
             if abs(ratio - 1) > 0.01:
-                _a, _f, base_lead = self.doc.resolved(base)
-                base_size = self._resolved_attrs(base).get("PointSize", self.body_size)
-                attrs["PointSize"] = _half(base_size * ratio)
-                if isinstance(base_lead, (int, float)):
-                    leading = _half(base_lead * ratio)
-        self.custom[name] = Style(name, base, attrs, leading=leading)
-        self.doc.paragraph_styles.append(self.custom[name])
+                attrs["PointSize"] = _half(self.body_size * ratio)
+                leading = _half(self.body_lead * ratio)
+        return attrs, leading
 
     def _char_style(self, name, docx=None, style_id=None):
         """Make sure a character style exists; returns its attributes."""
@@ -658,6 +707,19 @@ class Exporter:
         self.report += notes
         return set(tp)
 
+    def _baseline_grid(self):
+        """Body text on a baseline grid of the body leading, from the top margin (as g09);
+        styles with other leading (block quotes, notes, captions, headings) stay off it."""
+        m = self.doc.margins
+        self.doc.baseline_grid = {"start": m["top"], "division": self.body_lead, "shown": False}
+        body = self.doc.style("Body")
+        if body is not None:
+            body.attrs["GridAlignment"] = "AlignBaseline"
+        for s in self.doc.paragraph_styles:
+            attrs, _font, lead = self.doc.resolved(s.name)
+            if attrs.get("GridAlignment") == "AlignBaseline" and lead != self.body_lead:
+                s.attrs["GridAlignment"] = "None"
+
     def _finish_styles(self):
         self._char_style("Footnote Reference")
         order = list(CHAR_STYLES) + ["Hebrew", "Greek"]
@@ -665,6 +727,8 @@ class Exporter:
             self.used_char.values(),
             key=lambda s: (order.index(s.name) if s.name in order else len(order), s.name))
         tpl_names = self._template_styles() if self.tpl else set()
+        if self.profile.get("baseline_grid"):
+            self._baseline_grid()
         # Only the styles the book uses, plus the ones every book has (and the template's).
         used = set(self.para_used) | {"Body", "Body First", "Footnote", "Folio", "Running Head"}
         used |= tpl_names
@@ -900,9 +964,11 @@ class Exporter:
             return level
         return bib if bib is not None and level > bib else None
 
-    def _paragraphs(self, cp, docx, unit, prev_role, first, bib=False):
+    def _paragraphs(self, cp, docx, unit, prev_role, first, bib=False, body_seen=True):
         """Model paragraphs for one content paragraph (an image splits it), with its role.
-        bib: the paragraph is in a bibliography section (body text set as entries)."""
+        bib: the paragraph is in a bibliography section (body text set as entries).
+        body_seen: the unit already has body text (the first text paragraph of a unit, after
+        an epigraph say, is set flush: Body First)."""
         if cp.table is not None:
             return [Paragraph("Table", [Run(table=self._table(cp.table, docx))])], "table"
         m = self._mapping(docx, cp.style_id)
@@ -928,7 +994,7 @@ class Exporter:
                 runs.insert(0, _label_run(cp.label + (cp.label_suffix or "\t")))
         if style == "Body" and bib:
             style = "Bibliography"
-        if style == "Body" and (first or prev_role in HEAD_ROLES):
+        if style == "Body" and (first or prev_role in HEAD_ROLES or not body_seen):
             style = "Body First"
         attrs = self._para_attrs(cp, style)
         role = m.role
@@ -1026,8 +1092,9 @@ class Exporter:
                         docx.paragraphs[cp.index].in_toc_field and cp.table is None:
                     continue
                 bib = self._bibliography_state(cp, docx, bib)
+                body_seen = any(p.style in ("Body", "Body First") for p in current[1])
                 paras, role = self._paragraphs(cp, docx, current[0], prev_role, first,
-                                               bib is not None)
+                                               bib is not None, body_seen)
                 if paras:
                     current[1].extend(paras)
                     prev_role, first = role, False
@@ -1085,7 +1152,7 @@ class Exporter:
         self.info = info
         self.report += notes
         lang = self.profile["front_matter"].get("language", "en")
-        display, front_units, rest = [], [], []
+        display, front_units, rest, praise = [], [], [], []
         ms_copyright, extras = [], []
         for unit, paras in stories:
             kind = unit.kind if unit else "chapter"
@@ -1095,6 +1162,8 @@ class Exporter:
                 extras += ex
             elif kind == "display" and unit.type == "copyright":
                 ms_copyright += [p for p in paras if p.style != "Chapter Title"]
+            elif kind == "display" and unit.type == "endorsements":
+                praise.append(Block(unit, paras))
             elif kind == "display":
                 display.append(Block(unit, paras))
             elif kind == "front" and unit.type == "contents":
@@ -1105,7 +1174,8 @@ class Exporter:
                 front_units.append(Block(unit, paras))
             else:
                 rest.append(Block(unit, paras))
-        blocks = []
+        # Endorsements come first, before the half-title (Chicago).
+        blocks = list(praise)
         g = lambda kind, title, typ: Unit(kind, typ, title, "", -1, "generated")  # noqa: E731
         if info["half_title"]:
             blocks.append(Block(g("display", "Half title", "half title"),
@@ -1256,12 +1326,29 @@ class Exporter:
                                "over (then check that later chapters still open on a recto); "
                                "Affinity doesn't, so in Affinity add pages to a chapter whose "
                                "text runs over, two at a time.")
+        self.report.append(self._leading_note())
         self.report.append(
             "Margins (in): top %.3g, bottom %.3g, inside %.3g, outside %.3g; text %d lines of "
             "%g pt, about %d characters per line."
             % (m["top"] / 72, m["bottom"] / 72, m["inside"] / 72, m["outside"] / 72, g.lines,
                self.body_lead, round(g.cpl)))
         return doc.page_count
+
+    def _leading_note(self):
+        sug, why = layout.leading_suggestions(self.body_size, self.x_height, self.geo.cpl,
+                                              self.fonts["body"])
+        lead = self.profile.get("leading") or {}
+        if self.tpl and self.tpl[0].get("Body"):
+            source = "from the style template"
+        elif lead.get("value"):
+            source = "as set in the profile"
+        else:
+            source = "%s, the middle of its range" % (lead.get("feel") or "standard")
+        return ("Body type: %g pt on %g pt leading (%s). Suggested for %g pt: tight %g\u2013%g, "
+                "standard %g\u2013%g, open %g\u2013%g%s." % (
+                    self.body_size, self.body_lead, source, self.body_size,
+                    sug["tight"][0], sug["tight"][1], sug["standard"][0], sug["standard"][1],
+                    sug["open"][0], sug["open"][1], (" (%s)" % why) if why else ""))
 
     def _spare(self):
         try:

@@ -14,6 +14,7 @@ from docx_builder import (NUMBERING, endnote_ref, footnote_ref, image, make_docx
                           run, run_tests, table)
 from docx2idml.content import Numbering, read_content
 from docx2idml.docx_reader import read_docx
+from docx2idml import layout
 from docx2idml.export import ExportError, Exporter, export, segments
 from docx2idml.profile import default_profile
 
@@ -147,10 +148,15 @@ def test_model():
         assert "Heading A" in styles and "List Bullet" in styles and "List Number" in styles
         assert "Table" in styles and "Figure" in styles and "Caption" in styles
         assert styles[-2:] == ["Chapter Title", "Bibliography"]
+        # A custom Word style with no book counterpart (based on Normal) keeps what makes it
+        # distinct, in book terms: centered, italic, indents in proportion to the book's line
+        # (Word's is 6.5 in), 10 pt against Word's 12 pt body = 11 * 10/12; never Word's font.
         epi = doc.style("Epigraph")
-        assert epi.based_on == "Body" and epi.attrs["Justification"] == "CenterAlign"
-        assert epi.attrs["FontStyle"] == "Italic" and epi.attrs["LeftIndent"] == 72
-        assert epi.attrs["PointSize"] == 9           # 10 pt against Word's 12 pt body: 11 * 10/12
+        assert epi.based_on == "Body" and epi.font is None
+        assert epi.attrs["Justification"] == "CenterAlign" and epi.attrs["FontStyle"] == "Italic"
+        scale = min(1, ex.measure / 468)
+        assert epi.attrs["LeftIndent"] == round(72 * scale * 2) / 2 < 72
+        assert epi.attrs["PointSize"] == 9
         paras = list(_all_paras(doc))
         first = paras[2]
         got = [(r.text, r.style, r.attrs) for r in first.runs if r.footnote is None]
@@ -448,6 +454,126 @@ def test_styles_from_template():
         assert False, "a missing template must stop the export"
     except ExportError as e:
         assert "can't be read as an IDML file" in str(e)
+
+
+def test_endorsements_first_without_heads():
+    path = make_docx(os.path.join(TMP, "praise.docx"), [
+        para("Praise for the Book", "Heading1"), para("A fine book, says a reader of books."),
+        para("More Praise From Readers Who Liked It Very Much Indeed", "Heading1"),
+        para("Another fine word."),
+        para("Chapter One", "Heading1"), para("Text of chapter one.")])
+    ex = Exporter([path], default_profile(),
+                  {"unit_kinds": {"More Praise From Readers Who Liked It Very Much Indeed":
+                                  "endorsements"}})
+    try:
+        doc = ex.build()
+        first = ["".join(r.text for r in st.paragraphs[0].runs) for st in doc.stories[:3]]
+        assert first[:2] == ["Praise for the Book",
+                             "More Praise From Readers Who Liked It Very Much Indeed"]
+        assert doc.page_masters[doc.stories[0].pages[0]] == "D-Display"
+        assert doc.page_masters[doc.stories[1].pages[0]] == "D-Display"
+        assert doc.sections[0].marker == "" and doc.sections[1].marker == ""
+        assert not any("too long" in line for line in ex.report)
+        # The half-title follows, on a recto.
+        assert doc.stories[2].paragraphs[0].style == "Half Title"
+        assert doc.stories[2].pages[0] % 2 == 0
+    finally:
+        ex.cleanup()
+
+
+def test_endorsements_before_title_without_heading():
+    path = make_docx(os.path.join(TMP, "pre.docx"), [
+        para("\u201cA wonderful book.\u201d \u2014 A. Reader"),
+        para("The Covenant Formula", "Title"), para("by A. N. Author"),
+        para("Chapter One", "Heading1"), para("Text of chapter one.")])
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        texts = ["".join(r.text for r in st.paragraphs[0].runs) for st in doc.stories]
+        assert texts[0] == "\u201cA wonderful book.\u201d \u2014 A. Reader"
+        assert doc.page_masters[0] == "D-Display"
+        assert doc.stories[1].paragraphs[0].style == "Half Title" and doc.stories[1].pages[0] == 2
+        # The manuscript's title line went to the generated title page, not the endorsements.
+        assert all(p.style != "Book Title" for p in doc.stories[0].paragraphs)
+    finally:
+        ex.cleanup()
+
+
+def test_body_size_leading_and_baseline_grid():
+    prof = default_profile()
+    prof["body_size"] = 10
+    prof["leading"]["feel"] = "open"
+    prof["baseline_grid"] = True
+    ex = Exporter(_files(), prof)
+    try:
+        doc = ex.build()
+        body = doc.style("Body")
+        # Open at 10 pt: 13.5 for a typical x-height; the body font installed here (a book
+        # font on Windows) may shift it, so the expectation uses the font measured.
+        open_ = layout.leading_suggestions(10, ex.x_height, ex.geo.cpl)[0]["open"][2]
+        assert body.attrs["PointSize"] == 10 and body.leading == open_
+        if ex.x_height is None:
+            assert open_ == 13.5
+        assert doc.baseline_grid["division"] == open_
+        assert doc.baseline_grid["start"] == doc.margins["top"]
+        assert body.attrs["GridAlignment"] == "AlignBaseline"
+        assert doc.resolved("Caption")[0]["GridAlignment"] == "None"
+        assert doc.resolved("Body First")[0]["GridAlignment"] == "AlignBaseline"
+        assert any(line.startswith("Body type: 10 pt on %g pt leading (open" % open_)
+                   for line in ex.report)
+        from idml_check import check
+        from docx2idml.idml.writer import write_idml
+        assert not check(write_idml(doc, os.path.join(TMP, "grid.idml")))
+    finally:
+        ex.cleanup()
+    prof["leading"].update(value=12, unit="pt")
+    ex = Exporter(_files(), prof)
+    try:
+        assert ex.build().style("Body").leading == 12                 # an exact value wins
+    finally:
+        ex.cleanup()
+
+
+def test_fonts_never_from_word():
+    """The test manuscript's Word fonts are Calibri; the book's are book fonts."""
+    from docx2idml import fonts
+    ex = Exporter(_files(), default_profile())
+    try:
+        doc = ex.build()
+        assert doc.style("Body").font == fonts.book_font() != "Calibri"
+        assert doc.style("Chapter Title").font in (None, doc.style("Body").font)
+        assert any(line.startswith("Body font: %s (no font set in the profile"
+                                   % fonts.book_font()) for line in ex.report)
+        assert doc.style("Hebrew", "character").font == fonts.script_font("hebrew")
+    finally:
+        ex.cleanup()
+
+
+def test_custom_style_look_from_style_map():
+    prof = default_profile()
+    prof["style_map"]["paragraph"]["Epigraph"] = {"idml": "Epigraph", "role": "body",
+                                                  "look": "book"}
+    ex = Exporter(_files(), prof)
+    try:
+        assert ex.build().style("Epigraph").attrs == {}       # the book style's look
+    finally:
+        ex.cleanup()
+    # A custom style based on a heading follows the book's heading, unless set to Word's look.
+    extra = ('<w:style w:type="paragraph" w:customStyle="1" w:styleId="SectHead">'
+             '<w:name w:val="Sect Head"/><w:basedOn w:val="Heading2"/><w:pPr>'
+             '<w:jc w:val="center"/></w:pPr></w:style>')
+    path = make_docx(os.path.join(TMP, "sect.docx"), [para("Chapter", "Heading1"),
+                                                       para("A Section", "SectHead"),
+                                                       para("Text.")], extra_styles=[extra])
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        names = [p.style for st in doc.stories for p in st.paragraphs]
+        assert "Heading A" in names and doc.style("Sect Head") is None
+        assert "Justification" not in doc.style("Heading A").attrs or \
+            doc.style("Heading A").attrs["Justification"] != "CenterAlign"
+    finally:
+        ex.cleanup()
 
 
 def test_two_papers_with_bibliographies():

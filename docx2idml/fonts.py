@@ -187,3 +187,56 @@ def average_width(found, text=None):
     if not n:
         return FALLBACK_WIDTH
     return total / n / upem
+
+
+def x_height(found):
+    """The font's x-height in ems (OS/2 table), or None."""
+    try:
+        from fontTools.ttLib import TTFont
+        path, number = found
+        font = TTFont(path, fontNumber=number, lazy=True)
+        os2 = font["OS/2"]
+        xh = getattr(os2, "sxHeight", 0) if os2.version >= 2 else 0
+        if not xh:
+            from fontTools.pens.boundsPen import BoundsPen
+            gs = font.getGlyphSet()
+            name = (font.getBestCmap() or {}).get(ord("x"))
+            if not name:
+                return None
+            pen = BoundsPen(gs)
+            gs[name].draw(pen)
+            xh = pen.bounds[3] if pen.bounds else 0
+        return xh / font["head"].unitsPerEm if xh else None
+    except Exception:
+        return None
+
+
+# Book fonts, in order of preference: the first installed is the body font when the profile
+# sets none. Windows always has Palatino Linotype, Book Antiqua, Georgia and Cambria.
+BOOK_FONTS = ["Minion Pro", "Arno Pro", "Adobe Garamond Pro", "Garamond Premier Pro",
+              "Adobe Caslon Pro", "Sabon LT Std", "Sabon", "EB Garamond", "Crimson Pro",
+              "Crimson Text", "Libertinus Serif", "Linux Libertine O", "Palatino Linotype",
+              "Book Antiqua", "Georgia", "Cambria", "Times New Roman"]
+SCRIPT_FONTS = {"hebrew": ["SBL Hebrew", "Taamey David CLM", "Ezra SIL", "Cardo",
+                           "Times New Roman"],
+                "greek": ["SBL Greek", "Gentium Plus", "Gentium Book Plus", "Cardo",
+                          "Palatino Linotype", "Times New Roman"]}
+
+
+def book_font(index=None):
+    """The first installed book font (Minion Pro if none of them is installed here)."""
+    for name in BOOK_FONTS:
+        if find_font(name, index=index):
+            return name
+    return BOOK_FONTS[0]
+
+
+def script_font(script, index=None):
+    """The first installed font for Hebrew or Greek that has its letters (the first of the list
+    if none is installed here)."""
+    letters = {"hebrew": 0x05D0, "greek": 0x1F00}[script]
+    for name in SCRIPT_FONTS[script]:
+        found = find_font(name, index=index)
+        if found and has_char(found, letters):
+            return name
+    return SCRIPT_FONTS[script][0]

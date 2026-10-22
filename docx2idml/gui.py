@@ -24,9 +24,11 @@ from . import APP_NAME, __version__, appsettings, updates
 from . import profile as profiles
 from .book import Book, collect
 from .export import TRIMS, ExportError, export
+from .outline import KIND_LABELS, KINDS, kind_key
 from .stylemap import ROLES
 
 TITLE = "docx-to-idml"     # working name
+LOOKS = {"book": "the book style's", "word": "Word's, in book terms"}
 
 # Profile fields: (path in the profile, label, kind, choices). Kinds: bool, text, number
 # (blank allowed = automatic), int, choice, int_choice (a choice saved as a number), file (an
@@ -39,7 +41,7 @@ PROFILE_FIELDS = {
         (("page", "custom_height"), "Custom height (in)", "number", None),
         (("page", "facing"), "Facing pages", "bool", None),
         (("page", "bleed"), "Bleed (0.125 in)", "bool", None),
-        (("page", "margins", "top"), "Top margin (in, blank = calculated)", "number", None),
+        (("page", "margins", "top"), "Top margin (in)", "number", None),
         (("page", "margins", "bottom"), "Bottom margin (in)", "number", None),
         (("page", "margins", "inside"), "Inside margin (in)", "number", None),
         (("page", "margins", "outside"), "Outside margin (in)", "number", None),
@@ -48,17 +50,21 @@ PROFILE_FIELDS = {
     ],
     "Type": [
         (("styles_template",), "Styles from an IDML file (optional)", "file", None),
-        (("fonts", "body"), "Body font (blank = from Word)", "font", None),
+        (("fonts", "body"), "Body font (blank = an installed book font)", "font", None),
         (("fonts", "headings"), "Headings font", "font", None),
         (("fonts", "notes"), "Notes font", "font", None),
         (("fonts", "display"), "Display font", "font", None),
         (("fonts", "hebrew"), "Hebrew font", "font", "hebrew"),
         (("fonts", "greek"), "Greek font", "font", "greek"),
-        (("leading", "value"), "Leading (blank = automatic)", "number", None),
+        (("body_size",), "Body size (pt)", "size", ["9", "9.5", "10", "10.5", "11", "11.5", "12",
+                                                     "12.5", "13"]),
+        (("leading", "feel"), "Leading", "choice", ["tight", "standard", "open"]),
+        (("leading", "value"), "Exact leading (blank = from the choice above)", "number", None),
         (("leading", "unit"), "Leading unit", "choice", ["pt", "multiple", "percent"]),
         (("front_matter", "language"), "Language", "choice", ["en", "es"]),
-        (("typography", "paragraph_composer"), "Paragraph composer (World-Ready; off = "
-                                               "single-line)", "bool", None),
+        (("baseline_grid",), "Baseline grid (body text on the leading)", "bool", None),
+        (("typography", "paragraph_composer"), "World-Ready composer (off = single-line)",
+         "bool", None),
         (("typography", "optical_margins"), "Optical margin alignment", "bool", None),
         (("typography", "hyphenation"), "Hyphenation", "bool", None),
         (("typography", "ligatures"), "Ligatures", "bool", None),
@@ -130,23 +136,33 @@ def _num(text, kind):
 class Form:
     """Widgets for a list of fields, bound to a dict (read with load(), written with save())."""
 
-    def __init__(self, parent, fields, columns=1):
-        self.fields, self.vars, self.font_boxes = fields, {}, []
+    def __init__(self, parent, fields, columns=1, by_column=False):
+        """by_column: fill each column top to bottom (fields listed in reading order down the
+        first column, then the second), instead of row by row."""
+        self.fields, self.vars, self.font_boxes, self.labels = fields, {}, [], {}
         for n, (path, label, kind, choices) in enumerate(fields):
-            row, col = n // columns, (n % columns) * 2
+            rows = -(-len(fields) // columns)
+            if by_column:
+                row, col = n % rows, (n // rows) * 2
+            else:
+                row, col = n // columns, (n % columns) * 2
             if kind == "bool":
                 var = tk.BooleanVar()
                 ttk.Checkbutton(parent, text=label, variable=var).grid(
                     row=row, column=col, columnspan=2, sticky="w", padx=6, pady=2)
             else:
                 var = tk.StringVar()
-                ttk.Label(parent, text=label).grid(row=row, column=col, sticky="w", padx=6, pady=2)
-                if kind in ("choice", "int_choice"):
+                lab = ttk.Label(parent, text=label)
+                lab.grid(row=row, column=col, sticky="w", padx=6, pady=2)
+                self.labels[path] = (lab, label)
+                if kind == "size":
+                    w = ttk.Combobox(parent, textvariable=var, values=choices, width=24)
+                elif kind in ("choice", "int_choice"):
                     w = ttk.Combobox(parent, textvariable=var, values=choices, state="readonly",
                                      width=24)
                 elif kind == "file":
                     w = ttk.Frame(parent)
-                    ttk.Entry(w, textvariable=var, width=20).pack(side="left", fill="x",
+                    ttk.Entry(w, textvariable=var, width=14).pack(side="left", fill="x",
                                                                    expand=True)
 
                     def browse(var=var):
@@ -182,6 +198,8 @@ class Form:
         for path, (var, kind) in self.vars.items():
             if kind == "bool":
                 value = bool(var.get())
+            elif kind == "size":
+                value = _num(var.get(), "number") or 11
             elif kind == "int_choice":
                 value = _num(var.get(), "int") or 0
             elif kind in ("number", "int"):
@@ -215,7 +233,7 @@ class App:
         except profiles.ProfileError:
             self.profile_name, self.profile = None, profiles.default_profile()
         root.title("%s %s" % (TITLE, __version__))
-        root.geometry("980x700")
+        root.geometry("1040x720")
         root.minsize(760, 520)
         self._menus()
         self._build(dnd)
@@ -329,16 +347,21 @@ class App:
     def _book_tab(self):
         tab = ttk.Frame(self.tabs, padding=8)
         self.tabs.add(tab, text="Book details")
-        form = ttk.Frame(tab)
-        form.pack(fill="x")
-        fields = [((key,), label, kind, None) for key, label, kind in FRONT_FIELDS]
-        self.front_form = Form(form, fields, columns=2)
         row = ttk.Frame(tab)
-        row.pack(fill="x", pady=8)
+        row.pack(fill="x", pady=(0, 4))
         ttk.Button(row, text="Fill from the manuscript", command=self.fill_front).pack(side="left")
         ttk.Label(row, text="Blank fields are filled from the manuscript at export; anything "
                             "still missing appears in brackets, e.g. [ISBN].").pack(
             side="left", padx=8)
+        # Where the filled values came from (which style or line), so the user sees how the
+        # manuscript was read.
+        self.front_sources = tk.StringVar()
+        ttk.Label(tab, textvariable=self.front_sources, wraplength=900,
+                  justify="left").pack(anchor="w", pady=(0, 6))
+        form = ttk.Frame(tab)
+        form.pack(fill="x")
+        fields = [((key,), label, kind, None) for key, label, kind in FRONT_FIELDS]
+        self.front_form = Form(form, fields, columns=2)
         ttk.Label(tab, text="Notices on the copyright page (from the profile's library; select "
                             "any number):").pack(anchor="w", pady=(8, 2))
         self.notice_list = tk.Listbox(tab, selectmode="multiple", height=5, exportselection=False)
@@ -355,11 +378,11 @@ class App:
         form = ttk.Frame(tab)
         form.pack(fill="x")
         self.heads_form = Form(form, HEAD_FIELDS, columns=2)
-        ttk.Label(tab, text="Recto heads by chapter (double-click to give a short title; "
-                            "\"too long\" means it won't fit the page):").pack(anchor="w",
-                                                                                pady=(10, 2))
+        ttk.Label(tab, text="Units of the book (double-click a running head to give a short "
+                            "title, or a kind to change what the unit is; \"too long\" means "
+                            "the head won't fit the page):").pack(anchor="w", pady=(10, 2))
         self.heads = ttk.Treeview(tab, columns=("unit", "kind", "head", "note"), show="headings")
-        for c, t, w in (("unit", "Title in the manuscript", 330), ("kind", "Kind", 80),
+        for c, t, w in (("unit", "Title in the manuscript", 330), ("kind", "Kind (double-click)", 160),
                         ("head", "Running head", 280), ("note", "", 80)):
             self.heads.heading(c, text=t)
             self.heads.column(c, width=w)
@@ -375,7 +398,33 @@ class App:
         for name, fields in PROFILE_FIELDS.items():
             f = ttk.Frame(inner, padding=8)
             inner.add(f, text=name)
-            self.profile_forms.append(Form(f, fields, columns=2 if name != "Type" else 2))
+            # The Page tab in one column, so the four margins read together.
+            self.profile_forms.append(Form(f, fields, columns=1 if name == "Page" else 2,
+                                           by_column=True))
+        # The suggested leading for the size and font, under the Type fields.
+        typetab = inner.nametowidget(inner.tabs()[1])
+        self.leading_note = tk.StringVar()
+        ttk.Label(typetab, textvariable=self.leading_note, wraplength=820, justify="left").grid(
+            row=-(-len(PROFILE_FIELDS["Type"]) // 2) + 1, column=0, columnspan=4, sticky="w", padx=6,
+            pady=(10, 4))
+        # The margins the export would calculate, shown beside the margin fields.
+        page = inner.nametowidget(inner.tabs()[0])
+        row = len(PROFILE_FIELDS["Page"]) + 1
+        self.margin_note = tk.StringVar()
+        ttk.Label(page, textvariable=self.margin_note, wraplength=820, justify="left").grid(
+            row=row, column=0, columnspan=4, sticky="w", padx=6, pady=(10, 4))
+        ttk.Button(page, text="Fill in the calculated margins", command=self.fill_margins).grid(
+            row=row + 1, column=0, columnspan=2, sticky="w", padx=6)
+        form = self.profile_forms[0]
+        watched = [form.vars[p][0] for p in (("page", "trim"), ("page", "custom_width"),
+                                              ("page", "custom_height"))]
+        watched += [self.profile_forms[1].vars[p][0] for p in (("fonts", "body"),
+                                                               ("leading", "value"),
+                                                               ("leading", "unit"),
+                                                               ("leading", "feel"),
+                                                               ("body_size",))]
+        for var in watched:
+            var.trace_add("write", lambda *_: self._margins_later())
         ttk.Label(tab, text="Changes apply to the next export. Profile > Save profile keeps them "
                             "for the next book in the series.").pack(anchor="w", pady=(6, 0))
 
@@ -383,13 +432,15 @@ class App:
         tab = ttk.Frame(self.tabs, padding=8)
         self.tabs.add(tab, text="Style map")
         ttk.Label(tab, text="Paragraph styles in the manuscript (run preflight to fill). "
-                            "Double-click to map a Word style to an IDML style and role; the "
-                            "map is saved in the profile.").pack(anchor="w")
-        self.styles = ttk.Treeview(tab, columns=("word", "count", "idml", "role", "source"),
-                                   show="headings")
-        for c, t, w in (("word", "Word style", 220), ("count", "Paragraphs", 80),
-                        ("idml", "IDML style", 200), ("role", "Role", 100),
-                        ("source", "Found by", 200)):
+                            "Double-click to map a Word style to an IDML style and role, and "
+                            "to choose its look: the book style's, or (for a special paragraph "
+                            "the author set up) Word's, in book terms. The map is saved in the "
+                            "profile.", wraplength=900, justify="left").pack(anchor="w")
+        self.styles = ttk.Treeview(tab, columns=("word", "count", "idml", "role", "look",
+                                                 "source"), show="headings")
+        for c, t, w in (("word", "Word style", 200), ("count", "Paragraphs", 70),
+                        ("idml", "IDML style", 170), ("role", "Role", 80),
+                        ("look", "Look", 150), ("source", "Found by", 220)):
             self.styles.heading(c, text=t)
             self.styles.column(c, width=w)
         self.styles.pack(fill="both", expand=True, pady=4)
@@ -418,6 +469,7 @@ class App:
         for form in self.profile_forms:
             form.load(self.profile)
         self.heads_form.load(self.profile)
+        self._margins_later()
         self.notice_list.delete(0, "end")
         chosen = set((self.book.settings.get("front") or {}).get("notices") or [])
         for n, item in enumerate(self.profile.get("notices") or []):
@@ -445,6 +497,87 @@ class App:
         self.font_lists = lists
         for form in self.profile_forms:
             form.set_fonts(lists)
+
+    MARGINS = ("top", "bottom", "inside", "outside")
+
+    def _margins_later(self):
+        """Recalculate the shown margins shortly after a change (not on every keystroke)."""
+        if getattr(self, "_margin_job", None):
+            self.root.after_cancel(self._margin_job)
+        self._margin_job = self.root.after(400, self.update_margins)
+
+    def calculated(self):
+        """The margins the export would calculate now: (Geometry, pages, font found)."""
+        from .export import calculated_margins
+        prof = copy.deepcopy(self.profile)
+        for form in self.profile_forms:
+            form.save(prof)
+        pages = 200
+        if self.report and self.report.outline:
+            # A rough count from the words, as the export starts from.
+            g, _found = calculated_margins(prof)
+            words = self.report.outline.words
+            pages = int(words * 6.2 / (g.cpl * g.lines)) + 2 * len(self.report.outline.units) + 6
+        g, found = calculated_margins(prof, pages)
+        return g, pages, found
+
+    def update_margins(self):
+        self._margin_job = None
+        try:
+            g, pages, found = self.calculated()
+        except Exception:
+            return
+        self._update_leading_note(g)
+        form = self.profile_forms[0]
+        for side in self.MARGINS:
+            lab, text = form.labels[("page", "margins", side)]
+            lab.configure(text="%s, calculated %.2f" % (text, g.margins[side] / 72))
+        from . import fonts
+        font = (self.profile_forms[1].vars[("fonts", "body")][0].get() or "").strip() or \
+            fonts.book_font()
+        basis = ("%s, measured" % font) if found else \
+            "%s isn't installed: an average book font" % font
+        self.margin_note.set(
+            "Calculated margins (in): top %.2f, bottom %.2f, inside %.2f, outside %.2f, for "
+            "about %d pages (%s), %d characters per line at %g pt. Blank margin fields use "
+            "the calculated values, which follow the page count (KDP's inside minimum grows "
+            "with it); a value typed in is used as it is."
+            % (g.margins["top"] / 72, g.margins["bottom"] / 72, g.margins["inside"] / 72,
+               g.margins["outside"] / 72, pages, basis, round(g.cpl),
+               _num(self.profile_forms[1].vars[("body_size",)][0].get(), "number") or 11))
+
+    def _update_leading_note(self, g):
+        """The suggested leading ranges for the size and font, and the leading the export
+        will use."""
+        from . import fonts, layout
+        from .export import body_size, leading_for
+        prof = copy.deepcopy(self.profile)
+        for form in self.profile_forms:
+            form.save(prof)
+        size = body_size(prof)
+        font = (prof.get("fonts") or {}).get("body") or fonts.book_font()
+        found = fonts.find_font(font)
+        xh = fonts.x_height(found) if found else None
+        sug, why = layout.leading_suggestions(size, xh, g.cpl, font)
+        lead = leading_for(prof, size, xh, g.cpl)
+        feel = (prof.get("leading") or {}).get("feel") or "standard"
+        used = "as typed" if (prof.get("leading") or {}).get("value") else feel
+        self.leading_note.set(
+            "Suggested for %g pt%s: tight %g\u2013%g, standard %g\u2013%g, open %g\u2013%g "
+            "points%s. The export will use %g on %g (%s)." % (
+                size, (" " + font) if font and found else "",
+                sug["tight"][0], sug["tight"][1], sug["standard"][0], sug["standard"][1],
+                sug["open"][0], sug["open"][1], ("; " + why) if why else "", size, lead, used))
+
+    def fill_margins(self):
+        g, _pages, _found = self.calculated()
+        form = self.profile_forms[0]
+        for side in self.MARGINS:
+            var = form.vars[("page", "margins", side)][0]
+            if not var.get().strip():
+                var.set("%.3g" % (g.margins[side] / 72))
+        self.status.set("Calculated margins filled in; they are now fixed for this profile "
+                        "(clear a field to let it follow the page count again).")
 
     def _forms_to_profile(self):
         for form in self.profile_forms:
@@ -672,22 +805,43 @@ class App:
         o = self.report.outline
         front = self.book.settings.setdefault("front", {})
         self.front_form.save(front)
+        filled = []
         for key, value in (("title", o.title), ("subtitle", o.subtitle), ("author", o.author)):
             if value and not front.get(key):
                 front[key] = value
+                filled.append(key)
         self.front_form.load(front)
         self.dirty = True
+        found = []
+        for key, label, value, source in (
+                ("title", "Title", o.title, o.title_source),
+                ("subtitle", "Subtitle", o.subtitle, o.subtitle_source),
+                ("author", "Author", o.author, o.author_source)):
+            if value:
+                state = "filled in" if key in filled else "already set, kept"
+                found.append("%s: \u201c%s\u201d, from %s (%s)" % (label, value, source, state))
+            else:
+                found.append("%s: not found in the manuscript" % label)
+        self.front_sources.set("Found in the manuscript \u2014 " + "; ".join(found) + ".")
 
     # ---- running heads ----
 
     def _refresh_heads(self):
         self.heads.delete(*self.heads.get_children())
         short = self.book.settings.get("short_titles") or {}
+        kinds = self.book.settings.get("unit_kinds") or {}
         limit = self._head_limit()
-        for title, kind in self.units:
+        for title, detected in self.units:
+            if self.heads.exists(title):
+                continue              # two units with one title share a row
+            kind = kinds.get(title, detected)
             head = short.get(title) or title
-            note = "too long" if len(head) > limit else ""
-            self.heads.insert("", "end", iid=title, values=(title, kind, head, note))
+            note = "too long" if len(head) > limit and kind in ("chapter", "part", "front",
+                                                                 "back") else ""
+            if kind in ("display", "endorsements"):
+                head, note = "(no running heads)", ""
+            label = KIND_LABELS.get(kind, kind) + (" (set by you)" if title in kinds else "")
+            self.heads.insert("", "end", iid=title, values=(title, label, head, note))
 
     def _head_limit(self):
         """Characters that fit a running head: 80% of the measure at the head's size."""
@@ -702,6 +856,8 @@ class App:
         item = self.heads.identify_row(event.y)
         if not item:
             return
+        if self.heads.identify_column(event.x) == "#2":
+            return self._edit_kind(item)
         current = self.heads.set(item, "head")
         new = simpledialog.askstring(TITLE, "Running head for “%s” (blank = the full "
                                             "title):" % item, initialvalue=current,
@@ -716,6 +872,40 @@ class App:
         self.dirty = True
         self._refresh_heads()
 
+    def _edit_kind(self, title):
+        """Choose what a unit is (chapter, front matter, endorsements...), over what was
+        detected; saved with the book."""
+        detected = dict(self.units).get(title, "chapter")
+        kinds = self.book.settings.setdefault("unit_kinds", {})
+        dlg = tk.Toplevel(self.root)
+        dlg.title("What is \u201c%s\u201d?" % title[:40])
+        dlg.transient(self.root)
+        labels = [KIND_LABELS[k] for k in KINDS]
+        var = tk.StringVar(value=KIND_LABELS[kinds.get(title, detected)])
+        ttk.Label(dlg, text="\u201c%s\u201d is:" % title[:60]).grid(row=0, column=0, padx=8,
+                                                                    pady=6, sticky="w")
+        ttk.Combobox(dlg, textvariable=var, values=labels, state="readonly").grid(
+            row=0, column=1, padx=8)
+        ttk.Label(dlg, text="Display pages and endorsements have no folio or running heads; "
+                            "endorsements go before the half-title.", wraplength=380).grid(
+            row=1, column=0, columnspan=2, padx=8, sticky="w")
+
+        def ok():
+            key = [k for k in KINDS if KIND_LABELS[k] == var.get()][0]
+            self.set_kind(title, key)
+            dlg.destroy()
+        ttk.Button(dlg, text="OK", command=ok).grid(row=2, column=1, sticky="e", padx=8, pady=8)
+
+    def set_kind(self, title, key):
+        detected = dict(self.units).get(title, "chapter")
+        kinds = self.book.settings.setdefault("unit_kinds", {})
+        if key == detected:
+            kinds.pop(title, None)
+        else:
+            kinds[title] = key
+        self.dirty = True
+        self._refresh_heads()
+
     # ---- style map ----
 
     def _refresh_styles(self):
@@ -724,7 +914,29 @@ class App:
             return
         for s in self.report.paragraph_styles:
             self.styles.insert("", "end", iid=s.word, values=(
-                s.word, s.count, s.idml or "(left out)", s.role, s.source))
+                s.word, s.count, s.idml or "(left out)", s.role,
+                LOOKS[self._look(s.word, s.idml, s.role)], s.source))
+
+    def _look(self, word, idml, role):
+        """As the export decides: the style map's choice, else Word's look only for a style
+        kept under its own name with no book counterpart."""
+        from .stylemap import norm
+        sm = (self.profile.get("style_map") or {}).get("paragraph") or {}
+        for k, v in sm.items():
+            if norm(k) == norm(word) and isinstance(v, dict) and v.get("look") in LOOKS:
+                return v["look"]
+        return "word" if role == "body" and idml == word else "book"
+
+    def set_style(self, word, idml, role, look):
+        """Map a Word style (the profile's style map)."""
+        sm = self.profile.setdefault("style_map", {}).setdefault("paragraph", {})
+        sm[word] = {"idml": idml or None, "role": role, "look": look}
+        if self.styles.exists(word):
+            self.styles.set(word, "idml", idml or "(left out)")
+            self.styles.set(word, "role", role)
+            self.styles.set(word, "look", LOOKS[look])
+            self.styles.set(word, "source", "profile (save the profile to keep it)")
+        self.report = None       # mappings change the outline
 
     def _edit_style(self, event):
         item = self.styles.identify_row(event.y)
@@ -741,16 +953,23 @@ class App:
         ttk.Label(dlg, text="Role:").grid(row=1, column=0, sticky="w", padx=8, pady=4)
         ttk.Combobox(dlg, textvariable=role, values=ROLES, state="readonly").grid(
             row=1, column=1, padx=8, sticky="w")
+        look = tk.StringVar(value=self.styles.set(item, "look"))
+        ttk.Label(dlg, text="Look:").grid(row=2, column=0, sticky="w", padx=8, pady=4)
+        ttk.Combobox(dlg, textvariable=look, values=list(LOOKS.values()), state="readonly",
+                     width=30).grid(row=2, column=1, padx=8, sticky="w")
+        ttk.Label(dlg, text="Word's look keeps the style's alignment, indents, italic or bold, "
+                            "and size and spacing in proportion to the body; never Word's "
+                            "fonts. It applies to a style kept under its own name.",
+                  wraplength=380, justify="left").grid(row=3, column=0, columnspan=2,
+                                                       padx=8, sticky="w")
 
         def ok():
-            sm = self.profile.setdefault("style_map", {}).setdefault("paragraph", {})
-            sm[item] = {"idml": idml.get().strip() or None, "role": role.get()}
-            self.styles.set(item, "idml", idml.get())
-            self.styles.set(item, "role", role.get())
-            self.styles.set(item, "source", "profile (save the profile to keep it)")
-            self.report = None       # mappings change the outline
+            key = [k for k, v in LOOKS.items() if v == look.get()] or ["book"]
+            idml_name = idml.get().strip()
+            self.set_style(item, None if idml_name == "(left out)" else idml_name, role.get(),
+                           key[0])
             dlg.destroy()
-        ttk.Button(dlg, text="OK", command=ok).grid(row=2, column=1, sticky="e", padx=8, pady=8)
+        ttk.Button(dlg, text="OK", command=ok).grid(row=4, column=1, sticky="e", padx=8, pady=8)
 
     # ---- preflight and export ----
 
@@ -817,10 +1036,12 @@ class App:
 
     def _preflighted(self, rep):
         self.report = rep
-        self.units = [(u.title, u.kind) for u in rep.outline.units] if rep.outline else []
+        # (title, kind as detected): the book settings' choices are applied when shown.
+        self.units = [(u.title, kind_key(u)) for u in rep.outline.units] if rep.outline else []
         self._refresh_files()
         self._refresh_heads()
         self._refresh_styles()
+        self._margins_later()
 
     def _need_report(self, then):
         """Run preflight first if there's no report for the current files."""

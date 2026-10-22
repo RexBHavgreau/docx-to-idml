@@ -91,6 +91,7 @@ Calculated, then shown as editable values:
 - From Word: "Exactly" carries over as-is; "Multiple" and "At least" are converted to points from the font size and shown in the box for rounding.
 - Beside the box, **suggested tight / standard / open ranges** for the current size (at 11 pt, roughly 12.5–13 / 13.5–14 / 14.5–15), shifted for the font's x-height and the measure, with a one-line explanation when they shift.
 - **Baseline grid off by default**; the user can turn it on (it uses the leading value as its increment).
+- *(Built in 0.3.0: profile `body_size` and `leading.feel`; the suggested ranges shift by about the x-height's excess over 0.46 em times the size, and 0.2% per character of line length over 65; the window shows them and the leading the export will use. Taking the leading from Word isn't done: manuscripts are usually double-spaced.)*
 
 ### Fonts
 - Chosen by **role**: Body, Headings, Notes, Display, and script fonts for **Hebrew** and **Greek**. Each style inherits its role's font; per-style overrides for exceptions.

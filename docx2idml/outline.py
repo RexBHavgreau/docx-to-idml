@@ -19,6 +19,12 @@ from .stylemap import StyleMap, norm
 
 # Normalized title -> (kind, type). "display" pages carry no folio.
 _FRONT = {
+    "endorsements": ("display", "endorsements"), "praise": ("display", "endorsements"),
+    "advance praise": ("display", "endorsements"),
+    "what people are saying": ("display", "endorsements"),
+    "what others are saying": ("display", "endorsements"),
+    "elogios": ("display", "endorsements"), "recomendaciones": ("display", "endorsements"),
+    "lo que dicen": ("display", "endorsements"),
     "dedication": ("display", "dedication"), "dedicatoria": ("display", "dedication"),
     "epigraph": ("display", "epigraph"), "epígrafe": ("display", "epigraph"),
     "copyright": ("display", "copyright"),
@@ -47,6 +53,7 @@ _BACK = {
     "índice de autores": "index", "índice de citas": "index", "índice onomástico": "index",
     "about the author": "about", "sobre el autor": "about", "acerca del autor": "about",
 }
+_PRAISE = re.compile(r"^(advance praise|praise|endorsements|elogios|recomendaciones)\s+(for|of|para|de)\b")
 _APPENDIX = re.compile(r"^(appendix|appendices|apéndice|apéndices|anexo)\b")
 _PART = re.compile(r"^(part|parte|book|libro)\s+(\S+)")
 _PART_WORDS = {"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
@@ -68,6 +75,8 @@ def classify(title, chapter_seen):
     key = title_key(title)
     if key in _FRONT and not chapter_seen:
         return _FRONT[key]
+    if not chapter_seen and _PRAISE.match(key):
+        return ("display", "endorsements")
     if key == "índice":   # Spanish: the contents at the front, an index at the back
         return ("back", "index") if chapter_seen else ("front", "contents")
     if key in _BACK:
@@ -78,6 +87,31 @@ def classify(title, chapter_seen):
     if m and (m.group(2).strip(".:") in _PART_WORDS or m.group(2).strip(".:").isdigit()):
         return ("part", "part")
     return ("chapter", "chapter")
+
+
+# Kinds the user can give a unit (book settings "unit_kinds": {unit title: key}).
+KINDS = {"chapter": ("chapter", "chapter"), "part": ("part", "part"),
+         "front": ("front", "front matter"), "back": ("back", "back matter"),
+         "display": ("display", "display page"), "endorsements": ("display", "endorsements")}
+KIND_LABELS = {"chapter": "chapter", "part": "part", "front": "front matter",
+               "back": "back matter", "display": "display page", "endorsements": "endorsements"}
+
+
+def kind_key(unit):
+    """The KINDS key a unit has now."""
+    if unit.type == "endorsements":
+        return "endorsements"
+    return unit.kind if unit.kind in KINDS else "chapter"
+
+
+def apply_kinds(outline, kinds):
+    """The user's choices of kind for units (by title), over what was detected."""
+    for u in outline.units:
+        key = (kinds or {}).get(u.title)
+        if key in KINDS and key != kind_key(u):
+            u.kind, u.type = KINDS[key]
+            u.detected_by += " (kind set in the book settings)"
+    return outline
 
 
 @dataclass
@@ -101,6 +135,7 @@ class Outline:
     title: str = None
     title_source: str = None
     subtitle: str = None
+    subtitle_source: str = None
     author: str = None
     author_source: str = None
     file_creator: str = None        # docProps creator: usually whoever made the file
@@ -224,7 +259,7 @@ def build_outline(docs, stylemap=None):
             if m.role == "book_title" and not out.title:
                 out.title, out.title_source = text, "style %s in %s" % (m.word, doc.name)
             elif m.role == "subtitle" and not out.subtitle:
-                out.subtitle = text
+                out.subtitle, out.subtitle_source = text, "style %s in %s" % (m.word, doc.name)
             elif m.role == "author" and not out.author:
                 out.author, out.author_source = text, "style %s in %s" % (m.word, doc.name)
 
@@ -233,7 +268,27 @@ def build_outline(docs, stylemap=None):
         lead_text = [p for p in lead if p.text.strip() and fo.usable(p)]
         if lead_text:
             titled = any(fo.mapping(p).role in ("book_title", "subtitle") for p in lead_text)
-            if out.units and not titled and _is_title_page(fo, lead_text):
+            ti = next((i for i, p in enumerate(lead_text)
+                       if fo.mapping(p).role == "book_title"), None)
+            strong = any(u.detected_by.startswith("style") for u in out.units)
+            if ti is not None and not strong and \
+                    not any(u.type == "title page" for u in out.units) and \
+                    _is_title_page(fo, lead_text[ti:]):
+                # The title page, found by its title line. Whatever comes before it
+                # (endorsements, seldom with a heading) is preliminary matter.
+                start = lead_text[ti].index
+                if ti:
+                    pre = Unit("display", "endorsements", "(endorsements)", doc.name,
+                               lead_text[0].index, "text before the title page")
+                    _fill(pre, fo, lead[:start])
+                    out.units.append(pre)
+                unit = Unit("display", "title page", "(title page)", doc.name, start,
+                            "title style")
+                _fill(unit, fo, lead[start:])
+                _scan_opening(out, lead[start:])
+                out.units.append(unit)
+                chapter_seen = False    # anything before the title page was preliminary
+            elif out.units and not titled and _is_title_page(fo, lead_text):
                 # A stray line or two before a later file's first heading stays with the
                 # previous unit.
                 prev = out.units[-1]
@@ -285,6 +340,7 @@ def build_outline(docs, stylemap=None):
             if kind == "display" or (kind == "front" and not out.units):
                 _scan_opening(out, body)
             out.units.append(unit)
+    _before_title_page(out)
     if not out.title:
         for doc in docs:
             if doc.core.get("title"):
@@ -293,6 +349,16 @@ def build_outline(docs, stylemap=None):
                 break
     _check_outline(out)
     return out
+
+
+def _before_title_page(out):
+    """Units before the title page (a file of endorsements with no headings, say) are
+    preliminary matter: endorsements."""
+    tp = next((n for n, u in enumerate(out.units) if u.type == "title page"), None)
+    for u in out.units[:tp or 0]:
+        if u.type != "endorsements":
+            u.kind, u.type = "display", "endorsements"
+            u.detected_by += " (before the title page: endorsements)"
 
 
 def _is_title_page(fo, lead_text):
