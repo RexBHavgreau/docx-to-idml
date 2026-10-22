@@ -102,6 +102,11 @@ keep it up to date when decisions change.
   an ordinary `TextFrame` (reference file 05).
 - The two InDesign files from the brief (the Assumption article and its cut-down) are a real
   article: use them for analysis only; don't commit them.
+- Nothing from Word's formatting goes into the styles (Beaux, 0.3.0): Word paragraph styles
+  give names and roles only; a custom style is `Style(name, base)` with no attributes. Fonts
+  not set (profile or template) are `fonts.book_font()` / `fonts.script_font()` (installed
+  book fonts in order), never Word's. Kept from Word: emphasis and character styles in the
+  text, direct center/right alignment of a line. Body First = a unit's first body paragraph.
 - Export (step 4): direct italic, bold, small caps, capitals, super/subscript, underline and
   strikethrough become character styles (Italic, Bold, Bold Italic, Small Caps...), worked out
   against the paragraph style (italic in a bold heading is Bold Italic; Word's toggle rule for

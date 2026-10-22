@@ -147,10 +147,9 @@ def test_model():
         assert "Heading A" in styles and "List Bullet" in styles and "List Number" in styles
         assert "Table" in styles and "Figure" in styles and "Caption" in styles
         assert styles[-2:] == ["Chapter Title", "Bibliography"]
+        # A custom Word style keeps its name and place only: no formatting from Word.
         epi = doc.style("Epigraph")
-        assert epi.based_on == "Body" and epi.attrs["Justification"] == "CenterAlign"
-        assert epi.attrs["FontStyle"] == "Italic" and epi.attrs["LeftIndent"] == 72
-        assert epi.attrs["PointSize"] == 9           # 10 pt against Word's 12 pt body: 11 * 10/12
+        assert epi.based_on == "Body" and epi.attrs == {} and epi.font is None
         paras = list(_all_paras(doc))
         first = paras[2]
         got = [(r.text, r.style, r.attrs) for r in first.runs if r.footnote is None]
@@ -518,6 +517,21 @@ def test_body_size_leading_and_baseline_grid():
     ex = Exporter(_files(), prof)
     try:
         assert ex.build().style("Body").leading == 12                 # an exact value wins
+    finally:
+        ex.cleanup()
+
+
+def test_fonts_never_from_word():
+    """The test manuscript's Word fonts are Calibri; the book's are book fonts."""
+    from docx2idml import fonts
+    ex = Exporter(_files(), default_profile())
+    try:
+        doc = ex.build()
+        assert doc.style("Body").font == fonts.book_font() != "Calibri"
+        assert doc.style("Chapter Title").font in (None, doc.style("Body").font)
+        assert any(line.startswith("Body font: %s (no font set in the profile"
+                                   % fonts.book_font()) for line in ex.report)
+        assert doc.style("Hebrew", "character").font == fonts.script_font("hebrew")
     finally:
         ex.cleanup()
 

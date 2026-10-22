@@ -82,6 +82,15 @@ def test_font_measure():
     assert fonts.font_index([tempfile.mkdtemp()]) == {}
 
 
+def test_book_and_script_fonts():
+    fake = {"georgia": {"regular": ("/x/georgia.ttf", 0)},
+            "palatino linotype": {"regular": ("/x/pala.ttf", 0)}}
+    assert fonts.book_font(fake) == "Palatino Linotype"      # earlier in the list
+    assert fonts.book_font({}) == "Minion Pro"               # none installed: the first
+    assert fonts.script_font("hebrew", {}) == "SBL Hebrew"
+    assert fonts.script_font("greek", {}) == "SBL Greek"
+
+
 def test_leading_suggestions():
     sug, why = layout.leading_suggestions(11)
     assert sug["tight"][:2] == (12.5, 13) and sug["standard"][:2] == (13.5, 14)

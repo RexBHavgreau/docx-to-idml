@@ -49,7 +49,7 @@ PROFILE_FIELDS = {
     ],
     "Type": [
         (("styles_template",), "Styles from an IDML file (optional)", "file", None),
-        (("fonts", "body"), "Body font (blank = from Word)", "font", None),
+        (("fonts", "body"), "Body font (blank = an installed book font)", "font", None),
         (("fonts", "headings"), "Headings font", "font", None),
         (("fonts", "notes"), "Notes font", "font", None),
         (("fonts", "display"), "Display font", "font", None),

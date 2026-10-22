@@ -5,6 +5,16 @@
 - Endorsements ("Endorsements", "Praise for...", "Advance Praise", "What Others Are Saying",
   and the Spanish "Elogios", "Recomendaciones") are recognized and set first, before the
   half-title, as display pages without folios or running heads.
+- Nothing of Word's formatting is carried into the book's styles. Word's paragraph styles
+  still say which styles the book needs and what each is (heading, quotation, note...), but
+  a custom Word style is now based on the book style for its role without Word's alignment,
+  indents, spacing or sizes; change its look in InDesign or with a style template. Fonts not
+  set in the profile are book fonts installed on the computer (Minion, Arno, Garamond,
+  Caslon, Palatino, Georgia...), never Word's; Hebrew and Greek fonts likewise (SBL Hebrew,
+  SBL Greek, Gentium...), when the body font lacks the letters. Italic, bold, small caps
+  and Word's character styles in the text are kept, as are centered lines (scene breaks).
+- The first text paragraph of a chapter is set flush (Body First) after an epigraph or any
+  other opening matter, not only after a heading.
 - Body size and leading (Layout profile > Type): a body size (11 pt by default) and leading
   chosen as tight, standard or open, with the suggested range for each shown for the size
   (at 11 pt about 12.5-13, 13.5-14, 14.5-15), shifted for the body font's x-height and the
