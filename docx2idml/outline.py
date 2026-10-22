@@ -101,6 +101,7 @@ class Outline:
     title: str = None
     title_source: str = None
     subtitle: str = None
+    subtitle_source: str = None
     author: str = None
     author_source: str = None
     file_creator: str = None        # docProps creator: usually whoever made the file
@@ -224,7 +225,7 @@ def build_outline(docs, stylemap=None):
             if m.role == "book_title" and not out.title:
                 out.title, out.title_source = text, "style %s in %s" % (m.word, doc.name)
             elif m.role == "subtitle" and not out.subtitle:
-                out.subtitle = text
+                out.subtitle, out.subtitle_source = text, "style %s in %s" % (m.word, doc.name)
             elif m.role == "author" and not out.author:
                 out.author, out.author_source = text, "style %s in %s" % (m.word, doc.name)
 

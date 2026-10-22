@@ -89,6 +89,9 @@ def test_preflight_export_and_book_file():
         var = app.front_form.vars[("isbn_print",)][0]
         var.set("978-0-000-00000-0")
         assert app.front_form.vars[("title",)][0].get() == "The Covenant Formula"
+        sources = app.front_sources.get()
+        assert "Title: \u201cThe Covenant Formula\u201d, from style Title in 00 Front.docx" in sources
+        assert "Author: \u201cA. N. Author\u201d, from title page text" in sources
         # A profile setting from the form.
         app.profile_forms[0].vars[("page", "trim")][0].set("5.5x8.5")
         out = os.path.join(TMP, "out")

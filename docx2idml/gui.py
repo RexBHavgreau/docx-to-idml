@@ -329,16 +329,21 @@ class App:
     def _book_tab(self):
         tab = ttk.Frame(self.tabs, padding=8)
         self.tabs.add(tab, text="Book details")
-        form = ttk.Frame(tab)
-        form.pack(fill="x")
-        fields = [((key,), label, kind, None) for key, label, kind in FRONT_FIELDS]
-        self.front_form = Form(form, fields, columns=2)
         row = ttk.Frame(tab)
-        row.pack(fill="x", pady=8)
+        row.pack(fill="x", pady=(0, 4))
         ttk.Button(row, text="Fill from the manuscript", command=self.fill_front).pack(side="left")
         ttk.Label(row, text="Blank fields are filled from the manuscript at export; anything "
                             "still missing appears in brackets, e.g. [ISBN].").pack(
             side="left", padx=8)
+        # Where the filled values came from (which style or line), so the user sees how the
+        # manuscript was read.
+        self.front_sources = tk.StringVar()
+        ttk.Label(tab, textvariable=self.front_sources, wraplength=900,
+                  justify="left").pack(anchor="w", pady=(0, 6))
+        form = ttk.Frame(tab)
+        form.pack(fill="x")
+        fields = [((key,), label, kind, None) for key, label, kind in FRONT_FIELDS]
+        self.front_form = Form(form, fields, columns=2)
         ttk.Label(tab, text="Notices on the copyright page (from the profile's library; select "
                             "any number):").pack(anchor="w", pady=(8, 2))
         self.notice_list = tk.Listbox(tab, selectmode="multiple", height=5, exportselection=False)
@@ -672,11 +677,24 @@ class App:
         o = self.report.outline
         front = self.book.settings.setdefault("front", {})
         self.front_form.save(front)
+        filled = []
         for key, value in (("title", o.title), ("subtitle", o.subtitle), ("author", o.author)):
             if value and not front.get(key):
                 front[key] = value
+                filled.append(key)
         self.front_form.load(front)
         self.dirty = True
+        found = []
+        for key, label, value, source in (
+                ("title", "Title", o.title, o.title_source),
+                ("subtitle", "Subtitle", o.subtitle, o.subtitle_source),
+                ("author", "Author", o.author, o.author_source)):
+            if value:
+                state = "filled in" if key in filled else "already set, kept"
+                found.append("%s: \u201c%s\u201d, from %s (%s)" % (label, value, source, state))
+            else:
+                found.append("%s: not found in the manuscript" % label)
+        self.front_sources.set("Found in the manuscript \u2014 " + "; ".join(found) + ".")
 
     # ---- running heads ----
 

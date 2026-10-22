@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 (not yet released)
+
+- Book details: "Fill from the manuscript" is at the top of the tab, and after filling it says
+  where each value was found (which style in which file, or the title page's "by" line), or
+  that it wasn't found.
+
 ## 0.2.0 (October 21, 2026, released)
 
 - Fonts are chosen from dropdowns of the fonts installed on the computer (you can still type a
