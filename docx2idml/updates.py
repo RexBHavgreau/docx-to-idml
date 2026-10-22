@@ -1,12 +1,12 @@
 """Check GitHub for a newer release, and save it beside the running copy (as Indicat does).
 
 The check reads the latest release of REPO (its tag, e.g. "v0.3.0") and compares it with the
-running version. Nothing is downloaded unless the user says so. Each version's program carries
+running version, at every start (unless turned off) and from the Help menu. Nothing is downloaded unless the user says so. Each version's program carries
 its version in its name ("docx-to-idml-0.3.0.exe"), so a new version is saved beside the running
 one and never overwrites it. The download goes to a temporary name, is checked against the
 release's SHA-256 digest and size, then renamed. If the program's folder can't be written (e.g.
 under Program Files), the new version goes to Downloads. The new version, at its first start,
-offers to delete older copies in its folder.
+offers to delete older copies in its folder and to point shortcuts and taskbar pins at itself.
 
 Settings and profiles live in the settings folder, so they survive updates.
 """
@@ -26,7 +26,6 @@ from . import EXE_BASE, REPO, __version__
 
 API = "https://api.github.com/repos/{repo}/releases/latest"
 EXE_RE = re.compile(r"^%s[ ._-]+(\d+(?:\.\d+){1,2})\.exe$" % re.escape(EXE_BASE), re.I)
-CHECK_EVERY = 24 * 3600     # automatic checks at most once a day
 
 
 class UpdateError(Exception):
@@ -71,11 +70,18 @@ def check(timeout=5.0, opener=None):
         return {"status": "error", "error": str(exc)}
 
 
-def due(settings, now=None):
-    """Whether the automatic check at startup should run (on, and not in the last day)."""
-    if not settings.get("check_updates", True):
+def due(settings):
+    """Whether to check at startup: at every start unless turned off. (Once a day, as first
+    planned, missed a release made the same day as the last check.)"""
+    return bool(settings.get("check_updates", True))
+
+
+def should_offer(result, settings, manual):
+    """Offer a newer version: always when the user asked; at startup, unless the user already
+    declined that version."""
+    if result.get("status") != "newer":
         return False
-    return (now or time.time()) - float(settings.get("last_update_check") or 0) >= CHECK_EVERY
+    return manual or result.get("latest") != settings.get("declined_version")
 
 
 # ---- installing ----
@@ -204,3 +210,60 @@ def delete_old(paths, wait=15.0):
             break
         time.sleep(1.0)
     return deleted, left
+
+
+# ---- after an update: shortcuts (as Indicat's) ----
+
+def shortcut_folders():
+    """Where Windows keeps shortcuts to programs: the desktop, the Start menu, taskbar pins."""
+    out = []
+    try:
+        import win32com.client
+        sh = win32com.client.Dispatch("WScript.Shell")
+        for name in ("Desktop", "AllUsersDesktop", "Programs", "AllUsersPrograms"):
+            try:
+                p = sh.SpecialFolders(name)
+                if p:
+                    out.append(Path(p))
+            except Exception:
+                pass
+    except Exception:
+        out.append(Path.home() / "Desktop")
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        pinned = Path(appdata) / "Microsoft" / "Internet Explorer" / "Quick Launch" / "User Pinned"
+        out += [pinned / "TaskBar", pinned / "StartMenu"]
+    return [p for p in out if p.is_dir()]
+
+
+def retarget_shortcuts(old, new, folders=None, shell=None):
+    """Point shortcuts (.lnk) that open one of the old copies to new. Returns how many were
+    changed; shortcuts to anything else, and ones that can't be written (e.g. all users'
+    without admin rights), are left alone."""
+    if shell is None:
+        try:
+            import win32com.client
+            shell = win32com.client.Dispatch("WScript.Shell")
+        except Exception:
+            return 0
+    norm = lambda p: os.path.normcase(os.path.abspath(str(p)))     # noqa: E731
+    olds = {norm(p) for p in old}
+    old_dirs = {norm(Path(p).parent) for p in old}
+    changed = 0
+    for folder in (folders if folders is not None else shortcut_folders()):
+        for lnk in Path(folder).rglob("*.lnk"):
+            try:
+                sc = shell.CreateShortcut(str(lnk))
+                if norm(sc.TargetPath) not in olds:
+                    continue
+                sc.TargetPath = str(new)
+                if sc.WorkingDirectory and norm(sc.WorkingDirectory) in old_dirs:
+                    sc.WorkingDirectory = str(Path(new).parent)
+                icon = (sc.IconLocation or "").rsplit(",", 1)[0]
+                if icon and norm(icon) in olds:
+                    sc.IconLocation = "%s,0" % new
+                sc.Save()
+                changed += 1
+            except Exception:
+                continue
+    return changed

@@ -20,7 +20,7 @@ The main use is preparing books for **KDP print**, but the tool is not tied to o
 ### Updates (as with Indicat)
 - **Versioned filename:** each release EXE carries its version, e.g. `IdmlWizard-0.3.0.exe` (working name). The version is also embedded in the EXE's file properties.
 - **Releases on GitHub**, in a repository of its own on the same account as Indicat. The tool checks the latest release through GitHub's public releases API; no server of its own is needed. This is the same flow as Indicat's updater (check GitHub, alert the user, download to the same folder on yes), keeping it as easy as possible for the user. The checksum, open-new-version and old-copy cleanup steps below are additions beyond Indicat that run without extra effort from the user.
-- **When it checks:** at startup at most once a day (can be turned off in settings), plus a "Check for updates" menu item. With no connection, it fails silently on startup and says so only on a manual check.
+- **When it checks:** at every startup (can be turned off in settings), plus a "Check for updates" menu item. *(Changed in 0.4.0: "at most once a day" missed a release made after the day's check; a declined version isn't offered again at startup.)* With no connection, it fails silently on startup and says so only on a manual check.
 - **When a newer version exists:** shows the version number and the release notes, and offers to download it.
 - **Download:** to the **same folder as the running EXE**. Because the new file has a different name, nothing is overwritten and the running copy is untouched. The download goes to a temporary name first, is checked against the release's SHA-256 checksum, then renamed. The tool then offers to open the new version and close itself.
 - **Old versions:** on first launch, a new version looks for older `IdmlWizard-*.exe` files in its folder and offers to delete them (a running EXE can't delete itself, so cleanup happens from the new one).
@@ -64,7 +64,7 @@ The main use is preparing books for **KDP print**, but the tool is not tied to o
 
 ### Preflight, style map and profiles
 - **Preflight** reads every input file and reports all paragraph and character styles in use, direct-formatting hotspots, and items version 1 doesn't carry over (text boxes, floating shapes, tracked changes, equations, unusual fields, XE index fields, endnotes). Nothing disappears silently.
-- **Style map:** Word style → IDML style. Defaults cover Word's built-ins (Normal, Heading 1–3, Quote, Footnote Text, Caption, etc.). Unknown styles are mapped by the user or fall back to body text with a warning.
+- **Style map:** Word style → IDML style. Defaults cover Word's built-ins (Normal, Heading 1–3, Quote, Footnote Text, Caption, etc.). Unknown styles are mapped by the user or fall back to body text with a warning. All styles are shown together in a style mapping panel after the automatic mapping (0.4.0), where the user picks the IDML style, role and look for each.
 - **Profiles** save everything the user sets (style map, trim, margins, fonts, leading, head pattern, notice library, front-matter defaults) so the next book in a series is one click.
   - Defaults are neutral, not tied to any one publisher.
   - Stored in the tool's settings folder, with Export/Import buttons for sharing or keeping a profile beside a series' manuscripts.

@@ -114,6 +114,8 @@ class Mapping:
 
 def _entry(value):
     """A profile map entry: {"idml": ..., "role": ..., "level": ...} or just an IDML name."""
+    if value is None:
+        return None, None, 0            # mapped to nothing (no character style)
     if isinstance(value, str):
         return value, None, 0
     return value.get("idml"), value.get("role"), int(value.get("level") or 0)

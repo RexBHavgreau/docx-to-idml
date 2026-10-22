@@ -61,6 +61,17 @@ RESET = {"FontStyle": None, "Capitalization": "Normal", "Position": "Normal",
 NO_RUNT_SKIP = {"Chapter Title", "Part Title", "Heading A", "Heading B", "Heading C",
                 "Book Title", "Book Subtitle", "Author", "Verse", "Figure", "Table", "Caption",
                 "Table Body", "Table Head", "Folio"}
+# The book styles a Word paragraph style can be mapped to, with the role (and heading level)
+# each implies; the window's style mapping panel offers these.
+BOOK_STYLE_ROLES = {
+    "Body": ("body", 0), "Body First": ("body", 0), "Chapter Title": ("chapter", 0),
+    "Chapter Subtitle": ("body", 0), "Chapter Author": ("body", 0), "Part Title": ("part", 0),
+    "Heading A": ("heading", 1), "Heading B": ("heading", 2), "Heading C": ("heading", 3),
+    "Book Title": ("book_title", 0), "Book Subtitle": ("subtitle", 0), "Author": ("author", 0),
+    "Block Quote": ("quote", 0), "Verse": ("verse", 0), "List": ("list", 0),
+    "List Bullet": ("list", 0), "List Number": ("list", 0), "Bibliography": ("body", 0),
+    "Footnote": ("note", 0), "Caption": ("caption", 0), "Copyright": ("body", 0),
+}
 HEAD_ROLES = {"chapter", "part", "heading", "book_title", "subtitle", "author", "toc_title",
               "centered"}
 ROLE_BASE = {"body": "Body", "quote": "Block Quote", "verse": "Verse", "list": "List",

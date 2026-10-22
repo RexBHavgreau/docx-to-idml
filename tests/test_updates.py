@@ -70,12 +70,16 @@ def test_check():
     assert U.check(opener=offline)["status"] == "error"
 
 
-def test_due():
-    now = time.time()
-    assert U.due({}, now)
-    assert not U.due({"check_updates": False}, now)
-    assert not U.due({"last_update_check": now - 3600}, now)
-    assert U.due({"last_update_check": now - 25 * 3600}, now)
+def test_due_and_offer():
+    # At every start unless turned off (once a day missed a release made the same day).
+    assert U.due({}) and U.due({"last_update_check": time.time()})
+    assert not U.due({"check_updates": False})
+    newer = {"status": "newer", "latest": "9.0.0"}
+    assert U.should_offer(newer, {}, manual=False)
+    assert not U.should_offer(newer, {"declined_version": "9.0.0"}, manual=False)
+    assert U.should_offer(newer, {"declined_version": "9.0.0"}, manual=True)
+    assert U.should_offer(newer, {"declined_version": "8.0.0"}, manual=False)
+    assert not U.should_offer({"status": "current"}, {}, manual=True)
 
 
 def test_download_checks_digest():
@@ -113,6 +117,52 @@ def test_older_copies():
     assert [p.name for p in old] == ["docx-to-idml-0.0.1.exe"]
     deleted, left = U.delete_old(old, wait=0)
     assert deleted == old and not left and not (d / "docx-to-idml-0.0.1.exe").exists()
+
+
+class FakeShortcut:
+    def __init__(self, store, path):
+        self.store, self.path = store, path
+        self.__dict__.update(store[path])
+
+    def Save(self):
+        self.store[self.path] = {k: getattr(self, k)
+                                 for k in ("TargetPath", "WorkingDirectory", "IconLocation")}
+
+
+class FakeShell:
+    def __init__(self, store):
+        self.store = store
+
+    def CreateShortcut(self, path):
+        return FakeShortcut(self.store, path)
+
+
+def test_shortcuts():
+    tmp = Path(tempfile.mkdtemp())
+    prog, desk, pins = tmp / "Apps", tmp / "Desktop", tmp / "TaskBar"
+    for d in (prog, desk, pins):
+        d.mkdir()
+    old, older = prog / U.exe_name("0.2.0"), prog / U.exe_name("0.1.0")
+    new = prog / U.exe_name(__version__)
+    store = {
+        str(desk / "docx-to-idml.lnk"): {"TargetPath": str(old), "WorkingDirectory": str(prog),
+                                         "IconLocation": "%s,0" % old},
+        str(pins / "docx-to-idml.lnk"): {"TargetPath": str(older), "WorkingDirectory": "",
+                                         "IconLocation": ""},
+        str(desk / "Word.lnk"): {"TargetPath": r"C:\Program Files\Word.exe",
+                                 "WorkingDirectory": "", "IconLocation": ""},
+    }
+    for p in store:
+        Path(p).write_bytes(b"")
+    n = U.retarget_shortcuts([old, older], new, folders=[desk, pins], shell=FakeShell(store))
+    d = store[str(desk / "docx-to-idml.lnk")]
+    assert n == 2 and d["TargetPath"] == str(new) and d["IconLocation"] == "%s,0" % new
+    assert d["WorkingDirectory"] == str(prog)
+    assert store[str(pins / "docx-to-idml.lnk")]["TargetPath"] == str(new)
+    assert store[str(desk / "Word.lnk")]["TargetPath"] == r"C:\Program Files\Word.exe"
+    # Without Windows' shortcut object (here), nothing is changed and nothing fails.
+    if sys.platform != "win32":
+        assert U.retarget_shortcuts([old], new, folders=[desk]) == 0
 
 
 if __name__ == "__main__":

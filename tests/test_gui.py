@@ -212,6 +212,133 @@ def test_calculated_margins_shown_and_filled():
         app.quit(force=True)
 
 
+def test_update_check_at_every_start():
+    """The startup check runs at every start (not once a day); a declined version isn't
+    offered again at startup, but is from the Help menu."""
+    from tkinter import messagebox
+    from docx2idml import updates
+    asked = []
+    real_check, real_ask = updates.check, messagebox.askyesno
+    updates.check = lambda *a, **k: {"status": "newer", "latest": "9.9.9", "url": "u",
+                                     "notes": "", "asset": None}
+    messagebox.askyesno = lambda *a, **k: asked.append(a[1]) or False
+
+    def run(app, root, manual):
+        n = len(asked)
+        app.check_updates(manual=manual)
+        end = time.time() + 10
+        while len(asked) == n and time.time() < end:
+            root.update()
+            time.sleep(0.02)
+        root.update()
+        return len(asked) > n
+    try:
+        app, root = _app()
+        app.settings["last_update_check"] = time.time()      # checked a minute ago
+        assert updates.due(app.settings)
+        assert run(app, root, manual=False)                   # offered; answered No
+        assert app.settings["declined_version"] == "9.9.9"
+        assert "9.9.9" in asked[-1]
+        assert not run(app, root, manual=False)               # not asked again at startup
+        assert run(app, root, manual=True)                    # but from the Help menu
+        app.quit(force=True)
+    finally:
+        updates.check, messagebox.askyesno = real_check, real_ask
+
+
+def test_style_mapping_panel():
+    """All styles in one panel after the automatic mapping; the user's choices are saved in
+    the profile and used by the export."""
+    from docx2idml import gui
+    app, root = _app()
+    try:
+        app._add(_files())
+        app.run_preflight()
+        _wait(app, root)
+        end = time.time() + 5
+        while getattr(app, "mapping_panel", None) is None and time.time() < end:
+            root.update()
+            time.sleep(0.02)
+        assert app.mapping_panel, "the panel opens after the first preflight"
+        panel = gui.StyleMappingPanel(app)            # replaces the open one
+        assert len([w for w in root.winfo_children() if isinstance(w, tk.Toplevel)]) == 1
+        rows = {w: (iv, rv, lv) for w, iv, rv, lv, _i in panel.rows}
+        assert rows["Epigraph"][0].get() == gui.OWN
+        assert rows["Heading 1"][0].get() == "Chapter Title"
+        iv, rv, lv = rows["Epigraph"]
+        iv.set("Block Quote")
+        panel._role_for(iv, rv)                       # a book style sets its role
+        assert rv.get() == "quote"
+        chars = {w: cv for w, cv, _i in panel.char_rows}
+        chars["Scripture Ref"].set("Small Caps")
+        panel.ok()
+        _wait(app, root)
+        sm = app.profile["style_map"]
+        assert sm["paragraph"]["Epigraph"]["idml"] == "Block Quote"
+        assert sm["paragraph"]["Epigraph"]["role"] == "quote"
+        assert "Normal" not in sm["paragraph"]         # unchanged rows aren't saved
+        assert sm["character"]["Scripture Ref"] == "Small Caps"
+        assert app.report is not None                 # read again with the new map
+        from docx2idml.export import Exporter
+        ex = Exporter(app.book.files, app.profile)
+        try:
+            doc = ex.build()
+            styles = {p.style for st in doc.stories for p in st.paragraphs}
+            assert "Block Quote" in styles and "Epigraph" not in styles
+            runs = [r for st in doc.stories for p in st.paragraphs for r in p.runs
+                    if "Lev 26:12" in r.text]
+            assert runs and runs[0].style == "Small Caps"
+        finally:
+            ex.cleanup()
+        # Back to the automatic mapping.
+        gui.StyleMappingPanel(app).reset()
+        _wait(app, root)
+        assert "Epigraph" not in app.profile["style_map"]["paragraph"]
+        assert "Scripture Ref" not in app.profile["style_map"]["character"]
+    finally:
+        app.quit(force=True)
+
+
+def test_cleanup_after_update():
+    """The new version offers to delete older copies and retarget shortcuts; declined copies
+    aren't asked about again."""
+    from pathlib import Path
+    from tkinter import messagebox
+    from docx2idml import __version__, updates
+    folder = Path(tempfile.mkdtemp())
+    me = folder / updates.exe_name(__version__)
+    old = folder / updates.exe_name("0.2.0")
+    for p in (me, old):
+        p.write_bytes(b"x")
+    answers, asked, retargeted = [], [], []
+    real_ask, real_retarget = messagebox.askyesno, updates.retarget_shortcuts
+    messagebox.askyesno = lambda *a, **k: asked.append(a[1]) or answers.pop(0)
+    updates.retarget_shortcuts = lambda olds, new, **k: retargeted.append((olds, new)) or 1
+    try:
+        app, root = _app()
+        answers.append(False)
+        app.offer_cleanup(me)                              # No: kept, not asked again
+        assert old.exists() and app.settings["kept_old_versions"] == [old.name]
+        assert "shortcuts" in asked[-1] and old.name in asked[-1]
+        n = len(asked)
+        app.offer_cleanup(me)
+        assert len(asked) == n
+        app.settings["kept_old_versions"] = []
+        answers.append(True)
+        app.offer_cleanup(me)                              # Yes: retargeted and deleted
+        end = time.time() + 20
+        while app.busy and time.time() < end:
+            root.update()
+            time.sleep(0.02)
+        root.update()
+        assert not old.exists() and me.exists()
+        assert retargeted == [([old], me)]
+        assert "shortcuts changed to open this version: 1" in app.status.get()
+        app.quit(force=True)
+    finally:
+        messagebox.askyesno, updates.retarget_shortcuts = real_ask, real_retarget
+
+
 if __name__ == "__main__":
     if not HAVE_TK:
         sys.exit(0)

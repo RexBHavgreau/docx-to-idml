@@ -33,6 +33,8 @@ echo Building docx-to-idml %VER% ...
     --add-data "docx2idml\idml\base;docx2idml\idml\base" ^
     --collect-submodules fontTools.ttLib.tables ^
     --collect-all tkinterdnd2 ^
+    --hidden-import win32com.client ^
+    --hidden-import pythoncom ^
     run_app.py || goto :fail
 
 echo.

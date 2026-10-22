@@ -1,6 +1,24 @@
 # Changelog
 
-## 0.3.0 (not yet released)
+## 0.4.0 (October 22, 2026)
+
+- Style mapping in one window (as InDesign's style mapping when placing a Word file): after
+  the automatic mapping, every paragraph and character style found in the manuscript is
+  listed with how often it's used and the IDML style it becomes. Choose another book style,
+  keep the style under its own name, or leave its paragraphs out; for paragraph styles also
+  the role (heading, quotation, note...) and the look. Styles the program had to guess are
+  marked ⚠. It opens the first time a set of files is read, and from "Map styles..." (Files
+  tab) or the Style map tab. "Back to the automatic mapping" forgets the choices. Choices
+  are saved in the profile.
+- After an update, the new version offers to delete the old copy and to point desktop and
+  Start-menu shortcuts and taskbar pins that opened it at itself (as Indicat does). A copy
+  you choose to keep isn't asked about again.
+- Fixed: the update check at startup ran at most once a day, so a release made after the
+  day's check wasn't noticed until the next day (0.2.0 missed 0.3.0). It now checks at every
+  start, quietly unless there's a newer version. If you decline a version, the startup check
+  doesn't ask about it again; Help > Check for updates always does.
+
+## 0.3.0 (October 22, 2026)
 
 - Endorsements ("Endorsements", "Praise for...", "Advance Praise", "What Others Are Saying",
   and the Spanish "Elogios", "Recomendaciones") are recognized and set first, before the
