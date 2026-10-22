@@ -40,7 +40,7 @@ PROFILE_FIELDS = {
         (("page", "custom_height"), "Custom height (in)", "number", None),
         (("page", "facing"), "Facing pages", "bool", None),
         (("page", "bleed"), "Bleed (0.125 in)", "bool", None),
-        (("page", "margins", "top"), "Top margin (in, blank = calculated)", "number", None),
+        (("page", "margins", "top"), "Top margin (in)", "number", None),
         (("page", "margins", "bottom"), "Bottom margin (in)", "number", None),
         (("page", "margins", "inside"), "Inside margin (in)", "number", None),
         (("page", "margins", "outside"), "Outside margin (in)", "number", None),
@@ -132,7 +132,7 @@ class Form:
     """Widgets for a list of fields, bound to a dict (read with load(), written with save())."""
 
     def __init__(self, parent, fields, columns=1):
-        self.fields, self.vars, self.font_boxes = fields, {}, []
+        self.fields, self.vars, self.font_boxes, self.labels = fields, {}, [], {}
         for n, (path, label, kind, choices) in enumerate(fields):
             row, col = n // columns, (n % columns) * 2
             if kind == "bool":
@@ -141,7 +141,9 @@ class Form:
                     row=row, column=col, columnspan=2, sticky="w", padx=6, pady=2)
             else:
                 var = tk.StringVar()
-                ttk.Label(parent, text=label).grid(row=row, column=col, sticky="w", padx=6, pady=2)
+                lab = ttk.Label(parent, text=label)
+                lab.grid(row=row, column=col, sticky="w", padx=6, pady=2)
+                self.labels[path] = (lab, label)
                 if kind in ("choice", "int_choice"):
                     w = ttk.Combobox(parent, textvariable=var, values=choices, state="readonly",
                                      width=24)
@@ -381,7 +383,24 @@ class App:
         for name, fields in PROFILE_FIELDS.items():
             f = ttk.Frame(inner, padding=8)
             inner.add(f, text=name)
-            self.profile_forms.append(Form(f, fields, columns=2 if name != "Type" else 2))
+            # The Page tab in one column, so the four margins read together.
+            self.profile_forms.append(Form(f, fields, columns=1 if name == "Page" else 2))
+        # The margins the export would calculate, shown beside the margin fields.
+        page = inner.nametowidget(inner.tabs()[0])
+        row = len(PROFILE_FIELDS["Page"]) + 1
+        self.margin_note = tk.StringVar()
+        ttk.Label(page, textvariable=self.margin_note, wraplength=820, justify="left").grid(
+            row=row, column=0, columnspan=4, sticky="w", padx=6, pady=(10, 4))
+        ttk.Button(page, text="Fill in the calculated margins", command=self.fill_margins).grid(
+            row=row + 1, column=0, columnspan=2, sticky="w", padx=6)
+        form = self.profile_forms[0]
+        watched = [form.vars[p][0] for p in (("page", "trim"), ("page", "custom_width"),
+                                              ("page", "custom_height"))]
+        watched += [self.profile_forms[1].vars[p][0] for p in (("fonts", "body"),
+                                                               ("leading", "value"),
+                                                               ("leading", "unit"))]
+        for var in watched:
+            var.trace_add("write", lambda *_: self._margins_later())
         ttk.Label(tab, text="Changes apply to the next export. Profile > Save profile keeps them "
                             "for the next book in the series.").pack(anchor="w", pady=(6, 0))
 
@@ -424,6 +443,7 @@ class App:
         for form in self.profile_forms:
             form.load(self.profile)
         self.heads_form.load(self.profile)
+        self._margins_later()
         self.notice_list.delete(0, "end")
         chosen = set((self.book.settings.get("front") or {}).get("notices") or [])
         for n, item in enumerate(self.profile.get("notices") or []):
@@ -451,6 +471,61 @@ class App:
         self.font_lists = lists
         for form in self.profile_forms:
             form.set_fonts(lists)
+
+    MARGINS = ("top", "bottom", "inside", "outside")
+
+    def _margins_later(self):
+        """Recalculate the shown margins shortly after a change (not on every keystroke)."""
+        if getattr(self, "_margin_job", None):
+            self.root.after_cancel(self._margin_job)
+        self._margin_job = self.root.after(400, self.update_margins)
+
+    def calculated(self):
+        """The margins the export would calculate now: (Geometry, pages, font found)."""
+        from .export import calculated_margins
+        prof = copy.deepcopy(self.profile)
+        for form in self.profile_forms:
+            form.save(prof)
+        pages = 200
+        if self.report and self.report.outline:
+            # A rough count from the words, as the export starts from.
+            g, _found = calculated_margins(prof)
+            words = self.report.outline.words
+            pages = int(words * 6.2 / (g.cpl * g.lines)) + 2 * len(self.report.outline.units) + 6
+        g, found = calculated_margins(prof, pages)
+        return g, pages, found
+
+    def update_margins(self):
+        self._margin_job = None
+        try:
+            g, pages, found = self.calculated()
+        except Exception:
+            return
+        form = self.profile_forms[0]
+        for side in self.MARGINS:
+            lab, text = form.labels[("page", "margins", side)]
+            lab.configure(text="%s, calculated %.2f" % (text, g.margins[side] / 72))
+        font = (self.profile_forms[1].vars[("fonts", "body")][0].get() or "").strip()
+        basis = ("%s (measured)" % font) if found else \
+            ("%s isn't installed: an average book font" % font if font else
+             "the body font from Word (an average book font until export)")
+        self.margin_note.set(
+            "Calculated margins (in): top %.2f, bottom %.2f, inside %.2f, outside %.2f, for "
+            "about %d pages (%s), %d characters per line at %g pt. Blank margin fields use "
+            "the calculated values, which follow the page count (KDP's inside minimum grows "
+            "with it); a value typed in is used as it is."
+            % (g.margins["top"] / 72, g.margins["bottom"] / 72, g.margins["inside"] / 72,
+               g.margins["outside"] / 72, pages, basis, round(g.cpl), 11))
+
+    def fill_margins(self):
+        g, _pages, _found = self.calculated()
+        form = self.profile_forms[0]
+        for side in self.MARGINS:
+            var = form.vars[("page", "margins", side)][0]
+            if not var.get().strip():
+                var.set("%.3g" % (g.margins[side] / 72))
+        self.status.set("Calculated margins filled in; they are now fixed for this profile "
+                        "(clear a field to let it follow the page count again).")
 
     def _forms_to_profile(self):
         for form in self.profile_forms:
@@ -885,6 +960,7 @@ class App:
         self._refresh_files()
         self._refresh_heads()
         self._refresh_styles()
+        self._margins_later()
 
     def _need_report(self, then):
         """Run preflight first if there's no report for the current files."""

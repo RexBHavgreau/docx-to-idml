@@ -93,6 +93,42 @@ class Block:
         return self.unit.title if self.unit else ""
 
 
+BODY_SIZE = 11
+
+
+def leading_for(profile, size=BODY_SIZE):
+    """The body leading in points from the profile (points, a multiple or a percent), or
+    automatic (about 1.27 times the size)."""
+    lead = profile.get("leading") or {}
+    v, unit = lead.get("value"), lead.get("unit", "pt")
+    if not v:
+        return _half(size * 1.27)
+    if unit == "multiple":
+        return _half(size * v)
+    if unit == "percent":
+        return _half(size * v / 100)
+    return v
+
+
+def calculated_margins(profile, pages=200, text=None):
+    """The margins the export would calculate (before any set in the profile), for showing
+    the user: (layout.Geometry, body font found installed?)."""
+    page = profile["page"]
+    if page.get("trim") == "custom" and page.get("custom_width") and page.get("custom_height"):
+        w, h = page["custom_width"], page["custom_height"]
+    else:
+        w, h = TRIMS.get(page.get("trim"), TRIMS["6x9"])
+    found = fonts.find_font((profile.get("fonts") or {}).get("body"))
+    avg = fonts.FALLBACK_WIDTH
+    if found:
+        try:
+            avg = fonts.average_width(found, text)
+        except Exception:
+            found = None
+    return layout.geometry(_half(w * 72), _half(h * 72), BODY_SIZE,
+                           leading_for(profile, BODY_SIZE), avg, pages), bool(found)
+
+
 class ExportError(Exception):
     """Something that stops the export. The message is shown to the user."""
 
@@ -349,20 +385,12 @@ class Exporter:
         return "HL Single"
 
     def _leading(self, size):
-        lead = self.profile.get("leading") or {}
-        v, unit = lead.get("value"), lead.get("unit", "pt")
-        if not v:
-            return _half(size * 1.27)
-        if unit == "multiple":
-            return _half(size * v)
-        if unit == "percent":
-            return _half(size * v / 100)
-        return v
+        return leading_for(self.profile, size)
 
     def _book_styles(self):
         typo = self.profile["typography"]
         f = self.fonts
-        size = 11
+        size = BODY_SIZE
         lead = self._leading(size)
         self.body_size, self.body_lead = size, lead
         indent = _half(size * 1.5)

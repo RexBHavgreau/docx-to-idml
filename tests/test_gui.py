@@ -164,6 +164,30 @@ def test_font_dropdowns():
         app.quit(force=True)
 
 
+def test_calculated_margins_shown_and_filled():
+    app, root = _app()
+    try:
+        app.update_margins()
+        form = app.profile_forms[0]
+        lab, _text = form.labels[("page", "margins", "inside")]
+        assert "calculated" in str(lab.cget("text"))
+        note = app.margin_note.get()
+        assert note.startswith("Calculated margins (in): top ") and "about 200 pages" in note
+        g, _pages, _found = app.calculated()
+        form.vars[("page", "trim")][0].set("5x8")
+        g2, _p, _f = app.calculated()
+        assert g2.measure != g.measure or g2.margins != g.margins
+        form.vars[("page", "margins", "top")][0].set("1")
+        app.fill_margins()
+        assert form.vars[("page", "margins", "top")][0].get() == "1"       # kept as typed
+        inside = float(form.vars[("page", "margins", "inside")][0].get())
+        assert abs(inside - g2.margins["inside"] / 72) < 0.01
+        app._forms_to_profile()
+        assert app.profile["page"]["margins"]["top"] == 1
+    finally:
+        app.quit(force=True)
+
+
 if __name__ == "__main__":
     if not HAVE_TK:
         sys.exit(0)

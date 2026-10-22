@@ -5,6 +5,12 @@
 - Endorsements ("Endorsements", "Praise for...", "Advance Praise", "What Others Are Saying",
   and the Spanish "Elogios", "Recomendaciones") are recognized and set first, before the
   half-title, as display pages without folios or running heads.
+- Text before the title page (endorsements, which seldom have a heading) is set as
+  endorsements, before the half-title; so is a file of it placed before the title-page file.
+- Layout profile > Page: each margin field shows the margin the export would calculate (for
+  the trim, the body font and the book's page count, once preflight has run), with a button
+  to fill them in. Blank fields keep following the page count; typed values are fixed. The
+  Page tab is now one column, so the margins read together.
 - Running heads tab: double-click a unit's kind to change what it is (chapter, part, front
   matter, back matter, display page, endorsements); the choice is saved with the book.
 - Book details: "Fill from the manuscript" is at the top of the tab, and after filling it says

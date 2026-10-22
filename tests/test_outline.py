@@ -163,5 +163,33 @@ def test_endorsements_and_kinds_set_by_user():
     assert "set in the book settings" not in out.units[2].detected_by
 
 
+def test_text_before_the_title_page_is_endorsements():
+    from docx2idml.outline import kind_key
+    # One file: endorsements with no heading, then the title page, then chapters.
+    one = read_docx(make_docx(os.path.join(TMP, "pre.docx"), [
+        para("\u201cA wonderful book.\u201d \u2014 A. Reader"),
+        para("\u201cRead it twice.\u201d \u2014 B. Critic"),
+        para("The Covenant Formula", "Title"), para("Studies", "Subtitle"),
+        para("by A. N. Author"),
+        para("Preface", "Heading1"), para("Text."),
+        para("Chapter One", "Heading1"), para("Text.")]))
+    out = build_outline([one])
+    assert [(u.title, kind_key(u), u.type) for u in out.units] == [
+        ("(endorsements)", "endorsements", "endorsements"),
+        ("(title page)", "display", "title page"), ("Preface", "front", "preface"),
+        ("Chapter One", "chapter", "chapter")]
+    assert out.title == "The Covenant Formula" and out.author == "A. N. Author"
+    # Two files: a file of endorsements with no headings, then the title page and chapters.
+    praise = read_docx(make_docx(os.path.join(TMP, "00 Praise.docx"), [
+        para("\u201cA wonderful book.\u201d \u2014 A. Reader"), para("\u201cRead it.\u201d")]))
+    book = read_docx(make_docx(os.path.join(TMP, "01 Book.docx"), [
+        para("The Covenant Formula", "Title"), para("Preface", "Heading1"), para("Text."),
+        para("Chapter One", "Heading1"), para("Text.")]))
+    out = build_outline([praise, book])
+    assert [(kind_key(u), u.type) for u in out.units] == [
+        ("endorsements", "endorsements"), ("display", "title page"), ("front", "preface"),
+        ("chapter", "chapter")], [(u.title, u.kind, u.type) for u in out.units]
+
+
 if __name__ == "__main__":
     run_tests(globals())

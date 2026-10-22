@@ -268,7 +268,27 @@ def build_outline(docs, stylemap=None):
         lead_text = [p for p in lead if p.text.strip() and fo.usable(p)]
         if lead_text:
             titled = any(fo.mapping(p).role in ("book_title", "subtitle") for p in lead_text)
-            if out.units and not titled and _is_title_page(fo, lead_text):
+            ti = next((i for i, p in enumerate(lead_text)
+                       if fo.mapping(p).role == "book_title"), None)
+            strong = any(u.detected_by.startswith("style") for u in out.units)
+            if ti is not None and not strong and \
+                    not any(u.type == "title page" for u in out.units) and \
+                    _is_title_page(fo, lead_text[ti:]):
+                # The title page, found by its title line. Whatever comes before it
+                # (endorsements, seldom with a heading) is preliminary matter.
+                start = lead_text[ti].index
+                if ti:
+                    pre = Unit("display", "endorsements", "(endorsements)", doc.name,
+                               lead_text[0].index, "text before the title page")
+                    _fill(pre, fo, lead[:start])
+                    out.units.append(pre)
+                unit = Unit("display", "title page", "(title page)", doc.name, start,
+                            "title style")
+                _fill(unit, fo, lead[start:])
+                _scan_opening(out, lead[start:])
+                out.units.append(unit)
+                chapter_seen = False    # anything before the title page was preliminary
+            elif out.units and not titled and _is_title_page(fo, lead_text):
                 # A stray line or two before a later file's first heading stays with the
                 # previous unit.
                 prev = out.units[-1]
@@ -320,6 +340,7 @@ def build_outline(docs, stylemap=None):
             if kind == "display" or (kind == "front" and not out.units):
                 _scan_opening(out, body)
             out.units.append(unit)
+    _before_title_page(out)
     if not out.title:
         for doc in docs:
             if doc.core.get("title"):
@@ -328,6 +349,16 @@ def build_outline(docs, stylemap=None):
                 break
     _check_outline(out)
     return out
+
+
+def _before_title_page(out):
+    """Units before the title page (a file of endorsements with no headings, say) are
+    preliminary matter: endorsements."""
+    tp = next((n for n, u in enumerate(out.units) if u.type == "title page"), None)
+    for u in out.units[:tp or 0]:
+        if u.type != "endorsements":
+            u.kind, u.type = "display", "endorsements"
+            u.detected_by += " (before the title page: endorsements)"
 
 
 def _is_title_page(fo, lead_text):

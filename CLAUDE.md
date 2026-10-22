@@ -153,7 +153,10 @@ keep it up to date when decisions change.
   back, display, endorsements) in the Running heads tab; saved as book settings
   `unit_kinds` {unit title: key}, applied by `outline.apply_kinds` after the outline is built.
   Endorsements (display, type "endorsements") are detected by title and placed before the
-  half-title.
+  half-title; so is text before the title line (outline: the title page is found by its
+  Title-style line when no style-detected unit came before; units before it become
+  endorsements). The window shows the calculated margins beside the margin fields
+  (`export.calculated_margins`), with a button to fill them in.
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.

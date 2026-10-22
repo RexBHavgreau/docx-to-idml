@@ -475,6 +475,24 @@ def test_endorsements_first_without_heads():
         ex.cleanup()
 
 
+def test_endorsements_before_title_without_heading():
+    path = make_docx(os.path.join(TMP, "pre.docx"), [
+        para("\u201cA wonderful book.\u201d \u2014 A. Reader"),
+        para("The Covenant Formula", "Title"), para("by A. N. Author"),
+        para("Chapter One", "Heading1"), para("Text of chapter one.")])
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        texts = ["".join(r.text for r in st.paragraphs[0].runs) for st in doc.stories]
+        assert texts[0] == "\u201cA wonderful book.\u201d \u2014 A. Reader"
+        assert doc.page_masters[0] == "D-Display"
+        assert doc.stories[1].paragraphs[0].style == "Half Title" and doc.stories[1].pages[0] == 2
+        # The manuscript's title line went to the generated title page, not the endorsements.
+        assert all(p.style != "Book Title" for p in doc.stories[0].paragraphs)
+    finally:
+        ex.cleanup()
+
+
 def test_two_papers_with_bibliographies():
     """Two articles not prepared as a book: each a Title, Heading 2 sections and a
     bibliography. Each paper is a unit of its own; bibliography styling stops at the end of
