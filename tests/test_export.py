@@ -14,6 +14,7 @@ from docx_builder import (NUMBERING, endnote_ref, footnote_ref, image, make_docx
                           run, run_tests, table)
 from docx2idml.content import Numbering, read_content
 from docx2idml.docx_reader import read_docx
+from docx2idml import layout
 from docx2idml.export import ExportError, Exporter, export, segments
 from docx2idml.profile import default_profile
 
@@ -507,13 +508,19 @@ def test_body_size_leading_and_baseline_grid():
     try:
         doc = ex.build()
         body = doc.style("Body")
-        assert body.attrs["PointSize"] == 10 and body.leading == 13.5   # open at 10 pt
-        assert doc.baseline_grid["division"] == 13.5
+        # Open at 10 pt: 13.5 for a typical x-height; the body font installed here (a book
+        # font on Windows) may shift it, so the expectation uses the font measured.
+        open_ = layout.leading_suggestions(10, ex.x_height, ex.geo.cpl)[0]["open"][2]
+        assert body.attrs["PointSize"] == 10 and body.leading == open_
+        if ex.x_height is None:
+            assert open_ == 13.5
+        assert doc.baseline_grid["division"] == open_
         assert doc.baseline_grid["start"] == doc.margins["top"]
         assert body.attrs["GridAlignment"] == "AlignBaseline"
         assert doc.resolved("Caption")[0]["GridAlignment"] == "None"
         assert doc.resolved("Body First")[0]["GridAlignment"] == "AlignBaseline"
-        assert any(line.startswith("Body type: 10 pt on 13.5 pt leading (open") for line in ex.report)
+        assert any(line.startswith("Body type: 10 pt on %g pt leading (open" % open_)
+                   for line in ex.report)
         from idml_check import check
         from docx2idml.idml.writer import write_idml
         assert not check(write_idml(doc, os.path.join(TMP, "grid.idml")))
