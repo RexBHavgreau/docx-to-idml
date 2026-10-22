@@ -55,11 +55,15 @@ PROFILE_FIELDS = {
         (("fonts", "display"), "Display font", "font", None),
         (("fonts", "hebrew"), "Hebrew font", "font", "hebrew"),
         (("fonts", "greek"), "Greek font", "font", "greek"),
-        (("leading", "value"), "Leading (blank = automatic)", "number", None),
+        (("body_size",), "Body size (pt)", "size", ["9", "9.5", "10", "10.5", "11", "11.5", "12",
+                                                     "12.5", "13"]),
+        (("leading", "feel"), "Leading", "choice", ["tight", "standard", "open"]),
+        (("leading", "value"), "Exact leading (blank = from the choice above)", "number", None),
         (("leading", "unit"), "Leading unit", "choice", ["pt", "multiple", "percent"]),
         (("front_matter", "language"), "Language", "choice", ["en", "es"]),
-        (("typography", "paragraph_composer"), "Paragraph composer (World-Ready; off = "
-                                               "single-line)", "bool", None),
+        (("baseline_grid",), "Baseline grid (body text on the leading)", "bool", None),
+        (("typography", "paragraph_composer"), "World-Ready composer (off = single-line)",
+         "bool", None),
         (("typography", "optical_margins"), "Optical margin alignment", "bool", None),
         (("typography", "hyphenation"), "Hyphenation", "bool", None),
         (("typography", "ligatures"), "Ligatures", "bool", None),
@@ -131,10 +135,16 @@ def _num(text, kind):
 class Form:
     """Widgets for a list of fields, bound to a dict (read with load(), written with save())."""
 
-    def __init__(self, parent, fields, columns=1):
+    def __init__(self, parent, fields, columns=1, by_column=False):
+        """by_column: fill each column top to bottom (fields listed in reading order down the
+        first column, then the second), instead of row by row."""
         self.fields, self.vars, self.font_boxes, self.labels = fields, {}, [], {}
         for n, (path, label, kind, choices) in enumerate(fields):
-            row, col = n // columns, (n % columns) * 2
+            rows = -(-len(fields) // columns)
+            if by_column:
+                row, col = n % rows, (n // rows) * 2
+            else:
+                row, col = n // columns, (n % columns) * 2
             if kind == "bool":
                 var = tk.BooleanVar()
                 ttk.Checkbutton(parent, text=label, variable=var).grid(
@@ -144,12 +154,14 @@ class Form:
                 lab = ttk.Label(parent, text=label)
                 lab.grid(row=row, column=col, sticky="w", padx=6, pady=2)
                 self.labels[path] = (lab, label)
-                if kind in ("choice", "int_choice"):
+                if kind == "size":
+                    w = ttk.Combobox(parent, textvariable=var, values=choices, width=24)
+                elif kind in ("choice", "int_choice"):
                     w = ttk.Combobox(parent, textvariable=var, values=choices, state="readonly",
                                      width=24)
                 elif kind == "file":
                     w = ttk.Frame(parent)
-                    ttk.Entry(w, textvariable=var, width=20).pack(side="left", fill="x",
+                    ttk.Entry(w, textvariable=var, width=14).pack(side="left", fill="x",
                                                                    expand=True)
 
                     def browse(var=var):
@@ -185,6 +197,8 @@ class Form:
         for path, (var, kind) in self.vars.items():
             if kind == "bool":
                 value = bool(var.get())
+            elif kind == "size":
+                value = _num(var.get(), "number") or 11
             elif kind == "int_choice":
                 value = _num(var.get(), "int") or 0
             elif kind in ("number", "int"):
@@ -218,7 +232,7 @@ class App:
         except profiles.ProfileError:
             self.profile_name, self.profile = None, profiles.default_profile()
         root.title("%s %s" % (TITLE, __version__))
-        root.geometry("980x700")
+        root.geometry("1040x720")
         root.minsize(760, 520)
         self._menus()
         self._build(dnd)
@@ -384,7 +398,14 @@ class App:
             f = ttk.Frame(inner, padding=8)
             inner.add(f, text=name)
             # The Page tab in one column, so the four margins read together.
-            self.profile_forms.append(Form(f, fields, columns=1 if name == "Page" else 2))
+            self.profile_forms.append(Form(f, fields, columns=1 if name == "Page" else 2,
+                                           by_column=True))
+        # The suggested leading for the size and font, under the Type fields.
+        typetab = inner.nametowidget(inner.tabs()[1])
+        self.leading_note = tk.StringVar()
+        ttk.Label(typetab, textvariable=self.leading_note, wraplength=820, justify="left").grid(
+            row=-(-len(PROFILE_FIELDS["Type"]) // 2) + 1, column=0, columnspan=4, sticky="w", padx=6,
+            pady=(10, 4))
         # The margins the export would calculate, shown beside the margin fields.
         page = inner.nametowidget(inner.tabs()[0])
         row = len(PROFILE_FIELDS["Page"]) + 1
@@ -398,7 +419,9 @@ class App:
                                               ("page", "custom_height"))]
         watched += [self.profile_forms[1].vars[p][0] for p in (("fonts", "body"),
                                                                ("leading", "value"),
-                                                               ("leading", "unit"))]
+                                                               ("leading", "unit"),
+                                                               ("leading", "feel"),
+                                                               ("body_size",))]
         for var in watched:
             var.trace_add("write", lambda *_: self._margins_later())
         ttk.Label(tab, text="Changes apply to the next export. Profile > Save profile keeps them "
@@ -501,6 +524,7 @@ class App:
             g, pages, found = self.calculated()
         except Exception:
             return
+        self._update_leading_note(g)
         form = self.profile_forms[0]
         for side in self.MARGINS:
             lab, text = form.labels[("page", "margins", side)]
@@ -515,7 +539,31 @@ class App:
             "the calculated values, which follow the page count (KDP's inside minimum grows "
             "with it); a value typed in is used as it is."
             % (g.margins["top"] / 72, g.margins["bottom"] / 72, g.margins["inside"] / 72,
-               g.margins["outside"] / 72, pages, basis, round(g.cpl), 11))
+               g.margins["outside"] / 72, pages, basis, round(g.cpl),
+               _num(self.profile_forms[1].vars[("body_size",)][0].get(), "number") or 11))
+
+    def _update_leading_note(self, g):
+        """The suggested leading ranges for the size and font, and the leading the export
+        will use."""
+        from . import fonts, layout
+        from .export import body_size, leading_for
+        prof = copy.deepcopy(self.profile)
+        for form in self.profile_forms:
+            form.save(prof)
+        size = body_size(prof)
+        font = (prof.get("fonts") or {}).get("body")
+        found = fonts.find_font(font)
+        xh = fonts.x_height(found) if found else None
+        sug, why = layout.leading_suggestions(size, xh, g.cpl, font)
+        lead = leading_for(prof, size, xh, g.cpl)
+        feel = (prof.get("leading") or {}).get("feel") or "standard"
+        used = "as typed" if (prof.get("leading") or {}).get("value") else feel
+        self.leading_note.set(
+            "Suggested for %g pt%s: tight %g\u2013%g, standard %g\u2013%g, open %g\u2013%g "
+            "points%s. The export will use %g on %g (%s)." % (
+                size, (" " + font) if font and found else "",
+                sug["tight"][0], sug["tight"][1], sug["standard"][0], sug["standard"][1],
+                sug["open"][0], sug["open"][1], ("; " + why) if why else "", size, lead, used))
 
     def fill_margins(self):
         g, _pages, _found = self.calculated()

@@ -143,6 +143,7 @@ def test_profiles():
     assert up1["typography"]["ligatures"] is False
     assert up1["typography"]["last_line_min_chars"] == 10 and up1["profile_version"] == profiles.PROFILE_VERSION
     assert up1["page"]["spare_pages"] == 0 and up1["styles_template"] is None
+    assert up1["body_size"] == 11 and up1["leading"]["feel"] == "standard"
     newer = os.path.join(TMP, "newer.json")
     with open(newer, "w") as f:
         json.dump({"profile_version": 999}, f)

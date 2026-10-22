@@ -493,6 +493,35 @@ def test_endorsements_before_title_without_heading():
         ex.cleanup()
 
 
+def test_body_size_leading_and_baseline_grid():
+    prof = default_profile()
+    prof["body_size"] = 10
+    prof["leading"]["feel"] = "open"
+    prof["baseline_grid"] = True
+    ex = Exporter(_files(), prof)
+    try:
+        doc = ex.build()
+        body = doc.style("Body")
+        assert body.attrs["PointSize"] == 10 and body.leading == 13.5   # open at 10 pt
+        assert doc.baseline_grid["division"] == 13.5
+        assert doc.baseline_grid["start"] == doc.margins["top"]
+        assert body.attrs["GridAlignment"] == "AlignBaseline"
+        assert doc.resolved("Caption")[0]["GridAlignment"] == "None"
+        assert doc.resolved("Body First")[0]["GridAlignment"] == "AlignBaseline"
+        assert any(line.startswith("Body type: 10 pt on 13.5 pt leading (open") for line in ex.report)
+        from idml_check import check
+        from docx2idml.idml.writer import write_idml
+        assert not check(write_idml(doc, os.path.join(TMP, "grid.idml")))
+    finally:
+        ex.cleanup()
+    prof["leading"].update(value=12, unit="pt")
+    ex = Exporter(_files(), prof)
+    try:
+        assert ex.build().style("Body").leading == 12                 # an exact value wins
+    finally:
+        ex.cleanup()
+
+
 def test_two_papers_with_bibliographies():
     """Two articles not prepared as a book: each a Title, Heading 2 sections and a
     bibliography. Each paper is a unit of its own; bibliography styling stops at the end of

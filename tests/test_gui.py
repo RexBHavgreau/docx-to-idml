@@ -164,6 +164,24 @@ def test_font_dropdowns():
         app.quit(force=True)
 
 
+def test_leading_note():
+    app, root = _app()
+    try:
+        app.update_margins()
+        note = app.leading_note.get()
+        assert note.startswith("Suggested for 11 pt") and "standard 13.5" in note
+        form = app.profile_forms[1]
+        form.vars[("body_size",)][0].set("10")
+        form.vars[("leading", "feel")][0].set("tight")
+        app.update_margins()
+        assert "Suggested for 10 pt" in app.leading_note.get()
+        assert "(tight)" in app.leading_note.get()
+        app._forms_to_profile()
+        assert app.profile["body_size"] == 10 and app.profile["leading"]["feel"] == "tight"
+    finally:
+        app.quit(force=True)
+
+
 def test_calculated_margins_shown_and_filled():
     app, root = _app()
     try:

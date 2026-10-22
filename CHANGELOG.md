@@ -5,6 +5,14 @@
 - Endorsements ("Endorsements", "Praise for...", "Advance Praise", "What Others Are Saying",
   and the Spanish "Elogios", "Recomendaciones") are recognized and set first, before the
   half-title, as display pages without folios or running heads.
+- Body size and leading (Layout profile > Type): a body size (11 pt by default) and leading
+  chosen as tight, standard or open, with the suggested range for each shown for the size
+  (at 11 pt about 12.5-13, 13.5-14, 14.5-15), shifted for the body font's x-height and the
+  line length; an exact leading still wins. The export report says what it used.
+- Baseline grid (Layout profile > Type): body text on a grid of the body leading; block
+  quotes, notes and captions stay off it.
+- The Type tab reads down each column: fonts, size and leading on the left, typographic
+  switches on the right.
 - Text before the title page (endorsements, which seldom have a heading) is set as
   endorsements, before the half-title; so is a file of it placed before the title-page file.
 - Layout profile > Page: each margin field shows the margin the export would calculate (for

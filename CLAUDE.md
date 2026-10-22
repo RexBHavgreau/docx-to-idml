@@ -157,6 +157,12 @@ keep it up to date when decisions change.
   Title-style line when no style-detected unit came before; units before it become
   endorsements). The window shows the calculated margins beside the margin fields
   (`export.calculated_margins`), with a button to fill them in.
+- Size and leading (0.3.0): profile `body_size` (11) and `leading.feel` (tight/standard/open;
+  version 5). `layout.leading_suggestions` gives the ranges (11 pt: 12.5-13 / 13.5-14 /
+  14.5-15) shifted by x-height (`fonts.x_height`, OS/2) and line length; `export.leading_for`
+  uses an exact value if set, else the middle of the feel's range. Baseline grid (profile
+  `baseline_grid`): Body GridAlignment AlignBaseline, grid = body leading from the top margin;
+  styles with other leading set to None (as g09).
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.

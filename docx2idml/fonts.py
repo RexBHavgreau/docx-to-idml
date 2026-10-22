@@ -187,3 +187,25 @@ def average_width(found, text=None):
     if not n:
         return FALLBACK_WIDTH
     return total / n / upem
+
+
+def x_height(found):
+    """The font's x-height in ems (OS/2 table), or None."""
+    try:
+        from fontTools.ttLib import TTFont
+        path, number = found
+        font = TTFont(path, fontNumber=number, lazy=True)
+        os2 = font["OS/2"]
+        xh = getattr(os2, "sxHeight", 0) if os2.version >= 2 else 0
+        if not xh:
+            from fontTools.pens.boundsPen import BoundsPen
+            gs = font.getGlyphSet()
+            name = (font.getBestCmap() or {}).get(ord("x"))
+            if not name:
+                return None
+            pen = BoundsPen(gs)
+            gs[name].draw(pen)
+            xh = pen.bounds[3] if pen.bounds else 0
+        return xh / font["head"].unitsPerEm if xh else None
+    except Exception:
+        return None

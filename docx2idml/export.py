@@ -96,13 +96,24 @@ class Block:
 BODY_SIZE = 11
 
 
-def leading_for(profile, size=BODY_SIZE):
-    """The body leading in points from the profile (points, a multiple or a percent), or
-    automatic (about 1.27 times the size)."""
+def body_size(profile):
+    try:
+        size = float(profile.get("body_size") or BODY_SIZE)
+    except (TypeError, ValueError):
+        return BODY_SIZE
+    return size if 6 <= size <= 24 else BODY_SIZE
+
+
+def leading_for(profile, size=None, x_height=None, cpl=layout.TARGET_CPL):
+    """The body leading in points: the profile's value (points, a multiple or a percent), else
+    the middle of the suggested range for its feel (tight, standard, open), shifted for the
+    font's x-height and the line length."""
+    size = size or body_size(profile)
     lead = profile.get("leading") or {}
     v, unit = lead.get("value"), lead.get("unit", "pt")
     if not v:
-        return _half(size * 1.27)
+        feel = lead.get("feel") if lead.get("feel") in layout.LEADING_RATIOS else "standard"
+        return layout.leading_suggestions(size, x_height, cpl)[0][feel][2]
     if unit == "multiple":
         return _half(size * v)
     if unit == "percent":
@@ -119,14 +130,16 @@ def calculated_margins(profile, pages=200, text=None):
     else:
         w, h = TRIMS.get(page.get("trim"), TRIMS["6x9"])
     found = fonts.find_font((profile.get("fonts") or {}).get("body"))
-    avg = fonts.FALLBACK_WIDTH
+    avg, xh = fonts.FALLBACK_WIDTH, None
     if found:
         try:
             avg = fonts.average_width(found, text)
+            xh = fonts.x_height(found)
         except Exception:
             found = None
-    return layout.geometry(_half(w * 72), _half(h * 72), BODY_SIZE,
-                           leading_for(profile, BODY_SIZE), avg, pages), bool(found)
+    size = body_size(profile)
+    return layout.geometry(_half(w * 72), _half(h * 72), size,
+                           leading_for(profile, size, xh), avg, pages), bool(found)
 
 
 class ExportError(Exception):
@@ -206,6 +219,7 @@ class Exporter:
         self.paths = [str(p) for p in paths]
         self.profile = profile or profiles.default_profile()
         self.settings = settings or {}
+        self.x_height = None
         self.tpl = None
         path = self.profile.get("styles_template")
         if path:
@@ -282,9 +296,11 @@ class Exporter:
                 text.append(p.text)
                 n += len(p.text)
         found = fonts.find_font(self.fonts["body"])
+        self.x_height = None
         if found:
             try:
                 self.avg_width = fonts.average_width(found, " ".join(text))
+                self.x_height = fonts.x_height(found)
                 return
             except Exception:
                 pass
@@ -385,12 +401,13 @@ class Exporter:
         return "HL Single"
 
     def _leading(self, size):
-        return leading_for(self.profile, size)
+        cpl = self.geo.cpl if getattr(self, "geo", None) else layout.TARGET_CPL
+        return leading_for(self.profile, size, self.x_height, cpl)
 
     def _book_styles(self):
         typo = self.profile["typography"]
         f = self.fonts
-        size = BODY_SIZE
+        size = body_size(self.profile)
         lead = self._leading(size)
         self.body_size, self.body_lead = size, lead
         indent = _half(size * 1.5)
@@ -687,6 +704,19 @@ class Exporter:
         self.report += notes
         return set(tp)
 
+    def _baseline_grid(self):
+        """Body text on a baseline grid of the body leading, from the top margin (as g09);
+        styles with other leading (block quotes, notes, captions, headings) stay off it."""
+        m = self.doc.margins
+        self.doc.baseline_grid = {"start": m["top"], "division": self.body_lead, "shown": False}
+        body = self.doc.style("Body")
+        if body is not None:
+            body.attrs["GridAlignment"] = "AlignBaseline"
+        for s in self.doc.paragraph_styles:
+            attrs, _font, lead = self.doc.resolved(s.name)
+            if attrs.get("GridAlignment") == "AlignBaseline" and lead != self.body_lead:
+                s.attrs["GridAlignment"] = "None"
+
     def _finish_styles(self):
         self._char_style("Footnote Reference")
         order = list(CHAR_STYLES) + ["Hebrew", "Greek"]
@@ -694,6 +724,8 @@ class Exporter:
             self.used_char.values(),
             key=lambda s: (order.index(s.name) if s.name in order else len(order), s.name))
         tpl_names = self._template_styles() if self.tpl else set()
+        if self.profile.get("baseline_grid"):
+            self._baseline_grid()
         # Only the styles the book uses, plus the ones every book has (and the template's).
         used = set(self.para_used) | {"Body", "Body First", "Footnote", "Folio", "Running Head"}
         used |= tpl_names
@@ -1288,12 +1320,29 @@ class Exporter:
                                "over (then check that later chapters still open on a recto); "
                                "Affinity doesn't, so in Affinity add pages to a chapter whose "
                                "text runs over, two at a time.")
+        self.report.append(self._leading_note())
         self.report.append(
             "Margins (in): top %.3g, bottom %.3g, inside %.3g, outside %.3g; text %d lines of "
             "%g pt, about %d characters per line."
             % (m["top"] / 72, m["bottom"] / 72, m["inside"] / 72, m["outside"] / 72, g.lines,
                self.body_lead, round(g.cpl)))
         return doc.page_count
+
+    def _leading_note(self):
+        sug, why = layout.leading_suggestions(self.body_size, self.x_height, self.geo.cpl,
+                                              self.fonts["body"])
+        lead = self.profile.get("leading") or {}
+        if self.tpl and self.tpl[0].get("Body"):
+            source = "from the style template"
+        elif lead.get("value"):
+            source = "as set in the profile"
+        else:
+            source = "%s, the middle of its range" % (lead.get("feel") or "standard")
+        return ("Body type: %g pt on %g pt leading (%s). Suggested for %g pt: tight %g\u2013%g, "
+                "standard %g\u2013%g, open %g\u2013%g%s." % (
+                    self.body_size, self.body_lead, source, self.body_size,
+                    sug["tight"][0], sug["tight"][1], sug["standard"][0], sug["standard"][1],
+                    sug["open"][0], sug["open"][1], (" (%s)" % why) if why else ""))
 
     def _spare(self):
         try:
