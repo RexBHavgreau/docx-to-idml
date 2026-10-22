@@ -125,7 +125,7 @@ def calculated_margins(profile, pages=200, text=None):
         w, h = page["custom_width"], page["custom_height"]
     else:
         w, h = TRIMS.get(page.get("trim"), TRIMS["6x9"])
-    found = fonts.find_font((profile.get("fonts") or {}).get("body"))
+    found = fonts.find_font((profile.get("fonts") or {}).get("body") or fonts.book_font())
     avg, xh = fonts.FALLBACK_WIDTH, None
     if found:
         try:

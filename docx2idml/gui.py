@@ -529,10 +529,11 @@ class App:
         for side in self.MARGINS:
             lab, text = form.labels[("page", "margins", side)]
             lab.configure(text="%s, calculated %.2f" % (text, g.margins[side] / 72))
-        font = (self.profile_forms[1].vars[("fonts", "body")][0].get() or "").strip()
-        basis = ("%s (measured)" % font) if found else \
-            ("%s isn't installed: an average book font" % font if font else
-             "the body font from Word (an average book font until export)")
+        from . import fonts
+        font = (self.profile_forms[1].vars[("fonts", "body")][0].get() or "").strip() or \
+            fonts.book_font()
+        basis = ("%s, measured" % font) if found else \
+            "%s isn't installed: an average book font" % font
         self.margin_note.set(
             "Calculated margins (in): top %.2f, bottom %.2f, inside %.2f, outside %.2f, for "
             "about %d pages (%s), %d characters per line at %g pt. Blank margin fields use "
@@ -551,7 +552,7 @@ class App:
         for form in self.profile_forms:
             form.save(prof)
         size = body_size(prof)
-        font = (prof.get("fonts") or {}).get("body")
+        font = (prof.get("fonts") or {}).get("body") or fonts.book_font()
         found = fonts.find_font(font)
         xh = fonts.x_height(found) if found else None
         sug, why = layout.leading_suggestions(size, xh, g.cpl, font)
