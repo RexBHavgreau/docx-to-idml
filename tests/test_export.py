@@ -147,9 +147,15 @@ def test_model():
         assert "Heading A" in styles and "List Bullet" in styles and "List Number" in styles
         assert "Table" in styles and "Figure" in styles and "Caption" in styles
         assert styles[-2:] == ["Chapter Title", "Bibliography"]
-        # A custom Word style keeps its name and place only: no formatting from Word.
+        # A custom Word style with no book counterpart (based on Normal) keeps what makes it
+        # distinct, in book terms: centered, italic, indents in proportion to the book's line
+        # (Word's is 6.5 in), 10 pt against Word's 12 pt body = 11 * 10/12; never Word's font.
         epi = doc.style("Epigraph")
-        assert epi.based_on == "Body" and epi.attrs == {} and epi.font is None
+        assert epi.based_on == "Body" and epi.font is None
+        assert epi.attrs["Justification"] == "CenterAlign" and epi.attrs["FontStyle"] == "Italic"
+        scale = min(1, ex.measure / 468)
+        assert epi.attrs["LeftIndent"] == round(72 * scale * 2) / 2 < 72
+        assert epi.attrs["PointSize"] == 9
         paras = list(_all_paras(doc))
         first = paras[2]
         got = [(r.text, r.style, r.attrs) for r in first.runs if r.footnote is None]
@@ -532,6 +538,33 @@ def test_fonts_never_from_word():
         assert any(line.startswith("Body font: %s (no font set in the profile"
                                    % fonts.book_font()) for line in ex.report)
         assert doc.style("Hebrew", "character").font == fonts.script_font("hebrew")
+    finally:
+        ex.cleanup()
+
+
+def test_custom_style_look_from_style_map():
+    prof = default_profile()
+    prof["style_map"]["paragraph"]["Epigraph"] = {"idml": "Epigraph", "role": "body",
+                                                  "look": "book"}
+    ex = Exporter(_files(), prof)
+    try:
+        assert ex.build().style("Epigraph").attrs == {}       # the book style's look
+    finally:
+        ex.cleanup()
+    # A custom style based on a heading follows the book's heading, unless set to Word's look.
+    extra = ('<w:style w:type="paragraph" w:customStyle="1" w:styleId="SectHead">'
+             '<w:name w:val="Sect Head"/><w:basedOn w:val="Heading2"/><w:pPr>'
+             '<w:jc w:val="center"/></w:pPr></w:style>')
+    path = make_docx(os.path.join(TMP, "sect.docx"), [para("Chapter", "Heading1"),
+                                                       para("A Section", "SectHead"),
+                                                       para("Text.")], extra_styles=[extra])
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        names = [p.style for st in doc.stories for p in st.paragraphs]
+        assert "Heading A" in names and doc.style("Sect Head") is None
+        assert "Justification" not in doc.style("Heading A").attrs or \
+            doc.style("Heading A").attrs["Justification"] != "CenterAlign"
     finally:
         ex.cleanup()
 

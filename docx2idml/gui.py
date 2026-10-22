@@ -28,6 +28,7 @@ from .outline import KIND_LABELS, KINDS, kind_key
 from .stylemap import ROLES
 
 TITLE = "docx-to-idml"     # working name
+LOOKS = {"book": "the book style's", "word": "Word's, in book terms"}
 
 # Profile fields: (path in the profile, label, kind, choices). Kinds: bool, text, number
 # (blank allowed = automatic), int, choice, int_choice (a choice saved as a number), file (an
@@ -431,13 +432,15 @@ class App:
         tab = ttk.Frame(self.tabs, padding=8)
         self.tabs.add(tab, text="Style map")
         ttk.Label(tab, text="Paragraph styles in the manuscript (run preflight to fill). "
-                            "Double-click to map a Word style to an IDML style and role; the "
-                            "map is saved in the profile.").pack(anchor="w")
-        self.styles = ttk.Treeview(tab, columns=("word", "count", "idml", "role", "source"),
-                                   show="headings")
-        for c, t, w in (("word", "Word style", 220), ("count", "Paragraphs", 80),
-                        ("idml", "IDML style", 200), ("role", "Role", 100),
-                        ("source", "Found by", 200)):
+                            "Double-click to map a Word style to an IDML style and role, and "
+                            "to choose its look: the book style's, or (for a special paragraph "
+                            "the author set up) Word's, in book terms. The map is saved in the "
+                            "profile.", wraplength=900, justify="left").pack(anchor="w")
+        self.styles = ttk.Treeview(tab, columns=("word", "count", "idml", "role", "look",
+                                                 "source"), show="headings")
+        for c, t, w in (("word", "Word style", 200), ("count", "Paragraphs", 70),
+                        ("idml", "IDML style", 170), ("role", "Role", 80),
+                        ("look", "Look", 150), ("source", "Found by", 220)):
             self.styles.heading(c, text=t)
             self.styles.column(c, width=w)
         self.styles.pack(fill="both", expand=True, pady=4)
@@ -911,7 +914,29 @@ class App:
             return
         for s in self.report.paragraph_styles:
             self.styles.insert("", "end", iid=s.word, values=(
-                s.word, s.count, s.idml or "(left out)", s.role, s.source))
+                s.word, s.count, s.idml or "(left out)", s.role,
+                LOOKS[self._look(s.word, s.idml, s.role)], s.source))
+
+    def _look(self, word, idml, role):
+        """As the export decides: the style map's choice, else Word's look only for a style
+        kept under its own name with no book counterpart."""
+        from .stylemap import norm
+        sm = (self.profile.get("style_map") or {}).get("paragraph") or {}
+        for k, v in sm.items():
+            if norm(k) == norm(word) and isinstance(v, dict) and v.get("look") in LOOKS:
+                return v["look"]
+        return "word" if role == "body" and idml == word else "book"
+
+    def set_style(self, word, idml, role, look):
+        """Map a Word style (the profile's style map)."""
+        sm = self.profile.setdefault("style_map", {}).setdefault("paragraph", {})
+        sm[word] = {"idml": idml or None, "role": role, "look": look}
+        if self.styles.exists(word):
+            self.styles.set(word, "idml", idml or "(left out)")
+            self.styles.set(word, "role", role)
+            self.styles.set(word, "look", LOOKS[look])
+            self.styles.set(word, "source", "profile (save the profile to keep it)")
+        self.report = None       # mappings change the outline
 
     def _edit_style(self, event):
         item = self.styles.identify_row(event.y)
@@ -928,16 +953,23 @@ class App:
         ttk.Label(dlg, text="Role:").grid(row=1, column=0, sticky="w", padx=8, pady=4)
         ttk.Combobox(dlg, textvariable=role, values=ROLES, state="readonly").grid(
             row=1, column=1, padx=8, sticky="w")
+        look = tk.StringVar(value=self.styles.set(item, "look"))
+        ttk.Label(dlg, text="Look:").grid(row=2, column=0, sticky="w", padx=8, pady=4)
+        ttk.Combobox(dlg, textvariable=look, values=list(LOOKS.values()), state="readonly",
+                     width=30).grid(row=2, column=1, padx=8, sticky="w")
+        ttk.Label(dlg, text="Word's look keeps the style's alignment, indents, italic or bold, "
+                            "and size and spacing in proportion to the body; never Word's "
+                            "fonts. It applies to a style kept under its own name.",
+                  wraplength=380, justify="left").grid(row=3, column=0, columnspan=2,
+                                                       padx=8, sticky="w")
 
         def ok():
-            sm = self.profile.setdefault("style_map", {}).setdefault("paragraph", {})
-            sm[item] = {"idml": idml.get().strip() or None, "role": role.get()}
-            self.styles.set(item, "idml", idml.get())
-            self.styles.set(item, "role", role.get())
-            self.styles.set(item, "source", "profile (save the profile to keep it)")
-            self.report = None       # mappings change the outline
+            key = [k for k, v in LOOKS.items() if v == look.get()] or ["book"]
+            idml_name = idml.get().strip()
+            self.set_style(item, None if idml_name == "(left out)" else idml_name, role.get(),
+                           key[0])
             dlg.destroy()
-        ttk.Button(dlg, text="OK", command=ok).grid(row=2, column=1, sticky="e", padx=8, pady=8)
+        ttk.Button(dlg, text="OK", command=ok).grid(row=4, column=1, sticky="e", padx=8, pady=8)
 
     # ---- preflight and export ----
 

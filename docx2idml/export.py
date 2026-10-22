@@ -146,6 +146,15 @@ def _half(v):
     return round(v * 2) / 2
 
 
+def _twips(props, key):
+    """A value in points from a summarized Word property ("left=720 firstLine=360")."""
+    for part in (props or "").split():
+        k, _, v = part.partition("=")
+        if k == key and v.lstrip("-").isdigit():
+            return int(v) / 20
+    return None
+
+
 def _prop(props, key):
     for part in (props or "").split():
         k, _, v = part.partition("=")
@@ -531,11 +540,82 @@ class Exporter:
                 base = pm.idml
             elif pm.idml in self.builtin:
                 base = pm.idml if pm.role == mapping.role else base
-        # Only the name and the place in the book come from Word: the look is the book
-        # style's it is based on (Word's alignment, indents, spacing and sizes are a
-        # manuscript's, not a book's). Change it in InDesign, or with a style template.
-        self.custom[name] = Style(name, base)
+        # The name and the place in the book come from Word; the look is the book style's
+        # it is based on (Word's alignment, indents, spacing and sizes are a manuscript's).
+        # A style with no book counterpart (a special paragraph the author set up, based on
+        # Normal) keeps what makes it distinct, in book terms; never Word's fonts. The style
+        # map's "look" setting overrides either way.
+        attrs, leading = {}, None
+        if self._look(mapping) == "word" and st is not None:
+            attrs, leading = self._word_look(docx, style_id, st, base)
+        self.custom[name] = Style(name, base, attrs, leading=leading)
         self.doc.paragraph_styles.append(self.custom[name])
+
+    def _look(self, mapping):
+        """"word" to keep a custom style's distinct look, "book" for the book style's. By
+        default only styles with no book counterpart (role body, kept under their own name)
+        keep their look."""
+        entry = self.sm.paragraph.get(norm(mapping.word))
+        if isinstance(entry, dict) and entry.get("look") in ("word", "book"):
+            return entry["look"]
+        return "word" if mapping.role == "body" and mapping.idml == mapping.word else "book"
+
+    def _word_look(self, docx, style_id, st, base):
+        """What a Word style sets on itself, in book terms: alignment; indents in proportion
+        to the book's line against Word's; italic, bold, capitals; size and space in
+        proportion to the body size. (attrs, leading)."""
+        attrs, props = {}, st.props
+        jc = _prop(props.get("jc"), "val")
+        just = {"center": "CenterAlign", "right": "RightAlign", "end": "RightAlign",
+                "both": "LeftJustified", "left": "LeftAlign", "start": "LeftAlign"}.get(jc)
+        if just:
+            attrs["Justification"] = just
+            if just in ("CenterAlign", "RightAlign"):
+                attrs["FirstLineIndent"] = 0
+        sec = docx.sections[0] if docx.sections else None
+        word_measure = None
+        if sec and sec.page_width:
+            m = sec.margins
+            word_measure = (sec.page_width - m.get("left", 1) - m.get("right", 1)) * 72
+        scale = min(1.0, self.measure / word_measure) if word_measure else 1.0
+        ind = props.get("ind")
+        if ind:
+            for key, attr in (("left", "LeftIndent"), ("start", "LeftIndent"),
+                              ("right", "RightIndent"), ("end", "RightIndent"),
+                              ("firstLine", "FirstLineIndent")):
+                v = _twips(ind, key)
+                if v is not None:
+                    attrs[attr] = _half(v * scale)
+            hanging = _twips(ind, "hanging")
+            if hanging is not None:
+                attrs["FirstLineIndent"] = -_half(hanging * scale)
+        normal = docx.resolve_size(docx.default_style.get("paragraph")) or 12
+        size_scale = self.body_size / normal
+        sp = props.get("spacing")
+        if sp:
+            for key, attr in (("before", "SpaceBefore"), ("after", "SpaceAfter")):
+                v = _twips(sp, key)
+                if v is not None:
+                    attrs[attr] = _half(min(v * size_scale, 2 * self.body_lead))
+        bold, italic = props.get("b"), props.get("i")
+        if bold is not None or italic is not None:
+            base_fs = self._resolved_attrs(base).get("FontStyle", "Regular")
+            b = _toggle(bold) if bold is not None else "Bold" in base_fs
+            i = _toggle(italic) if italic is not None else "Italic" in base_fs
+            attrs["FontStyle"] = FONT_STYLES[(b, i)]
+        if _toggle(props.get("caps")):
+            attrs["Capitalization"] = "AllCaps"
+        elif _toggle(props.get("smallCaps")):
+            attrs["Capitalization"] = "SmallCaps"
+        if "keepNext" in props and _toggle(props["keepNext"]):
+            attrs["KeepWithNext"] = 2
+        leading = None
+        if "sz" in props:
+            ratio = docx.resolve_size(style_id) / normal
+            if abs(ratio - 1) > 0.01:
+                attrs["PointSize"] = _half(self.body_size * ratio)
+                leading = _half(self.body_lead * ratio)
+        return attrs, leading
 
     def _char_style(self, name, docx=None, style_id=None):
         """Make sure a character style exists; returns its attributes."""

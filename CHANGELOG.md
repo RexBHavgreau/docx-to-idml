@@ -13,6 +13,11 @@
   Caslon, Palatino, Georgia...), never Word's; Hebrew and Greek fonts likewise (SBL Hebrew,
   SBL Greek, Gentium...), when the body font lacks the letters. Italic, bold, small caps
   and Word's character styles in the text are kept, as are centered lines (scene breaks).
+- A custom Word style with no book counterpart (a special paragraph the author set up, based
+  on Normal) keeps what makes it distinct, in book terms: alignment, indents in proportion
+  to the book's line, italic or bold, capitals, and size and spacing in proportion to the
+  body size; never Word's fonts. Custom styles based on a heading, quotation or the like
+  follow the book style. The Style map tab shows each style's look and can switch it.
 - The first text paragraph of a chapter is set flush (Body First) after an epigraph or any
   other opening matter, not only after a heading.
 - Body size and leading (Layout profile > Type): a body size (11 pt by default) and leading

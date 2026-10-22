@@ -87,6 +87,12 @@ def test_preflight_export_and_book_file():
         assert app.heads.set("Covenant and Community", "head") == "(no running heads)"
         app.set_kind("Covenant and Community", "chapter")
         assert app.book.settings["unit_kinds"] == {}
+        # The style map shows each style's look; one can be switched.
+        assert app.styles.set("Epigraph", "look") == "Word's, in book terms"
+        assert app.styles.set("Normal", "look") == "the book style's"
+        app.set_style("Epigraph", "Epigraph", "body", "book")
+        assert app.profile["style_map"]["paragraph"]["Epigraph"]["look"] == "book"
+        assert app.styles.set("Epigraph", "look") == "the book style's"
         app.book.settings["short_titles"] = {"The Formula in the Prophets": "The Formula"}
         app._refresh_heads()
         assert app.heads.set("The Formula in the Prophets", "head") == "The Formula"

@@ -103,7 +103,11 @@ keep it up to date when decisions change.
 - The two InDesign files from the brief (the Assumption article and its cut-down) are a real
   article: use them for analysis only; don't commit them.
 - Nothing from Word's formatting goes into the styles (Beaux, 0.3.0): Word paragraph styles
-  give names and roles only; a custom style is `Style(name, base)` with no attributes. Fonts
+  give names and roles only. A custom style kept under its own name with role body (no book
+  counterpart) keeps its distinct look in book terms (`Exporter._word_look`: alignment,
+  indents scaled by book/Word measure, face, caps, size/space scaled by book/Word body size;
+  no fonts); others are `Style(name, base)` with no attributes. Style map entries may carry
+  "look": "word" or "book" to override. Fonts
   not set (profile or template) are `fonts.book_font()` / `fonts.script_font()` (installed
   book fonts in order), never Word's. Kept from Word: emphasis and character styles in the
   text, direct center/right alignment of a line. Body First = a unit's first body paragraph.
