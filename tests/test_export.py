@@ -450,6 +450,31 @@ def test_styles_from_template():
         assert "can't be read as an IDML file" in str(e)
 
 
+def test_endorsements_first_without_heads():
+    path = make_docx(os.path.join(TMP, "praise.docx"), [
+        para("Praise for the Book", "Heading1"), para("A fine book, says a reader of books."),
+        para("More Praise From Readers Who Liked It Very Much Indeed", "Heading1"),
+        para("Another fine word."),
+        para("Chapter One", "Heading1"), para("Text of chapter one.")])
+    ex = Exporter([path], default_profile(),
+                  {"unit_kinds": {"More Praise From Readers Who Liked It Very Much Indeed":
+                                  "endorsements"}})
+    try:
+        doc = ex.build()
+        first = ["".join(r.text for r in st.paragraphs[0].runs) for st in doc.stories[:3]]
+        assert first[:2] == ["Praise for the Book",
+                             "More Praise From Readers Who Liked It Very Much Indeed"]
+        assert doc.page_masters[doc.stories[0].pages[0]] == "D-Display"
+        assert doc.page_masters[doc.stories[1].pages[0]] == "D-Display"
+        assert doc.sections[0].marker == "" and doc.sections[1].marker == ""
+        assert not any("too long" in line for line in ex.report)
+        # The half-title follows, on a recto.
+        assert doc.stories[2].paragraphs[0].style == "Half Title"
+        assert doc.stories[2].pages[0] % 2 == 0
+    finally:
+        ex.cleanup()
+
+
 def test_two_papers_with_bibliographies():
     """Two articles not prepared as a book: each a Title, Heading 2 sections and a
     bibliography. Each paper is a unit of its own; bibliography styling stops at the end of

@@ -80,6 +80,13 @@ def test_preflight_export_and_book_file():
         assert "PREFLIGHT" in app.text.get("1.0", "end")
         # Running heads table, with a short title.
         assert app.heads.get_children()
+        # A unit's kind, changed by the user, and changed back.
+        app.set_kind("Covenant and Community", "endorsements")
+        assert app.book.settings["unit_kinds"] == {"Covenant and Community": "endorsements"}
+        assert app.heads.set("Covenant and Community", "kind") == "endorsements (set by you)"
+        assert app.heads.set("Covenant and Community", "head") == "(no running heads)"
+        app.set_kind("Covenant and Community", "chapter")
+        assert app.book.settings["unit_kinds"] == {}
         app.book.settings["short_titles"] = {"The Formula in the Prophets": "The Formula"}
         app._refresh_heads()
         assert app.heads.set("The Formula in the Prophets", "head") == "The Formula"

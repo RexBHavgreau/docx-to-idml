@@ -24,6 +24,7 @@ from . import APP_NAME, __version__, appsettings, updates
 from . import profile as profiles
 from .book import Book, collect
 from .export import TRIMS, ExportError, export
+from .outline import KIND_LABELS, KINDS, kind_key
 from .stylemap import ROLES
 
 TITLE = "docx-to-idml"     # working name
@@ -360,11 +361,11 @@ class App:
         form = ttk.Frame(tab)
         form.pack(fill="x")
         self.heads_form = Form(form, HEAD_FIELDS, columns=2)
-        ttk.Label(tab, text="Recto heads by chapter (double-click to give a short title; "
-                            "\"too long\" means it won't fit the page):").pack(anchor="w",
-                                                                                pady=(10, 2))
+        ttk.Label(tab, text="Units of the book (double-click a running head to give a short "
+                            "title, or a kind to change what the unit is; \"too long\" means "
+                            "the head won't fit the page):").pack(anchor="w", pady=(10, 2))
         self.heads = ttk.Treeview(tab, columns=("unit", "kind", "head", "note"), show="headings")
-        for c, t, w in (("unit", "Title in the manuscript", 330), ("kind", "Kind", 80),
+        for c, t, w in (("unit", "Title in the manuscript", 330), ("kind", "Kind (double-click)", 160),
                         ("head", "Running head", 280), ("note", "", 80)):
             self.heads.heading(c, text=t)
             self.heads.column(c, width=w)
@@ -701,11 +702,19 @@ class App:
     def _refresh_heads(self):
         self.heads.delete(*self.heads.get_children())
         short = self.book.settings.get("short_titles") or {}
+        kinds = self.book.settings.get("unit_kinds") or {}
         limit = self._head_limit()
-        for title, kind in self.units:
+        for title, detected in self.units:
+            if self.heads.exists(title):
+                continue              # two units with one title share a row
+            kind = kinds.get(title, detected)
             head = short.get(title) or title
-            note = "too long" if len(head) > limit else ""
-            self.heads.insert("", "end", iid=title, values=(title, kind, head, note))
+            note = "too long" if len(head) > limit and kind in ("chapter", "part", "front",
+                                                                 "back") else ""
+            if kind in ("display", "endorsements"):
+                head, note = "(no running heads)", ""
+            label = KIND_LABELS.get(kind, kind) + (" (set by you)" if title in kinds else "")
+            self.heads.insert("", "end", iid=title, values=(title, label, head, note))
 
     def _head_limit(self):
         """Characters that fit a running head: 80% of the measure at the head's size."""
@@ -720,6 +729,8 @@ class App:
         item = self.heads.identify_row(event.y)
         if not item:
             return
+        if self.heads.identify_column(event.x) == "#2":
+            return self._edit_kind(item)
         current = self.heads.set(item, "head")
         new = simpledialog.askstring(TITLE, "Running head for “%s” (blank = the full "
                                             "title):" % item, initialvalue=current,
@@ -731,6 +742,40 @@ class App:
             short[item] = new.strip()
         else:
             short.pop(item, None)
+        self.dirty = True
+        self._refresh_heads()
+
+    def _edit_kind(self, title):
+        """Choose what a unit is (chapter, front matter, endorsements...), over what was
+        detected; saved with the book."""
+        detected = dict(self.units).get(title, "chapter")
+        kinds = self.book.settings.setdefault("unit_kinds", {})
+        dlg = tk.Toplevel(self.root)
+        dlg.title("What is \u201c%s\u201d?" % title[:40])
+        dlg.transient(self.root)
+        labels = [KIND_LABELS[k] for k in KINDS]
+        var = tk.StringVar(value=KIND_LABELS[kinds.get(title, detected)])
+        ttk.Label(dlg, text="\u201c%s\u201d is:" % title[:60]).grid(row=0, column=0, padx=8,
+                                                                    pady=6, sticky="w")
+        ttk.Combobox(dlg, textvariable=var, values=labels, state="readonly").grid(
+            row=0, column=1, padx=8)
+        ttk.Label(dlg, text="Display pages and endorsements have no folio or running heads; "
+                            "endorsements go before the half-title.", wraplength=380).grid(
+            row=1, column=0, columnspan=2, padx=8, sticky="w")
+
+        def ok():
+            key = [k for k in KINDS if KIND_LABELS[k] == var.get()][0]
+            self.set_kind(title, key)
+            dlg.destroy()
+        ttk.Button(dlg, text="OK", command=ok).grid(row=2, column=1, sticky="e", padx=8, pady=8)
+
+    def set_kind(self, title, key):
+        detected = dict(self.units).get(title, "chapter")
+        kinds = self.book.settings.setdefault("unit_kinds", {})
+        if key == detected:
+            kinds.pop(title, None)
+        else:
+            kinds[title] = key
         self.dirty = True
         self._refresh_heads()
 
@@ -835,7 +880,8 @@ class App:
 
     def _preflighted(self, rep):
         self.report = rep
-        self.units = [(u.title, u.kind) for u in rep.outline.units] if rep.outline else []
+        # (title, kind as detected): the book settings' choices are applied when shown.
+        self.units = [(u.title, kind_key(u)) for u in rep.outline.units] if rep.outline else []
         self._refresh_files()
         self._refresh_heads()
         self._refresh_styles()

@@ -144,5 +144,24 @@ def test_stylemap_mappings():
     assert display_name("My Style") == "My Style"
 
 
+def test_endorsements_and_kinds_set_by_user():
+    from docx2idml.outline import KINDS, apply_kinds, classify, kind_key
+    for title in ("Endorsements", "Praise for The Covenant Formula", "Advance Praise",
+                  "What Others Are Saying", "Elogios"):
+        assert classify(title, False) == ("display", "endorsements"), title
+    assert classify("Praise for The Covenant Formula", True) == ("chapter", "chapter")
+    doc = read_docx(make_docx(os.path.join(TMP, "e.docx"), [para("Praise for This Book", "Heading1"), para("A fine book. -- A."),
+                           para("Kind Words", "Heading1"), para("Also fine."),
+                           para("Chapter One", "Heading1"), para("Text.")]))
+    out = build_outline([doc])
+    assert [(u.title, kind_key(u)) for u in out.units] == [
+        ("Praise for This Book", "endorsements"), ("Kind Words", "chapter"),
+        ("Chapter One", "chapter")]
+    apply_kinds(out, {"Kind Words": "endorsements", "Chapter One": "chapter", "x": "bogus"})
+    assert (out.units[1].kind, out.units[1].type) == KINDS["endorsements"]
+    assert "set in the book settings" in out.units[1].detected_by
+    assert "set in the book settings" not in out.units[2].detected_by
+
+
 if __name__ == "__main__":
     run_tests(globals())

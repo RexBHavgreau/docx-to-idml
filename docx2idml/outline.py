@@ -19,6 +19,12 @@ from .stylemap import StyleMap, norm
 
 # Normalized title -> (kind, type). "display" pages carry no folio.
 _FRONT = {
+    "endorsements": ("display", "endorsements"), "praise": ("display", "endorsements"),
+    "advance praise": ("display", "endorsements"),
+    "what people are saying": ("display", "endorsements"),
+    "what others are saying": ("display", "endorsements"),
+    "elogios": ("display", "endorsements"), "recomendaciones": ("display", "endorsements"),
+    "lo que dicen": ("display", "endorsements"),
     "dedication": ("display", "dedication"), "dedicatoria": ("display", "dedication"),
     "epigraph": ("display", "epigraph"), "epígrafe": ("display", "epigraph"),
     "copyright": ("display", "copyright"),
@@ -47,6 +53,7 @@ _BACK = {
     "índice de autores": "index", "índice de citas": "index", "índice onomástico": "index",
     "about the author": "about", "sobre el autor": "about", "acerca del autor": "about",
 }
+_PRAISE = re.compile(r"^(advance praise|praise|endorsements|elogios|recomendaciones)\s+(for|of|para|de)\b")
 _APPENDIX = re.compile(r"^(appendix|appendices|apéndice|apéndices|anexo)\b")
 _PART = re.compile(r"^(part|parte|book|libro)\s+(\S+)")
 _PART_WORDS = {"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
@@ -68,6 +75,8 @@ def classify(title, chapter_seen):
     key = title_key(title)
     if key in _FRONT and not chapter_seen:
         return _FRONT[key]
+    if not chapter_seen and _PRAISE.match(key):
+        return ("display", "endorsements")
     if key == "índice":   # Spanish: the contents at the front, an index at the back
         return ("back", "index") if chapter_seen else ("front", "contents")
     if key in _BACK:
@@ -78,6 +87,31 @@ def classify(title, chapter_seen):
     if m and (m.group(2).strip(".:") in _PART_WORDS or m.group(2).strip(".:").isdigit()):
         return ("part", "part")
     return ("chapter", "chapter")
+
+
+# Kinds the user can give a unit (book settings "unit_kinds": {unit title: key}).
+KINDS = {"chapter": ("chapter", "chapter"), "part": ("part", "part"),
+         "front": ("front", "front matter"), "back": ("back", "back matter"),
+         "display": ("display", "display page"), "endorsements": ("display", "endorsements")}
+KIND_LABELS = {"chapter": "chapter", "part": "part", "front": "front matter",
+               "back": "back matter", "display": "display page", "endorsements": "endorsements"}
+
+
+def kind_key(unit):
+    """The KINDS key a unit has now."""
+    if unit.type == "endorsements":
+        return "endorsements"
+    return unit.kind if unit.kind in KINDS else "chapter"
+
+
+def apply_kinds(outline, kinds):
+    """The user's choices of kind for units (by title), over what was detected."""
+    for u in outline.units:
+        key = (kinds or {}).get(u.title)
+        if key in KINDS and key != kind_key(u):
+            u.kind, u.type = KINDS[key]
+            u.detected_by += " (kind set in the book settings)"
+    return outline
 
 
 @dataclass

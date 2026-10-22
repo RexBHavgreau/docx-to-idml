@@ -2,6 +2,11 @@
 
 ## 0.3.0 (not yet released)
 
+- Endorsements ("Endorsements", "Praise for...", "Advance Praise", "What Others Are Saying",
+  and the Spanish "Elogios", "Recomendaciones") are recognized and set first, before the
+  half-title, as display pages without folios or running heads.
+- Running heads tab: double-click a unit's kind to change what it is (chapter, part, front
+  matter, back matter, display page, endorsements); the choice is saved with the book.
 - Book details: "Fill from the manuscript" is at the top of the tab, and after filling it says
   where each value was found (which style in which file, or the title page's "by" line), or
   that it wasn't found.

@@ -149,6 +149,11 @@ keep it up to date when decisions change.
 - Spare pages: profile `page.spare_pages` 0 (default, Beaux), 1 or 2. Chapter Title has
   StartParagraph NextOddPage (NextPage for chapters on the next page); Chapter Subtitle resets
   it to Anywhere. Profile version 4.
+- Unit kinds (0.3.0): the user can set a unit's kind (outline `KINDS`: chapter, part, front,
+  back, display, endorsements) in the Running heads tab; saved as book settings
+  `unit_kinds` {unit title: key}, applied by `outline.apply_kinds` after the outline is built.
+  Endorsements (display, type "endorsements") are detected by title and placed before the
+  half-title.
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.

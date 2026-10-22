@@ -35,7 +35,7 @@ from .docx_reader import is_greek, is_hebrew, read_docx
 from .idml.images import image_info
 from .idml.model import (CellStyle, Document, Frame, Image, Master, Paragraph, Run, Section,
                          Story, Style, Table, TableStyle, TOCStyle)
-from .outline import _BACK, Unit, build_outline, title_key
+from .outline import _BACK, Unit, apply_kinds, build_outline, title_key
 from .stylemap import StyleMap, norm
 from .template import TemplateError, apply_template, read_template
 
@@ -187,7 +187,8 @@ class Exporter:
         if not self.paths:
             raise ExportError("No .docx files to export.")
         self.docs = [read_docx(p) for p in self.paths]
-        self.outline = build_outline(self.docs, self.sm)
+        self.outline = apply_kinds(build_outline(self.docs, self.sm),
+                                   self.settings.get("unit_kinds"))
         self.doc = Document(name=self.outline.title or os.path.splitext(
             os.path.basename(self.paths[0]))[0])
         self.tmp = tempfile.mkdtemp(prefix="docx2idml-")
@@ -1085,7 +1086,7 @@ class Exporter:
         self.info = info
         self.report += notes
         lang = self.profile["front_matter"].get("language", "en")
-        display, front_units, rest = [], [], []
+        display, front_units, rest, praise = [], [], [], []
         ms_copyright, extras = [], []
         for unit, paras in stories:
             kind = unit.kind if unit else "chapter"
@@ -1095,6 +1096,8 @@ class Exporter:
                 extras += ex
             elif kind == "display" and unit.type == "copyright":
                 ms_copyright += [p for p in paras if p.style != "Chapter Title"]
+            elif kind == "display" and unit.type == "endorsements":
+                praise.append(Block(unit, paras))
             elif kind == "display":
                 display.append(Block(unit, paras))
             elif kind == "front" and unit.type == "contents":
@@ -1105,7 +1108,8 @@ class Exporter:
                 front_units.append(Block(unit, paras))
             else:
                 rest.append(Block(unit, paras))
-        blocks = []
+        # Endorsements come first, before the half-title (Chicago).
+        blocks = list(praise)
         g = lambda kind, title, typ: Unit(kind, typ, title, "", -1, "generated")  # noqa: E731
         if info["half_title"]:
             blocks.append(Block(g("display", "Half title", "half title"),
