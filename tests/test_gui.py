@@ -246,6 +246,46 @@ def test_update_check_at_every_start():
         updates.check, messagebox.askyesno = real_check, real_ask
 
 
+def test_cleanup_after_update():
+    """The new version offers to delete older copies and retarget shortcuts; declined copies
+    aren't asked about again."""
+    from pathlib import Path
+    from tkinter import messagebox
+    from docx2idml import __version__, updates
+    folder = Path(tempfile.mkdtemp())
+    me = folder / updates.exe_name(__version__)
+    old = folder / updates.exe_name("0.2.0")
+    for p in (me, old):
+        p.write_bytes(b"x")
+    answers, asked, retargeted = [], [], []
+    real_ask, real_retarget = messagebox.askyesno, updates.retarget_shortcuts
+    messagebox.askyesno = lambda *a, **k: asked.append(a[1]) or answers.pop(0)
+    updates.retarget_shortcuts = lambda olds, new, **k: retargeted.append((olds, new)) or 1
+    try:
+        app, root = _app()
+        answers.append(False)
+        app.offer_cleanup(me)                              # No: kept, not asked again
+        assert old.exists() and app.settings["kept_old_versions"] == [old.name]
+        assert "shortcuts" in asked[-1] and old.name in asked[-1]
+        n = len(asked)
+        app.offer_cleanup(me)
+        assert len(asked) == n
+        app.settings["kept_old_versions"] = []
+        answers.append(True)
+        app.offer_cleanup(me)                              # Yes: retargeted and deleted
+        end = time.time() + 20
+        while app.busy and time.time() < end:
+            root.update()
+            time.sleep(0.02)
+        root.update()
+        assert not old.exists() and me.exists()
+        assert retargeted == [([old], me)]
+        assert "shortcuts changed to open this version: 1" in app.status.get()
+        app.quit(force=True)
+    finally:
+        messagebox.askyesno, updates.retarget_shortcuts = real_ask, real_retarget
+
+
 if __name__ == "__main__":
     if not HAVE_TK:
         sys.exit(0)

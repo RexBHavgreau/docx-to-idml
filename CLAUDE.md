@@ -175,6 +175,9 @@ keep it up to date when decisions change.
 - Updates (0.3.1): the startup check runs at every start (`updates.due`: only the on/off
   setting), as Indicat's; once a day missed same-day releases. A version declined at the
   prompt is saved as `declined_version` and not offered again at startup (`should_offer`).
+  After an update the new copy offers to delete older copies and retarget shortcuts and pins
+  (`gui.offer_cleanup`, `updates.retarget_shortcuts`); declined copies are saved as
+  `kept_old_versions` and not asked about again. pywin32 is a Windows-only requirement.
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.
@@ -238,8 +241,9 @@ writes one.
   Released: v0.2.0 (October 21, the first release with the .exe) and v0.3.0 (October 22),
   each built by the tag's workflow from main. The updater's real run worked (Beaux, October
   22): 0.2.0 found 0.3.0 by Help > Check for updates (the startup check didn't, fixed in
-  0.3.1), downloaded it, opened it, and 0.3.0 offered to delete 0.2.0. Shortcuts and pins are
-  not retargeted (Indicat's updater does that; this one doesn't yet).
+  0.3.1), downloaded it, opened it, and 0.3.0 offered to delete 0.2.0. From 0.3.1 shortcuts
+  and taskbar pins are retargeted too (Indicat's code: pywin32's WScript.Shell; tested with
+  a fake shell; not yet on a real Windows update).
 - Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
   the No Break style and the local NoBreak attribute?
 - 0.2.0 additions not yet opened: StartParagraph NextOddPage on Chapter Title (does Affinity

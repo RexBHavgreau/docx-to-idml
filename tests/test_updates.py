@@ -119,5 +119,51 @@ def test_older_copies():
     assert deleted == old and not left and not (d / "docx-to-idml-0.0.1.exe").exists()
 
 
+class FakeShortcut:
+    def __init__(self, store, path):
+        self.store, self.path = store, path
+        self.__dict__.update(store[path])
+
+    def Save(self):
+        self.store[self.path] = {k: getattr(self, k)
+                                 for k in ("TargetPath", "WorkingDirectory", "IconLocation")}
+
+
+class FakeShell:
+    def __init__(self, store):
+        self.store = store
+
+    def CreateShortcut(self, path):
+        return FakeShortcut(self.store, path)
+
+
+def test_shortcuts():
+    tmp = Path(tempfile.mkdtemp())
+    prog, desk, pins = tmp / "Apps", tmp / "Desktop", tmp / "TaskBar"
+    for d in (prog, desk, pins):
+        d.mkdir()
+    old, older = prog / U.exe_name("0.2.0"), prog / U.exe_name("0.1.0")
+    new = prog / U.exe_name(__version__)
+    store = {
+        str(desk / "docx-to-idml.lnk"): {"TargetPath": str(old), "WorkingDirectory": str(prog),
+                                         "IconLocation": "%s,0" % old},
+        str(pins / "docx-to-idml.lnk"): {"TargetPath": str(older), "WorkingDirectory": "",
+                                         "IconLocation": ""},
+        str(desk / "Word.lnk"): {"TargetPath": r"C:\Program Files\Word.exe",
+                                 "WorkingDirectory": "", "IconLocation": ""},
+    }
+    for p in store:
+        Path(p).write_bytes(b"")
+    n = U.retarget_shortcuts([old, older], new, folders=[desk, pins], shell=FakeShell(store))
+    d = store[str(desk / "docx-to-idml.lnk")]
+    assert n == 2 and d["TargetPath"] == str(new) and d["IconLocation"] == "%s,0" % new
+    assert d["WorkingDirectory"] == str(prog)
+    assert store[str(pins / "docx-to-idml.lnk")]["TargetPath"] == str(new)
+    assert store[str(desk / "Word.lnk")]["TargetPath"] == r"C:\Program Files\Word.exe"
+    # Without Windows' shortcut object (here), nothing is changed and nothing fails.
+    if sys.platform != "win32":
+        assert U.retarget_shortcuts([old], new, folders=[desk]) == 0
+
+
 if __name__ == "__main__":
     run_tests(globals())

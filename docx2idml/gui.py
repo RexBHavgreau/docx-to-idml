@@ -1096,22 +1096,48 @@ class App:
         self.settings["check_updates"] = bool(self.auto_check.get())
 
     def startup(self):
-        """After the window shows: offer to delete older copies, then the daily check."""
-        exe = updates.running_exe()
+        """After the window shows: offer to tidy up after an update, then check for one."""
         if updates.can_install():
-            old = updates.older_copies(exe.parent, exe)
-            if old and messagebox.askyesno(TITLE, "Older versions of this program are in its "
-                                                  "folder:\n\n%s\n\nDelete them?" % "\n".join(
-                                               p.name for p in old)):
-                deleted, left = updates.delete_old(old)
-                if left:
-                    messagebox.showinfo(TITLE, "These couldn't be deleted (close them first, "
-                                               "then delete them by hand):\n\n" +
-                                        "\n".join(str(p) for p in left))
+            self.offer_cleanup(updates.running_exe())
         if updates.due(self.settings):
             self.check_updates(manual=False)
         if self.settings.get("last_book") and os.path.exists(self.settings["last_book"]):
             self.open_book(self.settings["last_book"])
+
+    def offer_cleanup(self, exe):
+        """At the start of a new version: offer to delete older copies in its folder and to
+        point shortcuts and taskbar pins that open them at this one. A copy the user chose to
+        keep isn't asked about again."""
+        kept = set(self.settings.get("kept_old_versions") or [])
+        olds = [p for p in updates.older_copies(exe.parent, exe) if p.name not in kept]
+        if not olds:
+            return
+        one = len(olds) == 1
+        if not messagebox.askyesno(TITLE, (
+                "This is %s %s. The older version%s in this folder (%s) can be deleted now, and "
+                "shortcuts and taskbar pins that open %s changed to open this version. Your "
+                "settings and profiles are kept.\n\nDelete the old version%s and update the "
+                "shortcuts?" % (TITLE, __version__, "" if one else "s",
+                                ", ".join(p.name for p in olds), "it" if one else "them",
+                                "" if one else "s"))):
+            self.settings["kept_old_versions"] = sorted(kept | {p.name for p in olds})
+            appsettings.save(self.settings)
+            return
+
+        def work():
+            n = updates.retarget_shortcuts(olds, exe)
+            deleted, left = updates.delete_old(olds)
+            return n, deleted, left
+
+        def done(r):
+            n, deleted, left = r
+            self.status.set("Deleted %s; shortcuts changed to open this version: %d." % (
+                ", ".join(p.name for p in deleted) or "nothing", n))
+            if left:
+                messagebox.showwarning(TITLE, "Couldn't delete %s (it may still be open). Close "
+                                              "it, then delete it by hand." % ", ".join(
+                                                  p.name for p in left))
+        self._run(work, done, "Tidying up after the update...")
 
     def check_updates(self, manual=False):
         def work():

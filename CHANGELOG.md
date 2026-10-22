@@ -2,6 +2,9 @@
 
 ## 0.3.1 (not yet released)
 
+- After an update, the new version offers to delete the old copy and to point desktop and
+  Start-menu shortcuts and taskbar pins that opened it at itself (as Indicat does). A copy
+  you choose to keep isn't asked about again.
 - Fixed: the update check at startup ran at most once a day, so a release made after the
   day's check wasn't noticed until the next day (0.2.0 missed 0.3.0). It now checks at every
   start, quietly unless there's a newer version. If you decline a version, the startup check
