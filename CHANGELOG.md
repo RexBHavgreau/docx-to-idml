@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.1 (not yet released)
+## 0.4.0 (October 22, 2026)
 
 - Style mapping in one window (as InDesign's style mapping when placing a Word file): after
   the automatic mapping, every paragraph and character style found in the manuscript is
