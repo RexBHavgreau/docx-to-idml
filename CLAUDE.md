@@ -202,7 +202,9 @@ python tests/test_gui.py             # needs a display: on Linux, xvfb-run (and 
 ```
 
 Run them all before pushing; CI (`.github/workflows/tests.yml`) runs them on Windows and Linux.
-On Windows set `PYTHONUTF8=1`. `test_preflight` includes a LibreOffice round trip when
+On Windows set `PYTHONUTF8=1`. Tests must not depend on which fonts are installed: CI's
+Windows has book fonts (Palatino, Georgia) that this Linux machine lacks, and their x-height
+and widths change leading and estimates (0.3.0's leading test failed there for that reason). `test_preflight` includes a LibreOffice round trip when
 `soffice` is installed; LibreOffice refuses a theme without a color scheme, so the test builder
 writes one.
 
