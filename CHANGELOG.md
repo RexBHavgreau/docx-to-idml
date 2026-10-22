@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 (not yet released)
+## 0.3.0 (October 22, 2026)
 
 - Endorsements ("Endorsements", "Praise for...", "Advance Praise", "What Others Are Saying",
   and the Spanish "Elogios", "Recomendaciones") are recognized and set first, before the
