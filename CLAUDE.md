@@ -172,6 +172,9 @@ keep it up to date when decisions change.
   uses an exact value if set, else the middle of the feel's range. Baseline grid (profile
   `baseline_grid`): Body GridAlignment AlignBaseline, grid = body leading from the top margin;
   styles with other leading set to None (as g09).
+- Updates (0.3.1): the startup check runs at every start (`updates.due`: only the on/off
+  setting), as Indicat's; once a day missed same-day releases. A version declined at the
+  prompt is saved as `declined_version` and not offered again at startup (`should_offer`).
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.

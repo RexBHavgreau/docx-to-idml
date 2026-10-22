@@ -1119,9 +1119,10 @@ class App:
 
         def show(r):
             self.settings["last_update_check"] = time.time()
-            if r["status"] == "newer":
+            appsettings.save(self.settings)
+            if updates.should_offer(r, self.settings, manual):
                 self._offer_update(r)
-            elif manual:
+            elif manual and r["status"] != "newer":
                 msg = {"current": "This is the latest version (%s)." % __version__,
                        "norelease": "No release has been published yet.",
                        "error": "Couldn't reach GitHub to check for updates. Check the "
@@ -1133,17 +1134,26 @@ class App:
             self.results.put(lambda: show(r))
         threading.Thread(target=target, daemon=True).start()
 
+    def _decline(self, version):
+        self.settings["declined_version"] = version
+        appsettings.save(self.settings)
+
     def _offer_update(self, r):
         notes = (r.get("notes") or "").strip()
         msg = "Version %s is available (this is %s).\n\n%s\n\n" % (
             r["latest"], __version__, notes[:800])
+        later = ("\n\n(If you say no, the check at startup won't ask about %s again; Help > Check "
+                 "for updates will.)" % r["latest"])
         if not (updates.can_install() and r.get("asset")):
-            if messagebox.askyesno(TITLE, msg + "Open the download page?"):
+            if messagebox.askyesno(TITLE, msg + "Open the download page?" + later):
                 webbrowser.open(r.get("url") or "https://github.com/%s/releases" % updates.REPO)
+            else:
+                self._decline(r["latest"])
             return
         if not messagebox.askyesno(TITLE, msg + "Download it now? It is saved beside this "
                                                 "copy; this one stays until the new version "
-                                                "offers to remove it."):
+                                                "offers to remove it." + later):
+            self._decline(r["latest"])
             return
 
         def work():

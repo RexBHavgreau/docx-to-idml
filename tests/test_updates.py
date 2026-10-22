@@ -70,12 +70,16 @@ def test_check():
     assert U.check(opener=offline)["status"] == "error"
 
 
-def test_due():
-    now = time.time()
-    assert U.due({}, now)
-    assert not U.due({"check_updates": False}, now)
-    assert not U.due({"last_update_check": now - 3600}, now)
-    assert U.due({"last_update_check": now - 25 * 3600}, now)
+def test_due_and_offer():
+    # At every start unless turned off (once a day missed a release made the same day).
+    assert U.due({}) and U.due({"last_update_check": time.time()})
+    assert not U.due({"check_updates": False})
+    newer = {"status": "newer", "latest": "9.0.0"}
+    assert U.should_offer(newer, {}, manual=False)
+    assert not U.should_offer(newer, {"declined_version": "9.0.0"}, manual=False)
+    assert U.should_offer(newer, {"declined_version": "9.0.0"}, manual=True)
+    assert U.should_offer(newer, {"declined_version": "8.0.0"}, manual=False)
+    assert not U.should_offer({"status": "current"}, {}, manual=True)
 
 
 def test_download_checks_digest():

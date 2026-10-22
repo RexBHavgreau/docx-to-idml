@@ -1,7 +1,7 @@
 """Check GitHub for a newer release, and save it beside the running copy (as Indicat does).
 
 The check reads the latest release of REPO (its tag, e.g. "v0.3.0") and compares it with the
-running version. Nothing is downloaded unless the user says so. Each version's program carries
+running version, at every start (unless turned off) and from the Help menu. Nothing is downloaded unless the user says so. Each version's program carries
 its version in its name ("docx-to-idml-0.3.0.exe"), so a new version is saved beside the running
 one and never overwrites it. The download goes to a temporary name, is checked against the
 release's SHA-256 digest and size, then renamed. If the program's folder can't be written (e.g.
@@ -26,7 +26,6 @@ from . import EXE_BASE, REPO, __version__
 
 API = "https://api.github.com/repos/{repo}/releases/latest"
 EXE_RE = re.compile(r"^%s[ ._-]+(\d+(?:\.\d+){1,2})\.exe$" % re.escape(EXE_BASE), re.I)
-CHECK_EVERY = 24 * 3600     # automatic checks at most once a day
 
 
 class UpdateError(Exception):
@@ -71,11 +70,18 @@ def check(timeout=5.0, opener=None):
         return {"status": "error", "error": str(exc)}
 
 
-def due(settings, now=None):
-    """Whether the automatic check at startup should run (on, and not in the last day)."""
-    if not settings.get("check_updates", True):
+def due(settings):
+    """Whether to check at startup: at every start unless turned off. (Once a day, as first
+    planned, missed a release made the same day as the last check.)"""
+    return bool(settings.get("check_updates", True))
+
+
+def should_offer(result, settings, manual):
+    """Offer a newer version: always when the user asked; at startup, unless the user already
+    declined that version."""
+    if result.get("status") != "newer":
         return False
-    return (now or time.time()) - float(settings.get("last_update_check") or 0) >= CHECK_EVERY
+    return manual or result.get("latest") != settings.get("declined_version")
 
 
 # ---- installing ----

@@ -212,6 +212,40 @@ def test_calculated_margins_shown_and_filled():
         app.quit(force=True)
 
 
+def test_update_check_at_every_start():
+    """The startup check runs at every start (not once a day); a declined version isn't
+    offered again at startup, but is from the Help menu."""
+    from tkinter import messagebox
+    from docx2idml import updates
+    asked = []
+    real_check, real_ask = updates.check, messagebox.askyesno
+    updates.check = lambda *a, **k: {"status": "newer", "latest": "9.9.9", "url": "u",
+                                     "notes": "", "asset": None}
+    messagebox.askyesno = lambda *a, **k: asked.append(a[1]) or False
+
+    def run(app, root, manual):
+        n = len(asked)
+        app.check_updates(manual=manual)
+        end = time.time() + 10
+        while len(asked) == n and time.time() < end:
+            root.update()
+            time.sleep(0.02)
+        root.update()
+        return len(asked) > n
+    try:
+        app, root = _app()
+        app.settings["last_update_check"] = time.time()      # checked a minute ago
+        assert updates.due(app.settings)
+        assert run(app, root, manual=False)                   # offered; answered No
+        assert app.settings["declined_version"] == "9.9.9"
+        assert "9.9.9" in asked[-1]
+        assert not run(app, root, manual=False)               # not asked again at startup
+        assert run(app, root, manual=True)                    # but from the Help menu
+        app.quit(force=True)
+    finally:
+        updates.check, messagebox.askyesno = real_check, real_ask
+
+
 if __name__ == "__main__":
     if not HAVE_TK:
         sys.exit(0)

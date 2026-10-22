@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 (not yet released)
+
+- Fixed: the update check at startup ran at most once a day, so a release made after the
+  day's check wasn't noticed until the next day (0.2.0 missed 0.3.0). It now checks at every
+  start, quietly unless there's a newer version. If you decline a version, the startup check
+  doesn't ask about it again; Help > Check for updates always does.
+
 ## 0.3.0 (October 22, 2026)
 
 - Endorsements ("Endorsements", "Praise for...", "Advance Praise", "What Others Are Saying",
