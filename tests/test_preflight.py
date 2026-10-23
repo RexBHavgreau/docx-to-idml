@@ -77,6 +77,21 @@ def test_report():
     assert data["outline"]["units"][0]["title"] == "Early Chapter"
 
 
+def test_headings_by_formatting_reported():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from test_outline import unstyled_book
+    rep = preflight([unstyled_book("unstyled-preflight.docx")])
+    assert any("headings set by formatting" in w and "[16 pt bold centered]" in w
+               for w in rep.warnings)
+    rows = {s.word: s for s in rep.paragraph_styles}
+    assert rows["[bold]"].idml == "Heading A" and rows["[bold]"].source == "formatting"
+    assert not any("change font, size" in w for w in rep.warnings)   # the headings are expected
+    # The sample manuscript has styles: nothing guessed.
+    ms = os.path.join(ROOT, "reference", "manuscript")
+    rep = preflight(sorted(os.path.join(ms, f) for f in os.listdir(ms)))
+    assert rep.guessed_heads == {}
+
+
 def test_nested_table_reported():
     """A table inside a table keeps its text in the outer cell; preflight says the inner
     table's rows and columns are lost (nothing disappears silently)."""

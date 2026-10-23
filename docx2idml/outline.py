@@ -175,6 +175,8 @@ class _FileOutline:
         self.paras = [p for p in doc.paragraphs]
 
     def mapping(self, p):
+        if p.index in self.sm.format_groups(self.doc)[1]:
+            return self.sm.paragraph_mapping(self.doc, p)
         sid = self.doc.para_style(p)
         if sid not in self.maps:
             self.maps[sid] = self.sm.paragraph_style(self.doc, sid)
@@ -192,6 +194,7 @@ class _FileOutline:
             m = self.mapping(p)
             if self.usable(p) and m.role in ("chapter", "part") and p.text.strip():
                 by = "style %s" % m.word if m.source in ("default", "profile") else \
+                    "formatting %s" % m.word if m.source in ("formatting", "book") else \
                     "style %s (%s)" % (m.word, m.source)
                 found.append((p.index, m.role, by))
         if found:

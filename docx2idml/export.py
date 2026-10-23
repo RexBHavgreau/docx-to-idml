@@ -25,7 +25,7 @@ What it does:
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import os
 import shutil
 import tempfile
@@ -237,7 +237,7 @@ class Exporter(PaginationMixin):
                 self.tpl = read_template(path)
             except TemplateError as e:
                 raise ExportError(str(e)) from None
-        self.sm = StyleMap.from_profile(self.profile)
+        self.sm = StyleMap.from_profile(self.profile, self.settings)
         self.report = []
         self.tmp = None
 
@@ -997,8 +997,12 @@ class Exporter(PaginationMixin):
                                           "LeftAlign": "RightAlign"}.get(just, just)
         return attrs
 
-    def _mapping(self, docx, style_id):
+    def _mapping(self, docx, style_id, index=None):
+        """The mapping for a paragraph of style style_id; index (a body paragraph's) lets a
+        heading found by formatting map by its look."""
         sid = style_id if style_id in docx.styles else docx.default_style.get("paragraph")
+        if index is not None and index in self.sm.format_groups(docx)[1]:
+            return self.sm.paragraph_mapping(docx, docx.paragraphs[index])
         m = self.sm.paragraph_style(docx, sid)
         if m.idml and m.idml not in self.builtin and m.role not in ("skip", "toc", "toc_title"):
             self._custom_paragraph_style(m, docx, sid)
@@ -1010,7 +1014,7 @@ class Exporter(PaginationMixin):
         bibliography ending a chapter doesn't spill into what follows."""
         if cp.table is not None:
             return bib
-        m = self._mapping(docx, cp.style_id)
+        m = self._mapping(docx, cp.style_id, cp.index)
         if m.role in ("chapter", "part", "book_title"):
             level = 0
         elif m.role == "heading":
@@ -1028,11 +1032,16 @@ class Exporter(PaginationMixin):
         an epigraph say, is set flush: Body First)."""
         if cp.table is not None:
             return [Paragraph("Table", [Run(table=self._table(cp.table, docx))])], "table"
-        m = self._mapping(docx, cp.style_id)
+        m = self._mapping(docx, cp.style_id, cp.index)
         if m.role in ("skip", "toc", "toc_title") or cp.empty:
             return [], prev_role
         style = m.idml or "Body"
         runs = list(cp.runs)
+        if m.feats:
+            # A heading found by its look: the bold, italic or capitals that made it one are
+            # the heading style's business now, not character styles on its text.
+            runs = [replace(r, feats={k: v for k, v in r.feats.items() if k not in m.feats})
+                    for r in runs]
         if m.role == "part" or (unit is not None and unit.kind == "part" and first and
                                 m.role == "chapter"):
             style = "Part Title"

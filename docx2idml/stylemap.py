@@ -110,8 +110,10 @@ class Mapping:
     idml: str             # IDML style name, or None (no style / not carried over)
     role: str
     level: int = 0        # heading level for role "heading" (1 = first level below chapter)
-    source: str = "default"   # profile, default, based on <name>, outline level n, linked, own, fallback
+    source: str = "default"   # profile, default, based on <name>, outline level n, linked, own,
+                              # fallback, formatting (a heading found by its look), book
     warning: bool = False
+    feats: tuple = ()         # run features a formatting heading's look is made of (dropped)
 
 
 def _entry(value):
@@ -124,15 +126,44 @@ def _entry(value):
 
 
 class StyleMap:
-    def __init__(self, paragraph=None, character=None):
-        """paragraph / character: the profile's maps {Word style name: entry}."""
+    def __init__(self, paragraph=None, character=None, formats=None):
+        """paragraph / character: the profile's maps {Word style name: entry}; formats: the
+        book's map for headings found by formatting {"[14 pt bold centered]": entry}."""
         self.paragraph = {norm(k): v for k, v in (paragraph or {}).items()}
         self.character = {norm(k): v for k, v in (character or {}).items()}
+        self.formats = dict(formats or {})
+        self._groups = {}         # id(doc) -> (doc, groups, {paragraph index: group})
 
     @classmethod
-    def from_profile(cls, profile):
+    def from_profile(cls, profile, settings=None):
         sm = profile.get("style_map", {}) if profile else {}
-        return cls(sm.get("paragraph"), sm.get("character"))
+        return cls(sm.get("paragraph"), sm.get("character"),
+                   (settings or {}).get("format_map"))
+
+    def format_groups(self, doc):
+        """Headings found by direct formatting in doc (formatheads), cached per file."""
+        entry = self._groups.get(id(doc))
+        if entry is None or entry[0] is not doc:
+            from .formatheads import find_groups
+            groups, by_para = find_groups(
+                doc, lambda p: self.paragraph_style(doc, doc.para_style(p)).role)
+            entry = self._groups[id(doc)] = (doc, groups, by_para)
+        return entry[1], entry[2]
+
+    def paragraph_mapping(self, doc, p):
+        """Mapping for one paragraph: its style's, unless it is a heading found by formatting
+        (then the group's, or what the book's map says for the group)."""
+        if getattr(p, "where", "body") == "body":
+            g = self.format_groups(doc)[1].get(p.index)
+            if g is not None:
+                if g.name in self.formats:
+                    idml, role, level = _entry(self.formats[g.name])
+                    role = role or g.role
+                    if role == "heading" and not level:
+                        level = g.level
+                    return Mapping(g.name, idml, role, level, "book", False, g.feats)
+                return Mapping(g.name, g.idml, g.role, g.level, "formatting", True, g.feats)
+        return self.paragraph_style(doc, doc.para_style(p))
 
     def paragraph_style(self, doc, style_id):
         """Mapping for a paragraph style of a DocxFile."""

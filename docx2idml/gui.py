@@ -370,6 +370,7 @@ class StyleMappingPanel:
         are kept). Returns how many changed."""
         sm = self.app.profile.setdefault("style_map", {})
         para, char = sm.setdefault("paragraph", {}), sm.setdefault("character", {})
+        formats = self.app.book.settings.setdefault("format_map", {})
         changed = 0
         for word, iv, rv, lv, initial in self.rows:
             now = (iv.get().strip(), rv.get(), lv.get())
@@ -381,7 +382,13 @@ class StyleMappingPanel:
             if role == "heading" and not level:
                 level = 1
             look = [k for k, v in LOOKS.items() if v == now[2]] or ["book"]
-            para[word] = {"idml": idml, "role": role, "level": level, "look": look[0]}
+            entry = {"idml": idml, "role": role, "level": level, "look": look[0]}
+            if word.startswith("["):
+                # A heading group found by formatting belongs to this manuscript: the book.
+                formats[word] = entry
+                self.app.dirty = True
+            else:
+                para[word] = entry
             changed += 1
         for word, cv, initial in self.char_rows:
             now = cv.get().strip()
@@ -409,6 +416,10 @@ class StyleMappingPanel:
             m = sm.get(kind) or {}
             for k in [k for k in m if norm(k) in names]:
                 del m[k]
+        formats = self.app.book.settings.get("format_map") or {}
+        for k in [k for k in formats if norm(k) in names]:
+            del formats[k]
+            self.app.dirty = True
         self.rows, self.char_rows = [], []      # nothing left to save over the reset
         self.app.mapping_changed(0)
 
@@ -1192,7 +1203,9 @@ class App:
             self._show(render_text(rep))
             self.status.set("Preflight done: %d warning%s." % (
                 len(rep.warnings), "" if len(rep.warnings) == 1 else "s"))
-        self._run(lambda: preflight(files, prof), done, "Reading the manuscript...")
+        settings = copy.deepcopy(self.book.settings)
+        self._run(lambda: preflight(files, prof, settings=settings), done,
+                  "Reading the manuscript...")
 
     def mapping_changed(self, n):
         """After the mapping changed: read the manuscript again with it (the outline depends
@@ -1232,7 +1245,9 @@ class App:
         def done(rep):
             self._preflighted(rep)
             then()
-        self._run(lambda: preflight(files, prof), done, "Reading the manuscript...")
+        settings = copy.deepcopy(self.book.settings)
+        self._run(lambda: preflight(files, prof, settings=settings), done,
+                  "Reading the manuscript...")
 
     def _choose_out(self):
         path = filedialog.askdirectory(title="Where to save the export")

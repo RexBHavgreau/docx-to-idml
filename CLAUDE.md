@@ -41,6 +41,7 @@ keep it up to date when decisions change.
 |---|---|
 | `docx2idml/docx_reader.py` | Reads a .docx: styles, paragraphs, notes, sections, fields, scripts, unsupported items |
 | `docx2idml/stylemap.py` | Word style -> IDML style and role; defaults for Word's built-ins |
+| `docx2idml/formatheads.py` | Headings set by direct formatting (0.6.0): groups of paragraphs by look (size, bold, italic, caps, centered), ranked; `StyleMap.format_groups` / `paragraph_mapping` feed them to the outline, preflight and export |
 | `docx2idml/outline.py` | Units across files (front, part, chapter, back); title/author detection |
 | `docx2idml/preflight.py` | The preflight report (text and JSON) |
 | `docx2idml/profile.py` | Profiles: defaults, save/load, export/import, `PROFILE_VERSION` + `MIGRATIONS` |
@@ -224,6 +225,19 @@ keep it up to date when decisions change.
   `Exporter._running_head_style`, form `head_style_form`.
 - Margins (0.5.0): measure = `page.measure` (30) x type size within 45-80 characters;
   outside 42% of the rest, inside never less than the outside (`layout.geometry`).
+- Headings by formatting (Beaux, 0.6.0; `formatheads.py`): the reader records each body
+  paragraph's dominant look (`Paragraph.look`, align, space_before, page_break_before).
+  Candidates: body-role paragraphs of at most 15 words, no closing period unless numbered,
+  looking different from the body text (the look of most of the text in 20+-word paragraphs),
+  with a 20+-word non-centered paragraph under them before the next of the same look (so
+  title-page lines and a contents title drop out); a group needs 2 members unless larger or
+  starting a page; italic-only groups only below a stronger one. Ranked by prominence; only
+  levels the styles don't provide (no chapter styles in use -> top group = chapters; no
+  heading styles -> the rest = Heading A-C). Mappings are per paragraph
+  (`StyleMap.paragraph_mapping`, used by outline, preflight, `Exporter._mapping(..., index)`);
+  the group's bold/italic/caps are dropped from its runs. Group names ("[16 pt bold
+  centered]") are keys of book settings `format_map` (not the profile), edited in the Style Map
+  tab. Tried on Beaux's Ezekiel paper with its heading styles stripped: same outline as styled.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 

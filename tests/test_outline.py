@@ -191,5 +191,60 @@ def test_text_before_the_title_page_is_endorsements():
         ("chapter", "chapter")], [(u.title, u.kind, u.type) for u in out.units]
 
 
+BODY = "Text of the chapter goes on for a while, and more words follow it here. " * 4
+
+
+def unstyled_book(name="unstyled.docx"):
+    """A manuscript with no heading styles: chapter titles 16 pt bold centered on new pages,
+    subheads bold; traps: a bold one-line paragraph, an italic title of a work, and cover
+    lines in centered capitals."""
+    def chap(t, first=False):
+        return para(run(t, '<w:b/><w:sz w:val="32"/>'),
+                    ppr='<w:jc w:val="center"/>' + ("" if first else "<w:pageBreakBefore/>"))
+
+    def sub(t):
+        return para(run(t, "<w:b/>"))
+
+    def cover(t):
+        return para(run(t, "<w:caps/>"), ppr='<w:jc w:val="center"/>')
+    body = [cover("A Seminary"), cover("by"), cover("July 2026"),
+            chap("Introduction", True), para(BODY), sub("The First Question"), para(BODY),
+            para(run("Note well.", "<w:b/>")), para(BODY), sub("A Second Question"), para(BODY),
+            chap("The Middle Chapter"), para(BODY), para(run("Biblia Hebraica", "<w:i/>")),
+            para(BODY), sub("Another Section"), para(BODY), chap("Conclusion"), para(BODY)]
+    return make_docx(os.path.join(TMP, name), body)
+
+
+def test_headings_found_by_formatting():
+    from docx2idml.formatheads import find_groups
+    doc = read_docx(unstyled_book())
+    sm = StyleMap()
+    groups, by_para = sm.format_groups(doc)
+    assert [(g.name, g.role, g.level, len(g.paragraphs)) for g in groups] == [
+        ("[16 pt bold centered]", "chapter", 0, 3), ("[bold]", "heading", 1, 3)]
+    texts = {doc.paragraphs[i].text for i in by_para}
+    assert "Note well." not in texts and "Biblia Hebraica" not in texts       # traps
+    assert not texts & {"A Seminary", "by", "July 2026"}                       # cover lines
+    out = build_outline([doc], sm)
+    assert [u.title for u in out.units if u.kind == "chapter"] == [
+        "Introduction", "The Middle Chapter", "Conclusion"]
+    assert out.units[-1].detected_by == "formatting [16 pt bold centered]"
+    assert [u.subheads for u in out.units if u.kind == "chapter"][0] == [
+        "The First Question", "A Second Question"]
+    # The book's own choice for a group wins.
+    sm = StyleMap(formats={"[bold]": {"idml": "Heading B", "role": "heading", "level": 2}})
+    p = [p for p in doc.paragraphs if p.text == "Another Section"][0]
+    m = sm.paragraph_mapping(doc, p)
+    assert (m.idml, m.level, m.source) == ("Heading B", 2, "book")
+
+
+def test_styled_manuscript_not_guessed():
+    """Headings in styles: nothing is guessed, whatever the formatting."""
+    d = doc("styled.docx", [para("One", "Heading1"), para(run("Bold line", "<w:b/>")),
+                             para(BODY), para("Two", "Heading2"), para(BODY),
+                             para(run("Bold line", "<w:b/>")), para(BODY)])
+    assert StyleMap().format_groups(d) == ([], {})
+
+
 if __name__ == "__main__":
     run_tests(globals())

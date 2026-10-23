@@ -317,6 +317,33 @@ def test_style_mapping_panel():
         app.quit(force=True)
 
 
+def test_formatting_groups_in_style_map():
+    """Headings found by formatting show in the Style Map tab; a change to one is saved with
+    the book (it belongs to this manuscript), not the profile."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from test_outline import unstyled_book
+    app, root = _app()
+    try:
+        app._add([unstyled_book("unstyled-gui.docx")])
+        app.run_preflight()
+        _wait(app, root)
+        rows = {w: (iv, rv) for w, iv, rv, _lv, _i in app.mapping.rows}
+        assert rows["[16 pt bold centered]"][0].get() == "Chapter Title"
+        assert rows["[bold]"][0].get() == "Heading A"
+        rows["[bold]"][0].set("Heading B")
+        app.mapping.apply()
+        _wait(app, root)
+        assert app.book.settings["format_map"]["[bold]"]["idml"] == "Heading B"
+        assert "[bold]" not in app.profile["style_map"]["paragraph"]
+        rows = {w: iv for w, iv, _rv, _lv, _i in app.mapping.rows}
+        assert rows["[bold]"].get() == "Heading B"            # read again with the choice
+        app.mapping.reset()
+        _wait(app, root)
+        assert "[bold]" not in app.book.settings["format_map"]
+    finally:
+        app.quit(force=True)
+
+
 def test_tabs_in_title_case_and_head_style():
     app, root = _app()
     try:

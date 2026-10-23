@@ -504,6 +504,25 @@ def test_hebrew_takes_the_face_around_it():
         ex.cleanup()
 
 
+def test_headings_by_formatting_exported():
+    """Headings found by their look become Chapter Title and Heading A; the bold and size
+    that made them headings don't become character styles on their text."""
+    from test_outline import unstyled_book
+    path = unstyled_book("unstyled-export.docx")
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        heads = [(p.style, [(r.text, r.style) for r in p.runs]) for st in doc.stories
+                 for p in st.paragraphs if p.style in ("Chapter Title", "Heading A")]
+        assert ("Chapter Title", [("Introduction", None)]) in heads
+        assert ("Heading A", [("The First Question", None)]) in heads
+        body = [r for st in doc.stories for p in st.paragraphs for r in p.runs
+                if r.text == "Note well."]
+        assert body and body[0].style == "Bold"               # a bold line in the text stays
+    finally:
+        ex.cleanup()
+
+
 def test_regular_face_by_its_own_name():
     """InDesign wants a face's own name: the Culmus Hebrew fonts' upright face is "Medium"."""
     from docx2idml import fonts

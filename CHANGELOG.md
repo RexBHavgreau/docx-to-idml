@@ -2,6 +2,15 @@
 
 ## 0.6.0 (not yet released)
 
+- Headings set by formatting: a manuscript without heading styles (headings made bigger,
+  bold, centered or in capitals by hand) has its headings found by their look. Paragraphs
+  that look alike form a group ("[16 pt bold centered]", "[bold]"...), ranked by prominence:
+  the strongest becomes chapter titles, the next Heading A, and so on. Groups show in the
+  Style Map tab, marked as guessed, to confirm or change; changes are saved with the book.
+  The bold or size that made a paragraph a heading is left to the heading style. Bold lines
+  in the text, italic titles of works, title-page lines and a typed contents' title are not
+  taken for headings. Only what the styles don't give is guessed: a manuscript with heading
+  styles is read by its styles as before. Preflight says when headings were found this way.
 - Fixed: Hebrew inside italic text was set upright: the Hebrew style fixed the face. It now
   takes the face of the text around it (italic in italic text, bold in a bold heading), by the
   Hebrew font's own name for that face (the Culmus fonts call theirs "Medium" and "Medium
