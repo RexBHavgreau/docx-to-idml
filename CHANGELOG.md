@@ -8,6 +8,14 @@
   manuscript's text, and a line with Hebrew uses the World-Ready composer. Running heads taken
   from the chapter title can't change font partway; when one has Hebrew or Greek, the report
   says so (give the chapter a short title in the Running heads tab).
+- Fonts whose normal face isn't called "Regular" (the Culmus Hebrew fonts such as Taamey
+  David CLM call it "Medium") are asked for by the face's own name, so InDesign doesn't report
+  a missing font.
+- A paper's cover page (from a real manuscript): a line or two above the title, such as a
+  school's name, is now part of the title page rather than a page of endorsements (text above
+  the title still counts as endorsements when it runs to sentences or is a quotation); a Word
+  style named "Author" (or "Autor") gives the author; a bare "by" line and the title of a
+  typed contents are left out with the contents.
 
 ## 0.4.0 (October 22, 2026)
 

@@ -39,6 +39,7 @@ def font_dirs():
 _INDEX = None
 _LOCK = threading.RLock()
 _NAMES = {}                 # family (lower case) -> the family's name as the font gives it
+_FACES = {}                 # (family, style) (lower case) -> the style's name as the font gives it
 SCRIPT_LETTERS = {"hebrew": 0x05D0, "greek": 0x03B1}   # alef, alpha
 
 
@@ -90,6 +91,7 @@ def _read_index(dirs=None):
                             index.setdefault(fam.casefold(), {}).setdefault(
                                 style.casefold(), (path, n))
                             _NAMES.setdefault(fam.casefold(), fam)
+                            _FACES.setdefault((fam.casefold(), style.casefold()), style)
                 except Exception:
                     continue
     if dirs is None:
@@ -149,6 +151,20 @@ def has_char(found, codepoint):
         return codepoint in cmap
     except Exception:
         return False
+
+
+def regular_face(family, index=None):
+    """The name of a family's upright, normal-weight face as installed: "Regular" mostly, but
+    "Medium" in the Culmus Hebrew fonts (Taamey David CLM...), "Roman" or "Book" in others.
+    InDesign wants the face's own name. "Regular" when the family isn't installed here."""
+    key = (family or "").casefold()
+    styles = (index if index is not None else font_index()).get(key)
+    if not styles:
+        return "Regular"
+    for s in ("regular", "roman", "book", "normal", "medium", "plain"):
+        if s in styles:
+            return _FACES.get((key, s), s.title())
+    return "Regular"
 
 
 def find_font(family, style="Regular", index=None):

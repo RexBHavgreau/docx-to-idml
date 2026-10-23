@@ -35,7 +35,7 @@ from .docx_reader import is_greek, is_hebrew, read_docx
 from .idml.images import image_info
 from .idml.model import (CellStyle, Document, Frame, Image, Master, Paragraph, Run, Section,
                          Story, Style, Table, TableStyle, TOCStyle)
-from .outline import _BACK, Unit, apply_kinds, build_outline, title_key
+from .outline import _BACK, _FRONT, Unit, apply_kinds, build_outline, title_key
 from .stylemap import StyleMap, norm
 from .template import TemplateError, apply_template, read_template
 
@@ -398,7 +398,8 @@ class Exporter:
         self.body_size, self.body_lead = size, lead
         indent = _half(size * 1.5)
         lang = LANGUAGES.get(self.profile["front_matter"].get("language"), LANGUAGES["en"])
-        body = {"FontStyle": "Regular", "PointSize": size, "FirstLineIndent": indent,
+        body = {"FontStyle": fonts.regular_face(f["body"]), "PointSize": size,
+                "FirstLineIndent": indent,
                 "Justification": "LeftJustified", "Hyphenation": bool(typo["hyphenation"]),
                 "Composer": self._composer(typo),
                 "AppliedLanguage": lang, "Ligatures": bool(typo["ligatures"])}
@@ -467,7 +468,7 @@ class Exporter:
             S("Bibliography", "Body", {"FirstLineIndent": -indent, "LeftIndent": indent,
                                        "Justification": "LeftAlign"}),
             S("Footnote", font=f["notes"], leading=note_lead,
-              attrs={"FontStyle": "Regular", "PointSize": note_size, "FirstLineIndent": size - 2,
+              attrs={"FontStyle": fonts.regular_face(f["notes"]), "PointSize": note_size, "FirstLineIndent": size - 2,
                      "Justification": "LeftJustified", "AppliedLanguage": lang,
                      "Hyphenation": bool(typo["hyphenation"]),
                      "Composer": body["Composer"], "HyphenateLastWord": False,
@@ -637,7 +638,8 @@ class Exporter:
             st = Style(name, attrs=dict(CHAR_STYLES[name]))
         elif name == "Hebrew":
             st = Style(name, font=self.fonts["hebrew"],
-                       attrs={"FontStyle": "Regular", "AppliedLanguage": "$ID/Hebrew",
+                       attrs={"FontStyle": fonts.regular_face(self.fonts["hebrew"]),
+                              "AppliedLanguage": "$ID/Hebrew",
                               "CharacterDirection": "RightToLeftDirection"})
         elif name == "Greek":
             st = Style(name, font=self.fonts["greek"], attrs={"AppliedLanguage": "$ID/Greek"})
@@ -1270,8 +1272,10 @@ class Exporter:
                     "derechos reservados" in low:
                 copyright_.append(p)
             elif p.style in ("Book Title", "Book Subtitle", "Author") or \
-                    (author and author in low and len(text) < 80):
-                continue
+                    (author and author in low and len(text) < 80) or \
+                    low in ("by", "por") or \
+                    _FRONT.get(title_key(text)) == ("front", "contents"):
+                continue        # replaced by the generated pages (the contents has its own)
             else:
                 extras.append(p)
         return copyright_, extras

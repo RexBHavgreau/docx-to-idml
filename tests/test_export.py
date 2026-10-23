@@ -383,6 +383,49 @@ def test_hebrew_in_generated_text():
         ex.cleanup()
 
 
+def test_paper_cover_page():
+    """A seminary paper's cover: the school's name above the title is part of the title page
+    (not endorsements); an "Author" style gives the author; a bare "by" line and the typed
+    contents' title are dropped with the contents."""
+    styles = ['<w:style w:type="paragraph" w:customStyle="1" w:styleId="Caratula">'
+              '<w:name w:val="Car\u00e1tula"/><w:basedOn w:val="Normal"/></w:style>',
+              '<w:style w:type="paragraph" w:customStyle="1" w:styleId="AuthorS">'
+              '<w:name w:val="Author"/><w:basedOn w:val="Normal"/></w:style>',
+              '<w:style w:type="paragraph" w:styleId="TOC2"><w:name w:val="toc 2"/>'
+              '<w:basedOn w:val="Normal"/></w:style>']
+    path = make_docx(os.path.join(TMP, "paper.docx"), [
+        para("The Master\u2019s Seminary", "Caratula"),
+        para("A Study of the " + HEB, "Title"),
+        para("by", "Caratula"),
+        para("Beaux Hargrove", "AuthorS"),
+        para("July 2026", "Caratula"),
+        para("CONTENTS", "Caratula"),
+        para("Introduction\t1", "TOC2"),
+        para("Introduction", "Heading1"),
+        para("Text of the paper.")], extra_styles=styles)
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        assert [u.type for u in ex.outline.units][:2] == ["title page", "chapter"]
+        assert ex.outline.author == "Beaux Hargrove"
+        texts = ["".join(r.text for r in p.runs) for st in doc.stories for p in st.paragraphs]
+        assert "Beaux Hargrove" in texts and "[Author]" not in " ".join(texts)
+        assert "by" not in texts and "CONTENTS" not in texts
+        assert "The Master\u2019s Seminary" in texts and "July 2026" in texts   # kept
+    finally:
+        ex.cleanup()
+
+
+def test_regular_face_by_its_own_name():
+    """InDesign wants a face's own name: the Culmus Hebrew fonts' upright face is "Medium"."""
+    from docx2idml import fonts
+    index = {"taamey david clm": {"medium": ("a", 0), "bold": ("b", 0)},
+             "minion pro": {"regular": ("c", 0), "italic": ("d", 0)}}
+    assert fonts.regular_face("Taamey David CLM", index) == "Medium"
+    assert fonts.regular_face("Minion Pro", index) == "Regular"
+    assert fonts.regular_face("Not Installed", index) == "Regular"
+
+
 def test_short_title_flagged_and_part_heads():
     from docx2idml.outline import Unit
     from docx2idml.export import Block

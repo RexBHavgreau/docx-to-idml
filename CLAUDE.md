@@ -191,6 +191,11 @@ keep it up to date when decisions change.
   build over every story and master frame, splitting runs not yet in the Hebrew/Greek styles
   (`_script_runs`, the same split as the manuscript's runs). Section markers can't carry a
   character style; a marker with Hebrew/Greek is reported.
+- Faces (0.4.1): FontStyle for the body, notes and Hebrew styles is `fonts.regular_face()`,
+  the installed face's own name (Culmus fonts: "Medium"); "Regular" when not installed here.
+- Title page (0.4.1): text above the Title line is endorsements only when
+  `outline._endorsement_like` (25+ words, or a quotation/attribution); otherwise it belongs
+  to the title page. "author"/"autor" are default style names for the author role.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
