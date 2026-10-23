@@ -118,6 +118,14 @@ class Paragraph:
     direct_layout: list = field(default_factory=list)
     run_count: int = 0
     in_toc_field: bool = False
+    # How the paragraph looks, for finding headings set by direct formatting: the look of most
+    # of its characters (size in points, bold, italic, caps "caps"/"smallcaps"/None) and its
+    # alignment, space before (points) and whether it starts a page.
+    look: tuple = None            # (size, bold, italic, caps)
+    align: str = None
+    space_before: float = 0
+    page_break_before: bool = False
+    looks: Counter = field(default_factory=Counter)   # look -> characters, while reading
 
     @property
     def snippet(self):
@@ -256,6 +264,40 @@ def _props(el):
                          if "rsid" not in k)
         out[name] = attrs or "on"
     return out
+
+
+def _val(props):
+    """The w:val of a summarized property ("val=center" -> "center"; "on" -> "on")."""
+    if props is None:
+        return None
+    return _prop_val(props, "val") or ("on" if props == "on" else None)
+
+
+def _prop_val(props, key):
+    for part in (props or "").split():
+        k, _, v = part.partition("=")
+        if k == key:
+            return v
+    return None
+
+
+def _on(props):
+    return props is not None and _val(props) not in ("0", "false", "off", "none")
+
+
+def _look(props, size, bold=False, italic=False, caps=None):
+    """(size, bold, italic, caps) after the run properties props (summarized by _props)."""
+    if "sz" in props and (_val(props["sz"]) or "").isdigit():
+        size = int(_val(props["sz"])) / 2
+    if "b" in props:
+        bold = _on(props["b"])
+    if "i" in props:
+        italic = _on(props["i"])
+    if "caps" in props and _on(props["caps"]):
+        caps = "caps"
+    elif "smallCaps" in props and _on(props["smallCaps"]):
+        caps = "smallcaps"
+    return (round(size * 2) / 2, bold, italic, caps)
 
 
 def _fonts(rpr):
@@ -480,6 +522,8 @@ class _Scanner:
         self.doc, self.where, self.note_mode = doc, where, note_mode
         self.stack = []        # open complex fields: [instruction parts, separated, paragraph]
         self.section = 0
+        self.page_break = False  # the last paragraph ended with a page break
+        self._looks = {}         # paragraph style id -> its look
 
     def item(self, kind, detail="", para=None):
         self.doc.items.append(Item(kind, detail, self.where,
@@ -523,6 +567,7 @@ class _Scanner:
         if not para.numbered:
             sid = doc.para_style(para)
             para.numbered = any(doc.styles[s].numbered for s in doc.style_chain(sid))
+        self._para_layout(para, ppr)
 
         text = []
         for el in p_el.iter():
@@ -572,12 +617,49 @@ class _Scanner:
                 kind = "text box" if el.find(".//" + TXBX) is not None else "floating shape"
                 self.item(kind, "older Word drawing (VML)", para)
         para.text = "".join(text)
+        if para.looks:
+            para.look = para.looks.most_common(1)[0][0]
+        para.looks = Counter()
+        if self.page_break and self.where == "body":
+            para.page_break_before = True
+        self.page_break = any(br.get(W + "type") == "page" for br in p_el.iter(W + "br")
+                              if _para_of(br) is p_el)
         for it in reversed(self.doc.items):
             if it.paragraph != para.index or it.where != self.where or it.snippet:
                 break
             it.snippet = para.snippet
         para.in_toc_field = para.in_toc_field or self.in_toc()
         return para
+
+    def _para_layout(self, para, ppr):
+        """Alignment, space before and a page break before, direct or from the style."""
+        doc = self.doc
+        chain = doc.style_chain(doc.para_style(para))
+        own = _props(ppr)
+
+        def get(key):
+            if key in own:
+                return own[key]
+            for sid in chain:
+                if key in doc.styles[sid].props:
+                    return doc.styles[sid].props[key]
+            return None
+        para.align = _val(get("jc")) or "left"
+        before = _prop_val(get("spacing"), "before")
+        para.space_before = int(before) / 20 if before and before.lstrip("-").isdigit() else 0
+        pbb = get("pageBreakBefore")
+        para.page_break_before = pbb is not None and _val(pbb) not in ("0", "false", "off")
+
+    def _style_look(self, sid):
+        """(size, bold, italic, caps) a paragraph style gives its text."""
+        cache = self._looks
+        if sid not in cache:
+            doc = self.doc
+            props = dict(doc.doc_defaults.get("props") or {})
+            for s in reversed(doc.style_chain(sid)):
+                props.update(doc.styles[s].props)
+            cache[sid] = _look(props, doc.resolve_size(sid))
+        return cache[sid]
 
     def in_toc(self):
         return any(f[0] and "".join(f[0]).strip().upper().startswith("TOC") for f in self.stack)
@@ -607,6 +689,15 @@ class _Scanner:
             if slot in fonts:
                 doc.run_fonts[fonts[slot]] += 1
                 break
+        if run_text.strip() and self.where == "body":
+            size, bold, italic, caps = self._style_look(self.doc.para_style(para))
+            if rstyle and rstyle in self.doc.styles:
+                cprops = {}
+                for s in reversed(self.doc.style_chain(rstyle)):
+                    cprops.update(self.doc.styles[s].props)
+                size, bold, italic, caps = _look(cprops, size, bold, italic, caps)
+            look = _look(props, size, bold, italic, caps)
+            para.looks[look] += len(run_text.strip())
         if run_text:
             self.scripts(run_text, rpr, fonts, para)
 

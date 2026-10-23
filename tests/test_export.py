@@ -356,8 +356,8 @@ def test_front_matter_and_heads():
 
 def test_hebrew_in_generated_text():
     """Hebrew in the book's title gets the Hebrew style on the half-title and title pages and
-    in a running head, as in the manuscript's own headings; a section marker can't, so it's
-    reported."""
+    in a running head, as in the manuscript's own headings (a chapter's own head: see
+    test_hebrew_running_head_master)."""
     from idml_check import check
     from docx2idml.idml.writer import write_idml
     path = make_docx(os.path.join(TMP, "heb-title.docx"), [
@@ -377,7 +377,6 @@ def test_hebrew_in_generated_text():
         vhead = [f for f in a.frames if f.key == "vhead"][0].paragraphs[0]
         assert [(r.text, r.style) for r in vhead.runs] == [
             ("The ", None), (HEB, "Hebrew"), (" Covenant", None)]
-        assert any("section marker" in line and HEB in line for line in ex.report)
         assert not check(write_idml(doc, os.path.join(TMP, "heb-title.idml")))
     finally:
         ex.cleanup()
@@ -435,6 +434,160 @@ def test_running_head_style_from_profile():
         assert st.font == "Arno Pro"
     finally:
         ex.cleanup()
+
+
+def test_hebrew_running_head_master():
+    """A running head with Hebrew: by default only a note; with script_masters on, the
+    chapter gets R1-Body (A-Body's frames, the head as text in the Hebrew style) and other
+    chapters keep A-Body and the section marker."""
+    from idml_check import check
+    from docx2idml.idml.writer import write_idml
+    long = [para("Text of the chapter goes on for a while. " * 30)] * 8
+    path = make_docx(os.path.join(TMP, "heb-head.docx"),
+                     [para("Book", "Title"), para("One: " + HEB, "Heading1")] + long +
+                     [para("Two", "Heading1")] + long)
+    # Off (the default): no extra master; the report says the head's font may lack Hebrew
+    # (a font not installed anywhere, so it couldn't be checked: the same on every machine).
+    prof = default_profile()
+    prof["running_heads"]["style"]["font"] = "No Such Font"
+    ex = Exporter([path], prof)
+    try:
+        doc = ex.build()
+        assert not [m for m in doc.masters if m.name.startswith("R")]
+        assert any("A running head can use only one font" in line and HEB in line and
+                   "couldn't be checked" in line for line in ex.report)
+    finally:
+        ex.cleanup()
+    prof = default_profile()
+    prof["running_heads"]["script_masters"] = True
+    ex = Exporter([path], prof)
+    try:
+        doc = ex.build()
+        r = [m for m in doc.masters if m.name == "R1-Body"][0]
+        rhead = [f for f in r.frames if f.key == "rhead"][0].paragraphs[0]
+        assert [(x.text, x.style) for x in rhead.runs] == [("One: ", None), (HEB, "Hebrew")]
+        assert any(f.primary for f in r.frames)
+        used = set(doc.page_masters.values())
+        assert "R1-Body" in used and "A-Body" in used        # chapter two keeps A-Body
+        a = [m for m in doc.masters if m.name == "A-Body"][0]
+        assert [f for f in a.frames if f.key == "rhead"][0].paragraphs[0].runs[0].special == \
+            "section_marker"
+        assert not check(write_idml(doc, os.path.join(TMP, "heb-head.idml")))
+    finally:
+        ex.cleanup()
+
+
+def test_hebrew_takes_the_face_around_it():
+    """The Hebrew style sets no face: Hebrew in italic text is italic, in roman text roman,
+    by the Hebrew font's own face names (Culmus: "Medium", "Medium Oblique")."""
+    from docx2idml import fonts
+    index = {"taamey david clm": {"medium": 1, "medium oblique": 2, "bold": 3},
+             "noitalic hebrew": {"regular": 1}}
+    assert fonts.matching_face("Taamey David CLM", "Italic", index) == ("Medium Oblique", True)
+    assert fonts.matching_face("Taamey David CLM", "Regular", index) == ("Medium", True)
+    assert fonts.matching_face("Taamey David CLM", "Bold Italic", index) == ("Bold", False)
+    assert fonts.matching_face("NoItalic Hebrew", "Italic", index) == ("Regular", False)
+    assert fonts.matching_face("Not Installed", "Italic", index) == (None, True)
+    path = make_docx(os.path.join(TMP, "heb-italic.docx"), [
+        para("Chapter", "Heading1"),
+        para(run("roman " + HEB + " and ") + run("italic " + HEB, "<w:i/>"))])
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        assert "FontStyle" not in doc.style("Hebrew", "character").attrs
+        p = [p for st in doc.stories for p in st.paragraphs
+             if any(r.text == "italic " for r in p.runs)][0]
+        heb = [r for r in p.runs if r.style == "Hebrew"]
+        assert "FontStyle" not in heb[0].attrs                 # roman: the paragraph's face
+        assert heb[1].attrs.get("FontStyle") == "Italic"       # (font not installed here)
+    finally:
+        ex.cleanup()
+
+
+def test_headings_by_formatting_exported():
+    """Headings found by their look become Chapter Title and Heading A; the bold and size
+    that made them headings don't become character styles on their text."""
+    from test_outline import unstyled_book
+    path = unstyled_book("unstyled-export.docx")
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        heads = [(p.style, [(r.text, r.style) for r in p.runs]) for st in doc.stories
+                 for p in st.paragraphs if p.style in ("Chapter Title", "Heading A")]
+        assert ("Chapter Title", [("Introduction", None)]) in heads
+        assert ("Heading A", [("The First Question", None)]) in heads
+        body = [r for st in doc.stories for p in st.paragraphs for r in p.runs
+                if r.text == "Note well."]
+        assert body and body[0].style == "Bold"               # a bold line in the text stays
+    finally:
+        ex.cleanup()
+
+
+def test_manuscript_copyright_page_not_duplicated():
+    """A copyright file in the manuscript is read into Book Details and replaced by the page
+    made from them: one copyright line, its rights statement and notices kept."""
+    from test_outline import front_matter_book
+    docs = front_matter_book()
+    ex = Exporter([d.path for d in docs], default_profile())
+    try:
+        doc = ex.build()
+        lines = ["".join(r.text for r in p.runs) for st in doc.stories for p in st.paragraphs
+                 if p.style == "Copyright"]
+        assert sum("Copyright \u00a9" in t for t in lines) == 1, lines
+        assert lines[0] == "Copyright \u00a9 2026 by A Seminary"
+        assert lines[1].startswith("All rights reserved. No part of this publication")
+        assert any("ISBN 978-1-934952-94-8" in t for t in lines)
+        assert any(t.startswith("Scripture quotations marked ESV") for t in lines)
+        assert any("replaced by one made from Book Details" in r for r in ex.report)
+        texts = ["".join(r.text for r in p.runs) for st in doc.stories for p in st.paragraphs]
+        fw = texts.index("Foreword by Lance Quinn")
+        assert texts[fw - 1] != "A Theology of Soul Care: Essays in Biblical Counseling"
+    finally:
+        ex.cleanup()
+
+
+def test_bylines_and_book_record():
+    """Title-page bylines by role in the contributors' order (Chicago: serial comma); volume,
+    series and call number lines; wording per language."""
+    from docx2idml import frontmatter as fm
+    from docx2idml.outline import Outline
+    assert fm.split_names("Nicolas Ellen, Josh Stephens, and Brett Williams") == [
+        "Nicolas Ellen", "Josh Stephens", "Brett Williams"]
+    assert fm.split_names("John Smith, Jr. and Ann Lee") == ["John Smith, Jr.", "Ann Lee"]
+    front = {"title": "T", "creators": [
+        {"role": "editor", "name": "A. One"}, {"role": "editor", "name": "B. Two"},
+        {"role": "editor", "name": "C. Three"}, {"role": "translator", "name": "D. Four"},
+        {"role": "contributor", "name": "E. Five"}],
+        "volume": "2", "volumes": "3", "series": "Studies in Soul Care", "series_number": "4",
+        "call_number": "BV4012.2 .T44 2026", "isbn_print": "978-0"}
+    info, notes = fm.book_info(Outline(), front)
+    assert info["bylines"] == ["Edited by A. One, B. Two, and C. Three", "Translated by D. Four"]
+    assert info["author"] == "A. One, B. Two, and C. Three" == info["holder"]   # editors
+    lines = [("".join(r.text for r in p.runs), p.style) for p in fm.title_page(info)]
+    assert lines[1] == ("Volume 2 of 3", "Volume") and lines[2][1] == "Author"
+    assert ("Studies in Soul Care 4", "Series") in [
+        ("".join(r.text for r in p.runs), p.style) for p in fm.half_title(info)]
+    cp = "\n".join("".join(r.text for r in p.runs) for p in fm.copyright_page(info, "en")[0])
+    assert "Call number: BV4012.2 .T44 2026" in cp
+    del front["call_number"]
+    info, _ = fm.book_info(Outline(), front)
+    assert "Call number" not in "".join(
+        "".join(r.text for r in p.runs) for p in fm.copyright_page(info, "en")[0])
+    assert fm.bylines(info["creators"], "es") == ["Edici\u00f3n de A. One, B. Two y C. Three",
+                                                 "Traducci\u00f3n de D. Four"]
+    # Foreword, afterword, preface and introduction writers have bylines of their own, in
+    # the list's order; they don't stand for "the author".
+    people = [{"role": "author", "name": "A. Writer"}, {"role": "introduction", "name": "I. One"},
+              {"role": "foreword", "name": "F. One"}, {"role": "foreword", "name": "F. Two"}]
+    assert fm.bylines(people) == ["A. Writer", "With an introduction by I. One",
+                                  "With a foreword by F. One and F. Two"]
+    info, _ = fm.book_info(Outline(), {"title": "T", "creators": people[1:]})
+    assert info["author"] == "[Author]"
+    # Found in the manuscript: a title page's author comes before a foreword's writer.
+    o = Outline()
+    o.author, o.creators = "Jane Smith", [{"role": "foreword", "name": "Lance Quinn"}]
+    assert fm.creators({}, o) == [{"role": "author", "name": "Jane Smith"},
+                                  {"role": "foreword", "name": "Lance Quinn"}]
 
 
 def test_regular_face_by_its_own_name():

@@ -73,6 +73,7 @@ class Report:
     files: list = field(default_factory=list)
     outline: object = None
     paragraph_styles: list = field(default_factory=list)
+    guessed_heads: dict = field(default_factory=dict)  # file -> heading groups found by formatting
     character_styles: list = field(default_factory=list)
     direct: dict = field(default_factory=dict)
     fonts: dict = field(default_factory=dict)
@@ -95,8 +96,9 @@ class Report:
         return json.dumps(conv(self), ensure_ascii=False, indent=2)
 
 
-def preflight(paths, profile=None, docs=None):
-    """Read the files (in book order) and build the report. docs: already-read DocxFiles."""
+def preflight(paths, profile=None, docs=None, settings=None):
+    """Read the files (in book order) and build the report. docs: already-read DocxFiles;
+    settings: the book's settings (its map for headings found by formatting)."""
     from .docx_reader import DocxError
     rep = Report()
     if docs is None:
@@ -106,7 +108,7 @@ def preflight(paths, profile=None, docs=None):
                 docs.append(read_docx(p))
             except DocxError as e:
                 rep.errors.append(str(e))
-    sm = StyleMap.from_profile(profile)
+    sm = StyleMap.from_profile(profile, settings)
     out = build_outline(docs, sm)
     rep.outline = out
 
@@ -117,7 +119,8 @@ def preflight(paths, profile=None, docs=None):
                                      doc.endnote_count, len(doc.sections), doc.app.get("pages")))
 
     _styles(rep, docs, sm)
-    _direct(rep, docs)
+    rep.guessed_heads = _guessed_heads(docs, sm)
+    _direct(rep, docs, sm)
     _fonts(rep, docs, sm)
     _scripts(rep, docs)
     _items(rep, docs)
@@ -131,8 +134,7 @@ def _styles(rep, docs, sm):
     para, char = {}, {}
     for doc in docs:
         for p in doc.paragraphs + doc.note_paragraphs:
-            sid = doc.para_style(p)
-            m = sm.paragraph_style(doc, sid)
+            m = sm.paragraph_mapping(doc, p)
             use = para.setdefault(norm(m.word), StyleUse(m.word, m.idml, m.role, m.level, m.source,
                                                          m.warning))
             use.count += 1
@@ -149,13 +151,16 @@ def _styles(rep, docs, sm):
     rep.character_styles = sorted(char.values(), key=lambda u: -u.count)
 
 
-def _direct(rep, docs):
+def _direct(rep, docs, sm):
     emphasis = font_runs = layout = 0
     by_style = Counter()
     layout_by_style = Counter()
     hotspots = []
     for doc in docs:
+        heads = sm.format_groups(doc)[1]      # headings found by formatting: expected
         for p in doc.paragraphs + doc.note_paragraphs:
+            if p.where == "body" and (p.index in heads or sm.repeated_title(doc, p)):
+                continue
             emphasis += p.direct_emphasis
             style = display_name(doc.style_name(doc.para_style(p)) or "Normal")
             if p.direct_layout:
@@ -292,6 +297,16 @@ def _page(rep, docs):
         rep.page["columns"] = max(s.columns for d in docs for s in d.sections)
 
 
+def _guessed_heads(docs, sm):
+    """{file name: [group names]} for files whose headings were found by formatting."""
+    out = {}
+    for doc in docs:
+        groups = sm.format_groups(doc)[0]
+        if groups:
+            out[doc.name] = [g.name for g in groups]
+    return out
+
+
 def _warnings(rep, docs):
     w = rep.warnings
     for e in rep.errors:
@@ -310,7 +325,14 @@ def _warnings(rep, docs):
         n = sum(d.endnote_count for d in docs)
         w.append("%s. Endnotes are not supported; they will be converted to footnotes."
                  % plural(n, "endnote"))
-    unmapped = [u for u in rep.paragraph_styles if u.warning]
+    if rep.guessed_heads:
+        names = sorted({g for groups in rep.guessed_heads.values() for g in groups})
+        files = list(rep.guessed_heads)
+        w.append("Headings set by formatting rather than styles were found by their look in "
+                 "%s (%s): %s. Check them in the Style Map tab." % (
+                     plural(len(files), "file"), ", ".join(files) if len(files) <= 3 else
+                     ", ".join(files[:3]) + "..." , ", ".join(names)))
+    unmapped = [u for u in rep.paragraph_styles if u.warning and u.source != "formatting"]
     for u in unmapped:
         if u.source == "fallback":
             w.append('Style "%s" (%s) is not in the style map; it will be set as '
@@ -379,6 +401,15 @@ def render_text(rep):
     if out.file_creator:
         add("            (the file's author property says %s, but that is usually whoever "
             "made the file)" % out.file_creator)
+    if getattr(out, "details", None):
+        names = {"year": "year", "holder": "holder", "publisher": "publisher",
+                 "publisher_address": "place", "isbn_print": "ISBN (print)",
+                 "isbn_ebook": "ISBN (ebook)", "printed_in": "printed in", "edition": "edition"}
+        found = ["%s %s" % (names.get(k, k), v) for k, v in out.details.items() if k in names]
+        if out.details.get("notices"):
+            found.append(plural(len(out.details["notices"]), "notice"))
+        add("  Copyright page (found; replaced by one made from Book Details): %s"
+            % "; ".join(found))
     add("  Words:    %d in the text" % out.words)
     if rep.page:
         pg = rep.page

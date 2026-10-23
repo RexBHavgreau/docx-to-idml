@@ -10,9 +10,15 @@ Download the program (`docx-to-idml-X.Y.Z.exe`) from
 [Releases](https://github.com/RexBHavgreau/docx-to-idml/releases); once installed, it offers
 new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md).
 
-- **0.5.0** (October 23, 2026, latest release): the Style Map tab shows every style in one view; narrower default
-  margins (line length about 30 times the type size, outside never wider than inside);
-  running-head style settings; Page Layout in three sections. Fixes: Hebrew in the title
+- **0.6.0** (October 23, 2026, latest release): Book Details as a bibliographic record
+  (contributors in title-page order with bylines, series, volume, call number); the
+  manuscript's copyright page read into Book Details and replaced by the generated one, with a
+  window to compare them; headings found by their formatting in manuscripts without heading
+  styles; front-matter files (copyright, foreword, contributors) recognized; Hebrew follows
+  italic and bold text; running heads with Hebrew flagged when their font lacks it.
+- **0.5.0** (October 23, 2026): the Style Map tab shows every style in one
+  view; narrower default margins (line length about 30 times the type size, outside never
+  wider than inside); running-head style settings; Page Layout in three sections. Fixes: Hebrew in the title
   pages and running heads, chapter openers kept on right-hand pages when InDesign adds pages,
   a paper's cover page read better.
 - **0.4.0** (October 22, 2026): style mapping in one window; after an
@@ -26,6 +32,17 @@ new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md)
 **Status:** all seven steps of the build order are in place (preflight, export with styles,
 footnotes, Hebrew and Greek, tables and images, layout and pagination, front matter and
 running heads, the window, the .exe and the updater). Being tried on real manuscripts.
+
+## Which programs open the files
+
+What has been tried with the exported IDML, so you can decide whether it fits your program.
+
+| Program | Result | What to know |
+|---|---|---|
+| **Adobe InDesign** (2026) | **Works** (tested) | The recommended program, and the only one for books with Hebrew. Text, styles, footnotes, masters, running heads, page numbers, images and tables come through. The contents is placed by hand from the Contents style. When a chapter runs long, InDesign adds pages itself. |
+| **Affinity** | **Works**, with limits (tested) | Hebrew is reversed (Affinity can't set it right to left), so use InDesign for Hebrew. Tables don't break across pages. Affinity doesn't add pages when a chapter runs long; add them by hand. The contents is placed by hand from the Contents style. |
+| **DesignCraft** | Not yet tested | |
+| **Scribus** (1.6.1) | **Not recommended** (tested) | The pages, masters, running heads, page numbers, images and tables come through, but every font is replaced by Scribus's default (so italic and bold are lost too) and the **footnotes are dropped entirely**. Scribus does the same with files InDesign itself writes, so this is a limit of Scribus's IDML import. |
 
 ## The window
 

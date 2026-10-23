@@ -25,7 +25,7 @@ What it does:
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import os
 import shutil
 import tempfile
@@ -35,8 +35,8 @@ from . import profile as profiles
 from .content import read_content, save_image
 from .docx_reader import is_greek, is_hebrew, read_docx
 from .idml.images import image_info
-from .idml.model import (CellStyle, Document, Frame, Image, Master, Paragraph, Run, Section,
-                         Story, Style, Table, TableStyle, TOCStyle)
+from .idml.model import CellStyle, Document, Image, Paragraph, Run, Style, Table, TableStyle
+from .pagination import PaginationMixin
 from .outline import _BACK, _FRONT, Unit, apply_kinds, build_outline, title_key
 from .stylemap import StyleMap, norm
 from .template import TemplateError, apply_template, read_template
@@ -222,7 +222,7 @@ def segments(text):
     return [tuple(s) for s in out]
 
 
-class Exporter:
+class Exporter(PaginationMixin):
     def __init__(self, paths, profile=None, settings=None):
         """settings: the book's own settings (Book.settings): "front" (book details, see
         frontmatter) and "short_titles" ({unit title: running head})."""
@@ -237,7 +237,7 @@ class Exporter:
                 self.tpl = read_template(path)
             except TemplateError as e:
                 raise ExportError(str(e)) from None
-        self.sm = StyleMap.from_profile(self.profile)
+        self.sm = StyleMap.from_profile(self.profile, self.settings)
         self.report = []
         self.tmp = None
 
@@ -271,6 +271,13 @@ class Exporter:
                 break
             pages = new
         self._generated_scripts()
+        missing = sorted(getattr(self, "hebrew_faces_missing", ()))
+        if missing:
+            self.report.append(
+                "The Hebrew font (%s) has no %s face, so Hebrew in %s text is set upright. "
+                "Choose a Hebrew font with that face in Layout Profile > Type if it should "
+                "match." % (self.fonts["hebrew"], " or ".join(m.lower() for m in missing),
+                            " or ".join(m.lower() for m in missing)))
         self.report += self.geo.notes + layout.page_count_notes(self.doc.page_count)
         self._finish_styles()
         return self.doc
@@ -497,6 +504,9 @@ class Exporter:
               leading=_half(size * 2)),
             S("Publisher", "Book Title", {"PointSize": size, "SpaceBefore": lead * 6},
               leading=lead),
+            S("Series", "Half Title", {"PointSize": size, "SpaceBefore": lead * 2,
+                                       "FontStyle": "Italic"}, leading=lead),
+            S("Volume", "Book Subtitle", {"SpaceBefore": lead}),
             S("Copyright", "Body", {"PointSize": size - 2, "FirstLineIndent": 0,
                                     "Justification": "LeftAlign", "Hyphenation": False,
                                     "SpaceAfter": _half(lead / 2)}, leading=note_lead),
@@ -631,9 +641,10 @@ class Exporter:
         if name in CHAR_STYLES:
             st = Style(name, attrs=dict(CHAR_STYLES[name]))
         elif name == "Hebrew":
+            # No face: Hebrew takes the face of the text around it (italic in italic text);
+            # _script_runs gives the Hebrew font's own name for that face where it differs.
             st = Style(name, font=self.fonts["hebrew"],
-                       attrs={"FontStyle": fonts.regular_face(self.fonts["hebrew"]),
-                              "AppliedLanguage": "$ID/Hebrew",
+                       attrs={"AppliedLanguage": "$ID/Hebrew",
                               "CharacterDirection": "RightToLeftDirection"})
         elif name == "Greek":
             st = Style(name, font=self.fonts["greek"], attrs={"AppliedLanguage": "$ID/Greek"})
@@ -839,12 +850,13 @@ class Exporter:
             if cr.image is not None or not cr.text:
                 continue
             style, local = self._run_attrs(cr, para_style, docx, note)
-            out += self._script_runs(cr.text, style, local)
+            out += self._script_runs(cr.text, style, local, para_style)
         return _merge_runs(out)
 
-    def _script_runs(self, text, style, local):
-        """A run's text split into runs: Hebrew and Greek in their character styles (keeping
-        the run's own style's settings as local ones, except a face for Hebrew)."""
+    def _script_runs(self, text, style, local, para_style=None):
+        """A run's text split into runs: Hebrew and Greek in their character styles, keeping
+        the run's own style's settings (italic...) as local ones. Hebrew takes the face of
+        the text around it, by the Hebrew font's own name for that face."""
         out = []
         for script, part in segments(text):
             if script:
@@ -855,12 +867,27 @@ class Exporter:
                     for k, v in self.used_char[style].attrs.items():
                         want.setdefault(k, v)
                 if script == "hebrew":
-                    want.pop("FontStyle", None)
+                    self._hebrew_face(want, para_style)
                 out.append(Run(part, name, {k: v for k, v in want.items()
                                             if sattrs.get(k) != v}))
             else:
                 out.append(Run(part, style, dict(local)))
         return out
+
+    def _hebrew_face(self, want, para_style):
+        """Set want["FontStyle"] to the Hebrew font's name for the face the Hebrew sits in (the
+        run's, else the paragraph's) when that name differs; note a face the font lacks."""
+        face = want.get("FontStyle") or \
+            (self._resolved_attrs(para_style).get("FontStyle") if para_style else None) or \
+            "Regular"
+        heb = self.fonts["hebrew"]
+        name, exact = fonts.matching_face(heb, face)
+        if name and name != face:
+            want["FontStyle"] = name
+        if not exact:
+            missing = getattr(self, "hebrew_faces_missing", set())
+            missing.add(face)
+            self.hebrew_faces_missing = missing
 
     def _generated_scripts(self):
         """Hebrew and Greek in text the program wrote itself (half-title, title and copyright
@@ -876,7 +903,7 @@ class Exporter:
             runs = []
             for r in p.runs:
                 if r.text and r.style not in ("Hebrew", "Greek") and r.footnote is None:
-                    runs += self._script_runs(r.text, r.style, r.attrs)
+                    runs += self._script_runs(r.text, r.style, r.attrs, p.style)
                 else:
                     runs.append(r)
             p.runs = _merge_runs(runs)
@@ -886,15 +913,6 @@ class Exporter:
                 p.attrs["Composer"] = "HL Composer Optyca"
                 if heb > sum(1 for c in text if c.isalpha() and not is_hebrew(c)):
                     p.attrs["ParagraphDirection"] = "RightToLeftDirection"
-        heads = [s.marker for s in self.doc.sections
-                 if s.marker and any(is_hebrew(c) or is_greek(c) for c in s.marker)]
-        if heads:
-            self.report.append(
-                "Running heads with Hebrew or Greek (%s) are set in the running-head font: "
-                "a running head comes from the section marker, which can't change font. Give "
-                "these chapters a short title in the Running Heads tab, or set the running "
-                "head's font in InDesign." % "; ".join("\u201c%s\u201d" % h for h in heads))
-
 
     def _runt_style(self, name):
         """Paragraphs of running text (Body, notes, quotations...), not headings or display."""
@@ -982,8 +1000,13 @@ class Exporter:
                                           "LeftAlign": "RightAlign"}.get(just, just)
         return attrs
 
-    def _mapping(self, docx, style_id):
+    def _mapping(self, docx, style_id, index=None):
+        """The mapping for a paragraph of style style_id; index (a body paragraph's) lets a
+        heading found by formatting map by its look."""
         sid = style_id if style_id in docx.styles else docx.default_style.get("paragraph")
+        if index is not None and (index in self.sm.format_groups(docx)[1] or
+                                  self.sm.repeated_title(docx, docx.paragraphs[index])):
+            return self.sm.paragraph_mapping(docx, docx.paragraphs[index])
         m = self.sm.paragraph_style(docx, sid)
         if m.idml and m.idml not in self.builtin and m.role not in ("skip", "toc", "toc_title"):
             self._custom_paragraph_style(m, docx, sid)
@@ -995,7 +1018,7 @@ class Exporter:
         bibliography ending a chapter doesn't spill into what follows."""
         if cp.table is not None:
             return bib
-        m = self._mapping(docx, cp.style_id)
+        m = self._mapping(docx, cp.style_id, cp.index)
         if m.role in ("chapter", "part", "book_title"):
             level = 0
         elif m.role == "heading":
@@ -1013,11 +1036,16 @@ class Exporter:
         an epigraph say, is set flush: Body First)."""
         if cp.table is not None:
             return [Paragraph("Table", [Run(table=self._table(cp.table, docx))])], "table"
-        m = self._mapping(docx, cp.style_id)
+        m = self._mapping(docx, cp.style_id, cp.index)
         if m.role in ("skip", "toc", "toc_title") or cp.empty:
             return [], prev_role
         style = m.idml or "Body"
         runs = list(cp.runs)
+        if m.feats:
+            # A heading found by its look: the bold, italic or capitals that made it one are
+            # the heading style's business now, not character styles on its text.
+            runs = [replace(r, feats={k: v for k, v in r.feats.items() if k not in m.feats})
+                    for r in runs]
         if m.role == "part" or (unit is not None and unit.kind == "part" and first and
                                 m.role == "chapter"):
             style = "Part Title"
@@ -1190,10 +1218,10 @@ class Exporter:
         manuscript's display pages, the reserved contents, then front matter, text and back
         matter. Returns [Block]."""
         front = self.settings.get("front", {})
-        info, notes = frontmatter.book_info(self.outline, front)
+        lang = self.profile["front_matter"].get("language", "en")
+        info, notes = frontmatter.book_info(self.outline, front, lang)
         self.info = info
         self.report += notes
-        lang = self.profile["front_matter"].get("language", "en")
         display, front_units, rest, praise = [], [], [], []
         ms_copyright, extras = [], []
         for unit, paras in stories:
@@ -1203,7 +1231,9 @@ class Exporter:
                 ms_copyright += cp
                 extras += ex
             elif kind == "display" and unit.type == "copyright":
-                ms_copyright += [p for p in paras if p.style != "Chapter Title"]
+                # Replaced by the page made from Book Details (its details were read into
+                # them: outline.details).
+                ms_copyright.append(unit.title)
             elif kind == "display" and unit.type == "endorsements":
                 praise.append(Block(unit, paras))
             elif kind == "display":
@@ -1221,17 +1251,19 @@ class Exporter:
         g = lambda kind, title, typ: Unit(kind, typ, title, "", -1, "generated")  # noqa: E731
         if info["half_title"]:
             blocks.append(Block(g("display", "Half title", "half title"),
-                                frontmatter.half_title(info), sink=_half(self.text_height / 4)))
-        blocks.append(Block(g("display", "Title page", "title page"), frontmatter.title_page(info),
+                                frontmatter.half_title(info, lang), sink=_half(self.text_height / 4)))
+        blocks.append(Block(g("display", "Title page", "title page"), frontmatter.title_page(info, lang),
                             sink=_half(self.text_height / 5)))
+        paras, cnotes = frontmatter.copyright_page(info, lang, self.profile.get("notices"))
+        self.report += cnotes
         if ms_copyright:
-            paras = ms_copyright
-            for p in paras:
-                if p.style.startswith("Body"):
-                    p.style = "Copyright"
-        else:
-            paras, cnotes = frontmatter.copyright_page(info, lang, self.profile.get("notices"))
-            self.report += cnotes
+            left = (self.outline.details or {}).get("leftover") or []
+            self.report.append(
+                "The manuscript's copyright page was replaced by one made from Book Details "
+                "(its details and notices were read into them)." + (
+                    " Lines that fit no field, left out: %s. Add any that belong in Credits "
+                    "or as a notice." % "; ".join("\u201c%s\u201d" % x for x in left)
+                    if left else ""))
         blocks.append(Block(g("display", "Copyright", "copyright"), paras, opens="next",
                             valign="BottomAlign"))
         if extras:
@@ -1281,110 +1313,6 @@ class Exporter:
                 extras.append(p)
         return copyright_, extras
 
-    # ---- pagination and running heads ----
-
-    def _short(self, title):
-        return (self.settings.get("short_titles") or {}).get(title) or title
-
-    def _head_frames(self, verso, recto):
-        """Running heads above the text area: verso and recto paragraphs' runs."""
-        doc, m = self.doc, self.doc.margins
-        out = []
-        for side, runs in (("verso", verso), ("recto", recto)):
-            if runs is None:
-                continue
-            left = m["outside"] if side == "verso" else m["inside"]
-            right = doc.width - (m["inside"] if side == "verso" else m["outside"])
-            out.append(Frame(side, (m["top"] - 27, left, m["top"] - 13, right),
-                             [Paragraph("Running Head", runs)], key=side[0] + "head",
-                             valign="BottomAlign"))
-        return out
-
-    def _paginate(self, blocks):
-        """Pages, masters, sections and running heads; returns the page count."""
-        doc = self.doc
-        sink = _half(self.body_lead * 6)
-        items = []
-        for b in blocks:
-            kind = b.kind
-            if b.sink is None:
-                b.sink = 0 if kind in ("display", "part") else sink
-            spare = b.spare if b.spare is not None else \
-                (0 if kind in ("display", "part") else self._spare())
-            est = b.pages or self._estimate(b.paras, b.sink)
-            items.append((kind, est, spare, b.opens))
-        placed, count, masters, first_body = layout.plan_pages(
-            items, self.profile.get("chapters_open", "recto"))
-        doc.stories, doc.sections = [], []
-        optical = self.body_size if self.profile["typography"]["optical_margins"] else None
-        rh = self.profile["running_heads"]
-        part = None
-        part_masters = []
-        long_heads = []
-        for n, (b, pl) in enumerate(zip(blocks, placed)):
-            pages = list(range(pl.start, pl.start + pl.pages))
-            doc.stories.append(Story(b.paras, pages, sink=b.sink, linked=True,
-                                     optical_margins=optical, valign=b.valign))
-            title = b.title if not b.title.startswith("(") and b.kind != "display" else ""
-            marker = self._short(title)
-            if marker and self._too_long(marker):
-                long_heads.append(marker)
-            body = first_body is not None and n >= first_body
-            start = 1 if n == 0 or n == first_body else None
-            # A blank verso before a unit belongs to the section before it.
-            doc.sections.append(Section(pl.start, marker=marker,
-                                        numbering="Arabic" if body else "LowerRoman",
-                                        start=start))
-            if b.kind == "part":
-                part = self._short(b.title)
-                part_masters.append(part)
-            elif body and part and rh.get("verso") == "part":
-                name = "P%d-Body" % len(part_masters)
-                for i in pages:
-                    if masters.get(i) == "A-Body":
-                        masters[i] = name
-        doc.page_count = max(count, 1)
-        doc.page_masters = masters
-        if not doc.sections:
-            doc.sections = [Section(0, start=1)]
-        self._masters(part_masters)
-        if long_heads:
-            self.report.append("Running heads too long for the page: %s. Give these a short "
-                               "title in the book settings." % "; ".join(
-                                   '"%s"' % h for h in long_heads))
-        if self.contents_depth:
-            levels = [("Chapter Title", 1, "Contents 1"), ("Part Title", 1, "Contents 1")]
-            if self.contents_depth == "sections":
-                levels.append(("Heading A", 2, "Contents 2"))
-            lang = self.profile["front_matter"].get("language", "en")
-            doc.toc_styles = [TOCStyle("Contents", frontmatter.texts(lang)["contents"],
-                                       "Contents Title", levels)]
-        est = sum(i[1] for i in items)
-        blanks = sum(1 for v in masters.values() if v == "E-Blank")
-        g, m = self.geo, doc.margins
-        spare = self._spare()
-        self.report.append("%d pages: about %d of text, %d blank verso%s." % (
-            doc.page_count, est, blanks, "" if blanks == 1 else "s"))
-        if spare == 1:
-            self.report.append("Each chapter ends with a spare page. Where it stays empty, delete "
-                               "it together with the blank page after it, or give it the E-Blank "
-                               "master, so chapters keep their sides.")
-        elif spare == 2:
-            self.report.append("Each chapter ends with two spare pages. Delete unused ones two at "
-                               "a time, so chapters keep their sides.")
-        else:
-            self.report.append("No spare pages: InDesign adds pages to a chapter whose text runs "
-                               "over (then check that later chapters still open on a recto); "
-                               "Affinity doesn't, so in Affinity add pages to a chapter whose "
-                               "text runs over, two at a time.")
-        self.report.append(self._leading_note())
-        self.report.append(
-            "Margins (in): top %.3g, bottom %.3g, inside %.3g, outside %.3g; text %d lines of "
-            "%g pt, about %d characters per line."
-            % (m["top"] / 72, m["bottom"] / 72, m["inside"] / 72, m["outside"] / 72, g.lines,
-               self.body_lead, round(g.cpl)))
-        return doc.page_count
-
     def _leading_note(self):
         sug, why = layout.leading_suggestions(self.body_size, self.x_height, self.geo.cpl,
                                               self.fonts["body"])
@@ -1415,62 +1343,6 @@ class Exporter:
             attrs["FontStyle"] = "Italic"
         return Style("Running Head", font=rs.get("font") or self.fonts["body"], leading=lead,
                      attrs=attrs)
-
-    def _spare(self):
-        try:
-            return max(0, min(2, int(self.profile["page"].get("spare_pages") or 0)))
-        except (TypeError, ValueError):
-            return 0
-
-    def _too_long(self, text):
-        attrs = self._resolved_attrs("Running Head")
-        size = attrs.get("PointSize", self.body_size)
-        return len(text) * size * self.avg_width * 1.1 > self.measure * 0.8
-
-    def _masters(self, parts):
-        """A-Body, B-Opener and C-Front carry text (each its own primary text frames, so a
-        chapter threads from B into A); D-Display and E-Blank are empty. Running heads follow
-        the profile: the recto head is the section marker (the chapter's short title), the
-        verso head the book title, author, chapter, part or custom text; C-Front shows the
-        unit's title on both sides. Parts with part verso heads get a master each (P1-Body...),
-        a copy of A-Body with the part's title."""
-        doc, m = self.doc, self.doc.margins
-        rh = self.profile["running_heads"]
-        info = self.info
-        top, bottom = m["top"], doc.height - m["bottom"]
-        marker = [Run(special="section_marker")]
-        verso_kind = rh.get("verso", "book_title")
-        verso = {"book_title": [Run(info.get("short_title") or info["title"])],
-                 "author": [Run(info["author"])], "chapter": marker,
-                 "custom": [Run(rh.get("verso_custom") or "")]}.get(verso_kind)
-        recto = [Run(rh.get("recto_custom") or "")] if rh.get("recto") == "custom" else marker
-
-        def frames(heads=True, verso_runs=None, recto_runs=None):
-            out = []
-            for side in ("verso", "recto"):
-                left = m["outside"] if side == "verso" else m["inside"]
-                right = doc.width - (m["inside"] if side == "verso" else m["outside"])
-                out.append(Frame(side, (top, left, bottom, right), [], primary=True))
-                out.append(Frame(side, (bottom + 14, left, bottom + 28, right),
-                                 [Paragraph("Folio", [Run(special="page_number")])],
-                                 key="folio"))
-            if heads:
-                out += self._head_frames(verso_runs, recto_runs)
-            return out
-        doc.masters = [
-            Master("A", "Body", frames=frames(True, verso or marker, recto)),
-            Master("B", "Opener", frames=frames(not rh.get("suppress_on_openers", True),
-                                                verso or marker, recto)),
-            Master("C", "Front", frames=frames(True, marker, marker)),
-            Master("D", "Display", frames=[] if rh.get("suppress_on_display", True)
-                   else self._head_frames(verso or marker, recto)),
-            Master("E", "Blank", frames=[] if rh.get("suppress_on_blanks", True)
-                   else self._head_frames(verso or marker, recto))]
-        if verso_kind == "part":
-            for k, title in enumerate(parts, 1):
-                doc.masters.append(Master("P%d" % k, "Body",
-                                          frames=frames(True, [Run(title)], recto)))
-
 
 def _merge_runs(out):
     """Neighbouring text runs with the same style and settings as one."""

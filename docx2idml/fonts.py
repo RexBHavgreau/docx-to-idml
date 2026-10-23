@@ -167,6 +167,38 @@ def regular_face(family, index=None):
     return "Regular"
 
 
+def _face_kind(name):
+    """(bold, italic) of a face name: "Bold Italic" -> (True, True), "Medium" -> (False, False)."""
+    n = (name or "").casefold()
+    bold = any(w in n for w in ("bold", "black", "heavy"))
+    italic = any(w in n for w in ("italic", "oblique", "slanted"))
+    return bold, italic
+
+
+def matching_face(family, face, index=None):
+    """The installed face of family that matches face (bold/italic), by the family's own name
+    for it ("Italic" in one font may be "Medium Oblique" in another). Returns (name, exact):
+    exact False when the family has no such face and its upright one is given instead; (None,
+    True) when the family isn't installed here (the face is left as it is)."""
+    key = (family or "").casefold()
+    styles = (index if index is not None else font_index()).get(key)
+    if not styles:
+        return None, True
+    want = _face_kind(face)
+    names = {s: _FACES.get((key, s), s.title()) for s in styles}
+    if want == (False, False):
+        return regular_face(family, index), True
+    same = [names[s] for s in sorted(styles) if _face_kind(s) == want]
+    if same:
+        same.sort(key=lambda n: (n.casefold() not in ("italic", "bold", "bold italic"), len(n)))
+        return same[0], True
+    if want[0]:                       # bold italic missing: bold, then upright
+        bold = [names[s] for s in sorted(styles) if _face_kind(s) == (True, False)]
+        if bold:
+            return sorted(bold, key=len)[0], False
+    return regular_face(family, index), False
+
+
 def find_font(family, style="Regular", index=None):
     """(path, font number) of an installed font, or None."""
     if not family:

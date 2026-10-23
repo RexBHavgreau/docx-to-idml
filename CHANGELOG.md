@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.6.0 (October 23, 2026)
+
+- Book Details is now a bibliographic record for the book (modelled on Zotero's Book item):
+  title, subtitle, short title; contributors; series and number in the series, volume and
+  number of volumes, edition, publisher, place, copyright year and holder, ISBNs, call number
+  (blank: no line), credits, printed in. Contributors are a list in title-page order, each an
+  author, editor, translator, writer of the foreword, afterword, preface or introduction,
+  contributor or series editor (Add, Change, Remove, Move up, Move down). The title page has
+  a byline per role in that order: the authors' names, "Edited by ...", "Translated by ...",
+  "With a foreword by ..." (afterword, preface, introduction likewise; Chicago style: "A, B,
+  and C"); a unit titled "Foreword by ..." in the manuscript fills that role; the wording comes from the
+  book's language (English, and Spanish, so other languages can be added). The copyright
+  holder and the "author" running head use the authors, else the editors. The series goes on
+  the half-title, the volume ("Volume 2 of 3") on the title page, the call number on the
+  copyright page. "Fill from the manuscript" fills the contributors (editors from a copyright
+  page's "Edited by" line). Saved books are upgraded: the old Author field becomes an author.
+  The tab is in sections: Title, Contributors, Pages, Publication.
+- Headings set by formatting: a manuscript without heading styles (headings made bigger,
+  bold, centered or in capitals by hand) has its headings found by their look. Paragraphs
+  that look alike form a group ("[16 pt bold centered]", "[bold]"...), ranked by prominence:
+  the strongest becomes chapter titles, the next Heading A, and so on. Groups show in the
+  Style Map tab, marked as guessed, to confirm or change; changes are saved with the book.
+  The bold or size that made a paragraph a heading is left to the heading style. Bold lines
+  in the text, italic titles of works, title-page lines and a typed contents' title are not
+  taken for headings. Only what the styles don't give is guessed: a manuscript with heading
+  styles is read by its styles as before. Preflight says when headings were found this way.
+  Levels are ranked across the whole book, so a look means the same level in every file. In a
+  book sent as several files, each file's most prominent opening line is its title (PREFACE,
+  Contributors, Foreword by...), and a line of names under a chapter title is its author line.
+- Front matter sent as files: a file of copyright lines (a copyright notice, "All rights
+  reserved", an ISBN) is used as the book's copyright page instead of a generated one, so its
+  information isn't duplicated; its "Edited by ..." line gives the editors, and its other
+  lines fill the empty Book Details fields: copyright year and holder, a rights statement
+  (new field, blank: "All rights reserved."), publisher, web address, ISBNs (print and ebook
+  by their labels), "Printed in ...", the edition line. Permissions (for Bible versions and
+  the like) go into the notice library under a short name (ESV, NKJV...) and are ticked for
+  the book. The export then replaces the manuscript's copyright page with one made from Book
+  Details, so nothing is duplicated; lines that fit no field are listed in the report.
+  Copyright lines on a manuscript's title page are read and replaced the same way.
+  "Compare copyright pages..." (Book Details) shows the manuscript's page beside the new one
+  as plain text, with the lines that fit no field.
+  The book's title, when it opens several files, is taken as the title and left out where it
+  repeats at the top of a file. A file whose first line isn't a title (an abbreviations
+  list) is titled from its file name ("00.5 Abbreviations" -> Abbreviations). "Foreword by
+  ..." and "Contributors" are recognized as front matter.
+- Fixed: Hebrew inside italic text was set upright: the Hebrew style fixed the face. It now
+  takes the face of the text around it (italic in italic text, bold in a bold heading), by the
+  Hebrew font's own name for that face (the Culmus fonts call theirs "Medium" and "Medium
+  Oblique"). If the Hebrew font has no such face, the Hebrew is set upright and the report
+  says so.
+- Running heads with Hebrew or Greek: a running head taken from the chapter title can use
+  only one font. When a head has Hebrew or Greek and the running-head font lacks those
+  letters (or isn't installed, so it can't be checked), the report says so: choose a font that
+  has them, or turn on the new "Separate masters for heads with Hebrew or Greek" (Running
+  Heads > Running Head Style), which gives each such chapter a master of its own (R1-Body...)
+  with the head as text in the Hebrew or Greek font. Off by default. Profile version 7.
+- Page Margins: the line length field says it's a multiple of the type size, and shows what
+  that comes to in inches and picas (30 at 11 pt: 4.58 in, 27.5 picas); the note under the
+  margins gives it too, with the characters per line.
+
 ## 0.5.0 (October 23, 2026)
 
 - The Style Map tab is now the one view of every style found in the manuscript, with the

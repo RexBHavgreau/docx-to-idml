@@ -108,7 +108,8 @@ def test_preflight_export_and_book_file():
         assert app.front_form.vars[("title",)][0].get() == "The Covenant Formula"
         sources = app.front_sources.get()
         assert "Title: \u201cThe Covenant Formula\u201d, from style Title in 00 Front.docx" in sources
-        assert "Author: \u201cA. N. Author\u201d, from title page text" in sources
+        assert "Contributors: \u201cA. N. Author (author)\u201d, from title page text" in sources
+        assert app.creators == [{"role": "author", "name": "A. N. Author"}]
         # A profile setting from the form.
         app.pvar(("page", "trim")).set("5.5x8.5")
         out = os.path.join(TMP, "out")
@@ -200,6 +201,9 @@ def test_calculated_margins_shown_and_filled():
         assert "calculated" in str(lab.cget("text"))
         note = app.margin_note.get()
         assert note.startswith("Calculated margins (in): top ") and "about 200 pages" in note
+        assert "picas" in note
+        mlab, _t = app._form_of(("page", "measure")).labels[("page", "measure")]
+        assert "picas)" in str(mlab.cget("text"))
         g, _pages, _found = app.calculated()
         # By default the outside margin is never wider than the inside.
         assert g.margins["outside"] <= g.margins["inside"]
@@ -312,6 +316,93 @@ def test_style_mapping_panel():
         assert "Scripture Ref" not in app.profile["style_map"]["character"]
     finally:
         app.quit(force=True)
+
+
+def test_formatting_groups_in_style_map():
+    """Headings found by formatting show in the Style Map tab; a change to one is saved with
+    the book (it belongs to this manuscript), not the profile."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from test_outline import unstyled_book
+    app, root = _app()
+    try:
+        app._add([unstyled_book("unstyled-gui.docx")])
+        app.run_preflight()
+        _wait(app, root)
+        rows = {w: (iv, rv) for w, iv, rv, _lv, _i in app.mapping.rows}
+        assert rows["[16 pt bold centered]"][0].get() == "Chapter Title"
+        assert rows["[bold]"][0].get() == "Heading A"
+        rows["[bold]"][0].set("Heading B")
+        app.mapping.apply()
+        _wait(app, root)
+        assert app.book.settings["format_map"]["[bold]"]["idml"] == "Heading B"
+        assert "[bold]" not in app.profile["style_map"]["paragraph"]
+        rows = {w: iv for w, iv, _rv, _lv, _i in app.mapping.rows}
+        assert rows["[bold]"].get() == "Heading B"            # read again with the choice
+        app.mapping.reset()
+        _wait(app, root)
+        assert "[bold]" not in app.book.settings["format_map"]
+    finally:
+        app.quit(force=True)
+
+
+def test_contributors_in_order():
+    """Contributors are a list with roles, in title-page order; editors found on a copyright
+    page come in as editors; old books' single author is upgraded."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from test_outline import front_matter_book
+    from docx2idml.book import Book
+    app, root = _app()
+    try:
+        app._add([d.path for d in front_matter_book()])
+        app.fill_front()
+        _wait(app, root)
+        assert app.creators == [{"role": "editor", "name": "Nicolas Ellen"},
+                                {"role": "editor", "name": "Josh Stephens"},
+                                {"role": "foreword", "name": "Lance Quinn"}]
+        app.creator_role.set("translator")
+        app.creator_name.set("Ana Traductora")
+        app.add_creator()
+        app.creator_tree.selection_set("3")
+        app.move_creator(-1)
+        app.move_creator(-1)
+        assert [c["name"] for c in app.creators] == ["Nicolas Ellen", "Ana Traductora",
+                                                     "Josh Stephens", "Lance Quinn"]
+        # The copyright page's details fill the empty fields.
+        assert app.front_form.vars[("year",)][0].get() == "2026"
+        assert app.front_form.vars[("holder",)][0].get() == "A Seminary"
+        assert app.front_form.vars[("isbn_print",)][0].get() == "978-1-934952-94-8"
+        assert "from the copyright page: copyright year filled in" in app.front_sources.get()
+        # The permission: in the notice library, ticked for this book.
+        names = [n["name"] for n in app.profile["notices"]]
+        assert "ESV" in names and names.index("ESV") in app.notice_list.curselection()
+        # The two copyright pages side by side, then closed.
+        app.compare_copyright()
+        root.update()
+        old, new = (t.get("1.0", "end") for t in app.compare_texts)
+        assert "Copyright \u00a9 2026 by A Seminary" in old and "Edited by" in old
+        assert "Copyright \u00a9 2026 by A Seminary" in new and "Edited by" not in new
+        assert "ISBN 978-1-934952-94-8" in new
+        app.compare_window.destroy()
+        # The rights statement too.
+        assert app.front_form.vars[("rights",)][0].get().startswith("All rights reserved. No")
+        app._forms_to_book()
+        assert app.book.settings["front"]["creators"][1] == {"role": "translator",
+                                                             "name": "Ana Traductora"}
+        path = os.path.join(TMP, "creators.json")
+        app.book_path = path
+        assert app.save_book()
+        assert Book.load(path).settings["front"]["creators"] == app.creators
+    finally:
+        app.quit(force=True)
+    # A book saved before contributors: its author becomes an author entry.
+    old = os.path.join(TMP, "old-book.json")
+    with open(old, "w") as f:
+        f.write('{"book_version": 1, "files": [], "settings": {"front": '
+                '{"author": "A. Writer and B. Writer"}}}')
+    front = Book.load(old).settings["front"]
+    assert front["creators"] == [{"role": "author", "name": "A. Writer"},
+                                 {"role": "author", "name": "B. Writer"}]
+    assert "author" not in front
 
 
 def test_tabs_in_title_case_and_head_style():

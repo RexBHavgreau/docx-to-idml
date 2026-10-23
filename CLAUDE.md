@@ -41,17 +41,20 @@ keep it up to date when decisions change.
 |---|---|
 | `docx2idml/docx_reader.py` | Reads a .docx: styles, paragraphs, notes, sections, fields, scripts, unsupported items |
 | `docx2idml/stylemap.py` | Word style -> IDML style and role; defaults for Word's built-ins |
+| `docx2idml/formatheads.py` | Headings set by direct formatting (0.6.0): groups of paragraphs by look (size, bold, italic, caps, centered), ranked; `StyleMap.format_groups` / `paragraph_mapping` feed them to the outline, preflight and export |
 | `docx2idml/outline.py` | Units across files (front, part, chapter, back); title/author detection |
 | `docx2idml/preflight.py` | The preflight report (text and JSON) |
 | `docx2idml/profile.py` | Profiles: defaults, save/load, export/import, `PROFILE_VERSION` + `MIGRATIONS` |
 | `docx2idml/book.py` | Input files: drop/folder collection, natural order, saved order |
 | `docx2idml/content.py` | The text of a .docx for the exporter: runs with formatting features, notes, tables, images, list numbers; paragraph indexes match `docx_reader`'s |
 | `docx2idml/export.py` | Step 4, the exporter core: book styles, Word styles kept by name, runs to character styles, Hebrew/Greek, one story and section per outline unit, page estimate; `export()` writes the export folder |
+| `docx2idml/pagination.py` | `PaginationMixin` of the Exporter (moved out of export.py, 0.6.0): pages, stories, sections and markers, masters and running-head frames |
 | `docx2idml/layout.py` | Step 5: margins and measure (30 times the type size within 45-80 characters, floors, KDP gutter by page count), pagination (roman front matter, recto rules, masters per page) |
 | `docx2idml/frontmatter.py` | Step 6: book details (settings, then detected, else bracketed placeholders), half-title, title, copyright (English/Spanish, notices from the profile's library), contents entries and reserved pages |
 | `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile`; no arguments opens the window |
 | `docx2idml/gui.py` | Step 7, the window (ttk): Files, Book Details, Running Heads, Layout Profile, Style Map, Report tabs; forms declared as field tables bound to the profile and book settings; work in threads, results through a queue polled by the window |
+| `docx2idml/gui_book.py` | `BookTabMixin` of the window (moved out of gui.py, 0.6.0): the Book Details tab, filling from the manuscript, the notice library |
 | `docx2idml/updates.py`, `appsettings.py` | Update check and install (as Indicat's: versioned .exe beside the running one, SHA-256 digest, Downloads fallback, older copies offered for deletion); the program's own settings.json |
 | `run_app.py`, `build_exe.bat`, `.github/workflows/build.yml` | The .exe (PyInstaller, one file, "docx-to-idml-X.Y.Z.exe", with `docx2idml/idml/base`); the workflow builds and releases on a `vX.Y.Z` tag, or by hand |
 | `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `images.py` (image size and resolution from file headers), `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
@@ -202,9 +205,15 @@ keep it up to date when decisions change.
 - Hebrew/Greek in generated text (0.5.0): `Exporter._generated_scripts` runs after the
   build over every story and master frame, splitting runs not yet in the Hebrew/Greek styles
   (`_script_runs`, the same split as the manuscript's runs). Section markers can't carry a
-  character style; a marker with Hebrew/Greek is reported.
-- Faces (0.5.0): FontStyle for the body, notes and Hebrew styles is `fonts.regular_face()`,
-  the installed face's own name (Culmus fonts: "Medium"); "Regular" when not installed here.
+  character style. By default (Beaux, 0.6.0) the report warns when the running-head font
+  lacks a head's Hebrew/Greek (`pagination._script_heads_note`); with profile
+  `running_heads.script_masters` on, such a unit gets a copy of its master (R1-Body,
+  R1-Front...) with the head as text (`_script_head_masters`). Profile version 7.
+- Faces (0.5.0): FontStyle for the body and notes styles is `fonts.regular_face()`, the
+  installed face's own name (Culmus fonts: "Medium"); "Regular" when not installed here. The
+  Hebrew style sets no face (0.6.0, Beaux): Hebrew takes the face around it, and
+  `Exporter._hebrew_face` puts the Hebrew font's own name for it on the run
+  (`fonts.matching_face`); a face the font lacks falls back to upright and is reported.
 - Title page (0.5.0): text above the Title line is endorsements only when
   `outline._endorsement_like` (25+ words, or a quotation/attribution); otherwise it belongs
   to the title page. "author"/"autor" are default style names for the author role.
@@ -217,6 +226,47 @@ keep it up to date when decisions change.
   `Exporter._running_head_style`, form `head_style_form`.
 - Margins (0.5.0): measure = `page.measure` (30) x type size within 45-80 characters;
   outside 42% of the rest, inside never less than the outside (`layout.geometry`).
+- Headings by formatting (Beaux, 0.6.0; `formatheads.py`): the reader records each body
+  paragraph's dominant look (`Paragraph.look`, align, space_before, page_break_before).
+  Candidates: body-role paragraphs of at most 15 words, no closing period unless numbered,
+  looking different from the body text (the look of most of the text in 20+-word paragraphs),
+  with a 20+-word non-centered paragraph under them before the next of the same look (so
+  title-page lines and a contents title drop out); a group needs 2 members unless larger or
+  starting a page; italic-only groups only below a stronger one. Ranked by prominence; only
+  levels the styles don't provide (no chapter styles in use -> top group = chapters; no
+  heading styles -> the rest = Heading A-C). Mappings are per paragraph
+  (`StyleMap.paragraph_mapping`, used by outline, preflight, `Exporter._mapping(..., index)`);
+  the group's bold/italic/caps are dropped from its runs. Group names ("[16 pt bold
+  centered]") are keys of book settings `format_map` (not the profile), edited in the Style Map
+  tab. Tried on Beaux's Ezekiel paper with its heading styles stripped: same outline as styled.
+  Book-wide (`formatheads.plan(docs)`, `StyleMap.prepare` from `build_outline`): looks ranked
+  over all files; in a book of several files each file's most prominent line before its first
+  text is its title ("[title line of a file]"), lines of names under it "[author line under a
+  file title]" (Chapter Author), else "[subtitle ...]"; a first line opening 2+ files is the
+  book title (`StyleMap.book_title_line`), left out (role skip) where a file title follows it.
+  Not in single-file books (there the first heading is the first chapter).
+- Front matter files (0.6.0, Beaux's edited volume): `outline._copyright_file` makes a short
+  file with 2+ copyright marks (©, all rights reserved, ISBN) a display/copyright unit (read,
+  then replaced by the generated page); "Edited by ..." gives the editors; `frontmatter.
+  parse_copyright` reads year/holder, publisher, web address, ISBNs, printed in, edition into
+  `outline.details` (also from title-page copyright lines), used by `book_info` for empty
+  fields and by "Fill from the manuscript"; permissions in details["notices"] (into the
+  profile's notice library via `gui_book._take_notices`, or printed directly when the book
+  has none ticked), unmatched lines in details["leftover"] (reported). Beaux: the
+  manuscript's copyright page is always replaced by the generated one (export._front_matter). A whole-file unit whose
+  first line isn't a title gets `outline.file_title(name)`. classify reads "Foreword by X" as a
+  foreword; "contributors" is front matter.
+- Book details (Beaux, 0.6.0): `front` is a bibliographic record (Zotero's Book fields, our
+  own code: Zotero is AGPL and none of it is copied): `creators` [{"role", "name"}] in
+  title-page order (roles `frontmatter.ROLES`; bylines for author/editor/translator and the
+  foreword/afterword/preface/introduction writers ("With a foreword by"; `outline._by_lines`
+  fills them from unit titles like "Foreword by X") via
+  `frontmatter.bylines`, wording in `frontmatter.TEXT[lang]`, the profile's
+  `front_matter.language`); `info["author"]` = authors else editors else translators (holder,
+  verso head). series/series_number (half-title, Series style), volume/volumes (title page,
+  Volume style), call_number (copyright page; blank = none). `book.BOOK_VERSION` 2:
+  `book.migrate_settings` turns the old "author" into creators. GUI: `gui_book.BookTabMixin`
+  (`app.creators`, `add/change/remove/move_creator`).
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
@@ -234,7 +284,9 @@ keep it up to date when decisions change.
   - Label work on the branch with the version it will ship as (in CHANGELOG's "not yet
     released" heading); change the label if the batch grows from fixes into features.
 - **README:** the top of README.md lists the latest release and the few before it (one or
-  two lines each, the version in progress first). Update it with every release.
+  two lines each, the version in progress first). Update it with every release. Its "Which
+  programs open the files" table says what each program does with the IDML (tested or not);
+  keep it current when a program is tried or a limit changes.
 - Version in `docx2idml/__init__.py` (`EXE_BASE` and `REPO` there too); a dated entry at the
   top of `CHANGELOG.md`. Pushing a tag `vX.Y.Z` (matching `__version__`) runs
   `.github/workflows/build.yml` on Windows: tests, the .exe, a check that it carries the IDML
@@ -291,12 +343,17 @@ writes one.
   v0.5.0 (October 23),
   each built by the tag's workflow from main. The updater's real run worked (Beaux, October
   22): 0.2.0 found 0.3.0 by Help > Check for updates (the startup check didn't, fixed in
-  0.4.0), downloaded it, opened it, and 0.3.0 offered to delete 0.2.0. From 0.4.0 shortcuts
-  and taskbar pins are retargeted too (Indicat's code: pywin32's WScript.Shell; tested with
-  a fake shell; not yet on a real Windows update).
+  0.4.0), downloaded it, opened it, and 0.3.0 offered to delete 0.2.0. 0.4.0 -> 0.5.0
+  (Beaux, October 23): the startup check found it, and the Start pin was retargeted to the new
+  version. Desktop shortcuts and taskbar pins use the same code but weren't there to test.
 - Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
   the No Break style and the local NoBreak attribute?
 - 0.2.0 additions not yet opened: StartParagraph NextOddPage on Chapter Title (does Affinity
   keep it, and does InDesign leave a title already at the top of a recto where it is?); a
   style template's styles in InDesign and Affinity.
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).
+- Scribus 1.6.1 (tried here October 23, headless, `apt install scribus`): opens our IDML with
+  pages, masters, running heads, folios, sections, images, tables and justification; but every
+  font becomes its default (so italic and bold go too), and footnotes are dropped entirely.
+  InDesign's own reference files (01, 12) lose fonts and footnotes the same way, so it's
+  Scribus's IDML import, not our files. Not a target (Beaux to decide).

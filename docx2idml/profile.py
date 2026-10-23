@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import APP_NAME
 
-PROFILE_VERSION = 6
+PROFILE_VERSION = 7
 
 DEFAULT_PROFILE = {
     "profile_version": PROFILE_VERSION,
@@ -47,6 +47,9 @@ DEFAULT_PROFILE = {
         "suppress_on_openers": True,
         "suppress_on_display": True,
         "suppress_on_blanks": True,
+        # A head with Hebrew or Greek on a master of its own, as text in their fonts (a
+        # section marker takes one font); off: the report says when the font lacks them.
+        "script_masters": False,
         # The Running Head paragraph style.
         "style": {
             "case": "small_caps",      # small_caps, all_caps, as_typed
@@ -171,7 +174,15 @@ def _from_5(data):
     return data
 
 
-MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2, 3: _from_3, 4: _from_4, 5: _from_5}   # version n -> function that upgrades it to n + 1
+def _from_6(data):
+    """Version 6: no choice about running heads with Hebrew or Greek (0.6.0 adds
+    running_heads.script_masters, off)."""
+    data.setdefault("running_heads", {}).setdefault("script_masters", False)
+    return data
+
+
+MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2, 3: _from_3, 4: _from_4, 5: _from_5,
+              6: _from_6}   # version n -> function that upgrades it to n + 1
 
 
 def migrate(data):

@@ -23,6 +23,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from . import __version__, appsettings, updates
 from . import profile as profiles
 from .book import Book
+from .gui_book import BookTabMixin
 from .export import TRIMS, ExportError, export
 from .outline import KIND_LABELS, KINDS, kind_key
 from .stylemap import ROLES
@@ -50,8 +51,8 @@ PROFILE_FIELDS = {
              ["0", "1", "2"]),
         ],
         "Page Margins": [
-            (("page", "measure"), "Line length (times the type size; 30 usual, 20\u201340)",
-             "number", None),
+            (("page", "measure"), "Line length (a multiple of the type size; 30 usual, "
+             "20\u201340)", "number", None),
             (("page", "margins", "top"), "Top margin (in)", "number", None),
             (("page", "margins", "bottom"), "Bottom margin (in)", "number", None),
             (("page", "margins", "inside"), "Inside margin (in)", "number", None),
@@ -114,20 +115,9 @@ HEAD_STYLE_FIELDS = [
     (("running_heads", "style", "tracking"), "Letter-spacing (thousandths of an em)", "int",
      None),
     (("running_heads", "style", "font"), "Font (blank = the body font)", "font", None),
+    (("running_heads", "script_masters"),
+     "Separate masters for heads with Hebrew or Greek (each gets its own font)", "bool", None),
 ]
-# Book settings (book.settings["front"]).
-FRONT_FIELDS = [
-    ("title", "Title", "text"), ("subtitle", "Subtitle", "text"), ("author", "Author", "text"),
-    ("short_title", "Short title (verso head)", "text"), ("publisher", "Publisher", "text"),
-    ("publisher_address", "Publisher's address", "text"), ("year", "Copyright year", "text"),
-    ("holder", "Copyright holder (blank = author)", "text"), ("edition", "Edition line", "text"),
-    ("isbn_print", "ISBN (print)", "text"), ("isbn_ebook", "ISBN (ebook)", "text"),
-    ("credits", "Credits", "text"), ("printed_in", "Printed in (country)", "text"),
-    ("half_title", "Half-title page", "bool"), ("contents", "Contents pages", "bool"),
-    ("contents_pages", "Contents pages (blank = estimated)", "text"),
-]
-
-
 def _get(d, path):
     for k in path:
         if not isinstance(d, dict):
@@ -368,6 +358,7 @@ class StyleMappingPanel:
         are kept). Returns how many changed."""
         sm = self.app.profile.setdefault("style_map", {})
         para, char = sm.setdefault("paragraph", {}), sm.setdefault("character", {})
+        formats = self.app.book.settings.setdefault("format_map", {})
         changed = 0
         for word, iv, rv, lv, initial in self.rows:
             now = (iv.get().strip(), rv.get(), lv.get())
@@ -379,7 +370,13 @@ class StyleMappingPanel:
             if role == "heading" and not level:
                 level = 1
             look = [k for k, v in LOOKS.items() if v == now[2]] or ["book"]
-            para[word] = {"idml": idml, "role": role, "level": level, "look": look[0]}
+            entry = {"idml": idml, "role": role, "level": level, "look": look[0]}
+            if word.startswith("["):
+                # A heading group found by formatting belongs to this manuscript: the book.
+                formats[word] = entry
+                self.app.dirty = True
+            else:
+                para[word] = entry
             changed += 1
         for word, cv, initial in self.char_rows:
             now = cv.get().strip()
@@ -407,11 +404,15 @@ class StyleMappingPanel:
             m = sm.get(kind) or {}
             for k in [k for k in m if norm(k) in names]:
                 del m[k]
+        formats = self.app.book.settings.get("format_map") or {}
+        for k in [k for k in formats if norm(k) in names]:
+            del formats[k]
+            self.app.dirty = True
         self.rows, self.char_rows = [], []      # nothing left to save over the reset
         self.app.mapping_changed(0)
 
 
-class App:
+class App(BookTabMixin):
     def __init__(self, root, dnd=False):
         self.root = root
         self.settings = appsettings.load()
@@ -539,34 +540,6 @@ class App:
                 self.tree.dnd_bind("<<Drop>>", self._dropped)
             except Exception:
                 pass
-
-    def _book_tab(self):
-        tab = ttk.Frame(self.tabs, padding=8)
-        self.tabs.add(tab, text="Book Details")
-        row = ttk.Frame(tab)
-        row.pack(fill="x", pady=(0, 4))
-        ttk.Button(row, text="Fill from the manuscript", command=self.fill_front).pack(side="left")
-        ttk.Label(row, text="Blank fields are filled from the manuscript at export; anything "
-                            "still missing appears in brackets, e.g. [ISBN].").pack(
-            side="left", padx=8)
-        # Where the filled values came from (which style or line), so the user sees how the
-        # manuscript was read.
-        self.front_sources = tk.StringVar()
-        ttk.Label(tab, textvariable=self.front_sources, wraplength=900,
-                  justify="left").pack(anchor="w", pady=(0, 6))
-        form = ttk.Frame(tab)
-        form.pack(fill="x")
-        fields = [((key,), label, kind, None) for key, label, kind in FRONT_FIELDS]
-        self.front_form = Form(form, fields, columns=2)
-        ttk.Label(tab, text="Notices on the copyright page (from the profile's library; select "
-                            "any number):").pack(anchor="w", pady=(8, 2))
-        self.notice_list = tk.Listbox(tab, selectmode="multiple", height=5, exportselection=False)
-        self.notice_list.pack(fill="x")
-        nb = ttk.Frame(tab)
-        nb.pack(fill="x", pady=4)
-        ttk.Button(nb, text="Add notice to library...", command=self.add_notice).pack(side="left")
-        ttk.Button(nb, text="Remove from library", command=self.remove_notice).pack(side="left",
-                                                                                     padx=6)
 
     def _heads_tab(self):
         tab = ttk.Frame(self.tabs, padding=8)
@@ -733,6 +706,9 @@ class App:
         for side in self.MARGINS:
             lab, text = form.labels[("page", "margins", side)]
             lab.configure(text="%s, calculated %.2f" % (text, g.margins[side] / 72))
+        # What the multiple comes to: 30 x 11 pt = 330 pt = 27.5 picas = 4.58 in.
+        lab, text = form.labels[("page", "measure")]
+        lab.configure(text="%s: %.2f in (%.1f picas)" % (text, g.measure / 72, g.measure / 12))
         from . import fonts
         font = (self.pvar(("fonts", "body")).get() or "").strip() or \
             fonts.book_font()
@@ -740,11 +716,13 @@ class App:
             "%s isn't installed: an average book font" % font
         self.margin_note.set(
             "Calculated margins (in): top %.2f, bottom %.2f, inside %.2f, outside %.2f, for "
-            "about %d pages (%s), %d characters per line at %g pt. Blank margin fields use "
+            "about %d pages (%s). Line length %.2f in (%.1f picas), %d characters per line at "
+            "%g pt. Blank margin fields use "
             "the calculated values, which follow the page count (KDP's inside minimum grows "
             "with it); a value typed in is used as it is."
             % (g.margins["top"] / 72, g.margins["bottom"] / 72, g.margins["inside"] / 72,
-               g.margins["outside"] / 72, pages, basis, round(g.cpl),
+               g.margins["outside"] / 72, pages, basis, g.measure / 72, g.measure / 12,
+               round(g.cpl),
                _num(self.pvar(("body_size",)).get(), "number") or 11))
 
     def _update_leading_note(self, g):
@@ -842,42 +820,7 @@ class App:
             profiles.save_file(self.profile, path)
             self.status.set("Profile exported to %s." % path)
 
-    def add_notice(self):
-        name = simpledialog.askstring(TITLE, "Short name of the notice (e.g. ESV):",
-                                      parent=self.root)
-        if not name:
-            return
-        text = simpledialog.askstring(TITLE, "Wording of the notice, exactly as it should "
-                                             "appear on the copyright page:", parent=self.root)
-        if text:
-            self.profile.setdefault("notices", []).append({"name": name, "text": text})
-            self.notice_list.insert("end", name)
-            self.status.set("Notice added. Save the profile to keep it for other books.")
-
-    def remove_notice(self):
-        for i in reversed(self.notice_list.curselection()):
-            del self.profile["notices"][i]
-            self.notice_list.delete(i)
-
     # ---- book ----
-
-    def _load_book_into_forms(self):
-        self.front_form.load(self.book.settings.get("front") or {"half_title": True,
-                                                                  "contents": True})
-        self._refresh_files()
-        self._refresh_heads()
-
-    def _forms_to_book(self):
-        front = self.book.settings.setdefault("front", {})
-        self.front_form.save(front)
-        cp = front.get("contents_pages")
-        try:
-            front["contents_pages"] = int(cp) if cp else None
-        except ValueError:
-            front["contents_pages"] = None
-        names = [n.get("name") for n in self.profile.get("notices") or []]
-        front["notices"] = [names[i] for i in self.notice_list.curselection() if i < len(names)]
-        self.book.profile = self.profile_name
 
     def _refresh_files(self):
         self.tree.delete(*self.tree.get_children())
@@ -1000,32 +943,6 @@ class App:
         if answer is None:
             return False
         return self.save_book() if answer else True
-
-    def fill_front(self):
-        self._need_report(self._fill_front_now)
-
-    def _fill_front_now(self):
-        o = self.report.outline
-        front = self.book.settings.setdefault("front", {})
-        self.front_form.save(front)
-        filled = []
-        for key, value in (("title", o.title), ("subtitle", o.subtitle), ("author", o.author)):
-            if value and not front.get(key):
-                front[key] = value
-                filled.append(key)
-        self.front_form.load(front)
-        self.dirty = True
-        found = []
-        for key, label, value, source in (
-                ("title", "Title", o.title, o.title_source),
-                ("subtitle", "Subtitle", o.subtitle, o.subtitle_source),
-                ("author", "Author", o.author, o.author_source)):
-            if value:
-                state = "filled in" if key in filled else "already set, kept"
-                found.append("%s: \u201c%s\u201d, from %s (%s)" % (label, value, source, state))
-            else:
-                found.append("%s: not found in the manuscript" % label)
-        self.front_sources.set("Found in the manuscript \u2014 " + "; ".join(found) + ".")
 
     # ---- running heads ----
 
@@ -1185,7 +1102,9 @@ class App:
             self._show(render_text(rep))
             self.status.set("Preflight done: %d warning%s." % (
                 len(rep.warnings), "" if len(rep.warnings) == 1 else "s"))
-        self._run(lambda: preflight(files, prof), done, "Reading the manuscript...")
+        settings = copy.deepcopy(self.book.settings)
+        self._run(lambda: preflight(files, prof, settings=settings), done,
+                  "Reading the manuscript...")
 
     def mapping_changed(self, n):
         """After the mapping changed: read the manuscript again with it (the outline depends
@@ -1225,7 +1144,9 @@ class App:
         def done(rep):
             self._preflighted(rep)
             then()
-        self._run(lambda: preflight(files, prof), done, "Reading the manuscript...")
+        settings = copy.deepcopy(self.book.settings)
+        self._run(lambda: preflight(files, prof, settings=settings), done,
+                  "Reading the manuscript...")
 
     def _choose_out(self):
         path = filedialog.askdirectory(title="Where to save the export")
