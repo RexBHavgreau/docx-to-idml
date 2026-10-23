@@ -376,6 +376,7 @@ def build_outline(docs, stylemap=None):
             out.units.append(unit)
         if _copyright_file(out, fo, out.units[units_before:]):
             chapter_seen = seen_before      # it was no chapter after all
+    _by_lines(out)
     if not out.title and sm.book_title_line:
         out.title, out.title_source = sm.book_title_line, "the first line of several files"
     _before_title_page(out)
@@ -387,6 +388,28 @@ def build_outline(docs, stylemap=None):
                 break
     _check_outline(out)
     return out
+
+
+_PART_BY = re.compile(r"^(foreword|afterword|preface|introduction|pr[oó]logo|ep[ií]logo|"
+                      r"prefacio|introducci[oó]n)\s+(?:by|por|de)\s+(.+)$", re.I)
+_PART_ROLE = {"prólogo": "foreword", "prologo": "foreword", "epílogo": "afterword",
+              "epilogo": "afterword", "prefacio": "preface", "introducción": "introduction",
+              "introduccion": "introduction"}
+
+
+def _by_lines(out):
+    """"Foreword by Lance Quinn" (an afterword, preface or introduction by someone) as a unit
+    title: that person, in that role, for the title page's bylines."""
+    from .frontmatter import split_names
+    for u in out.units:
+        m = _PART_BY.match(u.title.strip())
+        if m and u.kind in ("front", "back"):
+            word = m.group(1).casefold()
+            role = _PART_ROLE.get(word, word)
+            for name in split_names(m.group(2)):
+                person = {"role": role, "name": name}
+                if person not in out.creators:
+                    out.creators.append(person)
 
 
 def _copyright_file(out, fo, units):

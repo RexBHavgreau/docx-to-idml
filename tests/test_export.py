@@ -571,6 +571,19 @@ def test_bylines_and_book_record():
         "".join(r.text for r in p.runs) for p in fm.copyright_page(info, "en")[0])
     assert fm.bylines(info["creators"], "es") == ["Edici\u00f3n de A. One, B. Two y C. Three",
                                                  "Traducci\u00f3n de D. Four"]
+    # Foreword, afterword, preface and introduction writers have bylines of their own, in
+    # the list's order; they don't stand for "the author".
+    people = [{"role": "author", "name": "A. Writer"}, {"role": "introduction", "name": "I. One"},
+              {"role": "foreword", "name": "F. One"}, {"role": "foreword", "name": "F. Two"}]
+    assert fm.bylines(people) == ["A. Writer", "With an introduction by I. One",
+                                  "With a foreword by F. One and F. Two"]
+    info, _ = fm.book_info(Outline(), {"title": "T", "creators": people[1:]})
+    assert info["author"] == "[Author]"
+    # Found in the manuscript: a title page's author comes before a foreword's writer.
+    o = Outline()
+    o.author, o.creators = "Jane Smith", [{"role": "foreword", "name": "Lance Quinn"}]
+    assert fm.creators({}, o) == [{"role": "author", "name": "Jane Smith"},
+                                  {"role": "foreword", "name": "Lance Quinn"}]
 
 
 def test_regular_face_by_its_own_name():

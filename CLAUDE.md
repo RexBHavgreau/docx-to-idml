@@ -252,7 +252,9 @@ keep it up to date when decisions change.
   foreword; "contributors" is front matter.
 - Book details (Beaux, 0.6.0): `front` is a bibliographic record (Zotero's Book fields, our
   own code: Zotero is AGPL and none of it is copied): `creators` [{"role", "name"}] in
-  title-page order (roles `frontmatter.ROLES`; bylines for author/editor/translator via
+  title-page order (roles `frontmatter.ROLES`; bylines for author/editor/translator and the
+  foreword/afterword/preface/introduction writers ("With a foreword by"; `outline._by_lines`
+  fills them from unit titles like "Foreword by X") via
   `frontmatter.bylines`, wording in `frontmatter.TEXT[lang]`, the profile's
   `front_matter.language`); `info["author"]` = authors else editors else translators (holder,
   verso head). series/series_number (half-title, Series style), volume/volumes (title page,

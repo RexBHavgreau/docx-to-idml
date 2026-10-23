@@ -9,7 +9,8 @@ book.
 Book settings (Book.settings["front"]), modelled on a bibliographic record for a book (as
 Zotero's Book item) plus the switches a book needs:
     title, subtitle, short_title (verso running head), creators (an ordered list of
-    {"role": author/editor/translator/contributor/series_editor, "name": "First Last"}),
+    {"role": author/editor/translator/foreword/afterword/preface/introduction/contributor/
+    series_editor, "name": "First Last"}),
     series, series_number, volume, volumes, edition, publisher, publisher_address (place),
     year, holder (rights; blank = the authors, else the editors), isbn_print, isbn_ebook,
     call_number (blank = no line), credits, printed_in, notices (names from the profile's
@@ -17,8 +18,9 @@ Zotero's Book item) plus the switches a book needs:
     (Before book version 2 a single "author" string; Book.load upgrades it.)
 
 The title page has a byline per role, in the creators' order: authors' names alone, then
-"Edited by ...", "Translated by ..." (wording per language in TEXT, so another language is a
-table entry). Contributors and series editors don't go on the title page.
+"Edited by ...", "Translated by ...", "With a foreword by ..." (and afterword, preface,
+introduction); wording per language in TEXT, so another language is a table entry.
+Contributors and series editors don't go on the title page.
 """
 
 import datetime
@@ -31,6 +33,9 @@ TEXT = {
            "copyright": "Copyright © {year} by {holder}", "printed": "Printed in {country}",
            "isbn_print": "ISBN {isbn} (paperback)", "isbn_ebook": "ISBN {isbn} (ebook)",
            "editor": "Edited by {names}", "translator": "Translated by {names}",
+           "foreword": "With a foreword by {names}", "afterword": "With an afterword by {names}",
+           "preface": "With a preface by {names}",
+           "introduction": "With an introduction by {names}",
            "and": "and", "serial_comma": True, "volume": "Volume {n}",
            "volume_of": "Volume {n} of {total}", "series": "{series}",
            "series_number": "{series} {number}", "call_number": "Call number: {number}"},
@@ -38,16 +43,24 @@ TEXT = {
            "copyright": "© {year} {holder}", "printed": "Impreso en {country}",
            "isbn_print": "ISBN: {isbn} (rústica)", "isbn_ebook": "ISBN: {isbn} (libro electrónico)",
            "editor": "Edición de {names}", "translator": "Traducción de {names}",
+           "foreword": "Con prólogo de {names}", "afterword": "Con epílogo de {names}",
+           "preface": "Con prefacio de {names}",
+           "introduction": "Con introducción de {names}",
            "and": "y", "serial_comma": False, "volume": "Volumen {n}",
            "volume_of": "Volumen {n} de {total}", "series": "{series}",
            "series_number": "{series} {number}", "call_number": "Signatura: {number}"},
 }
 
 # Contributor roles, in the order the window offers them; those with a title-page byline.
-ROLES = ("author", "editor", "translator", "contributor", "series_editor")
+ROLES = ("author", "editor", "translator", "foreword", "afterword", "preface", "introduction",
+         "contributor", "series_editor")
 ROLE_LABELS = {"author": "author", "editor": "editor", "translator": "translator",
-               "contributor": "contributor", "series_editor": "series editor"}
-BYLINE_ROLES = ("author", "editor", "translator")
+               "foreword": "foreword by", "afterword": "afterword by", "preface": "preface by",
+               "introduction": "introduction by", "contributor": "contributor",
+               "series_editor": "series editor"}
+BYLINE_ROLES = ("author", "editor", "translator", "foreword", "afterword", "preface",
+                "introduction")
+LEAD_ROLES = ("author", "editor", "translator")   # whose names stand for "the author"
 _SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "phd", "ph.d.", "dmin", "d.min.",
              "thd", "th.d.", "md", "m.d."}
 
@@ -85,11 +98,12 @@ def creators(front, outline=None):
         return [{"role": c.get("role") or "author", "name": c["name"].strip()} for c in listed]
     if (front or {}).get("author"):
         return [{"role": "author", "name": n} for n in split_names(front["author"])]
-    if outline is not None and getattr(outline, "creators", None):
-        return list(outline.creators)
-    if outline is not None and outline.author:
-        return [{"role": "author", "name": n} for n in split_names(outline.author)]
-    return []
+    found = list(getattr(outline, "creators", None) or []) if outline is not None else []
+    if outline is not None and outline.author and \
+            not any(c["role"] in LEAD_ROLES for c in found):
+        # The author from a title page or style, ahead of a foreword's writer and the like.
+        found = [{"role": "author", "name": n} for n in split_names(outline.author)] + found
+    return found
 
 
 def bylines(people, lang="en"):
@@ -121,7 +135,7 @@ def book_info(outline, front=None, lang="en"):
         by_role.setdefault(c["role"], []).append(c["name"])
     # "The author" where one name is wanted (copyright holder, a running head): the authors,
     # else the editors, else the translators.
-    lead = next((by_role[r] for r in BYLINE_ROLES if by_role.get(r)), [])
+    lead = next((by_role[r] for r in LEAD_ROLES if by_role.get(r)), [])
     info = {
         "half_title": front.get("half_title", True),
         "title": front.get("title") or outline.title,

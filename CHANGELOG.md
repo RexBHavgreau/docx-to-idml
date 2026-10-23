@@ -6,9 +6,11 @@
   title, subtitle, short title; contributors; series and number in the series, volume and
   number of volumes, edition, publisher, place, copyright year and holder, ISBNs, call number
   (blank: no line), credits, printed in. Contributors are a list in title-page order, each an
-  author, editor, translator, contributor or series editor (Add, Change, Remove, Move up,
-  Move down). The title page has a byline per role in that order: the authors' names, "Edited
-  by ...", "Translated by ..." (Chicago style: "A, B, and C"); the wording comes from the
+  author, editor, translator, writer of the foreword, afterword, preface or introduction,
+  contributor or series editor (Add, Change, Remove, Move up, Move down). The title page has
+  a byline per role in that order: the authors' names, "Edited by ...", "Translated by ...",
+  "With a foreword by ..." (afterword, preface, introduction likewise; Chicago style: "A, B,
+  and C"); a unit titled "Foreword by ..." in the manuscript fills that role; the wording comes from the
   book's language (English, and Spanish, so other languages can be added). The copyright
   holder and the "author" running head use the authors, else the editors. The series goes on
   the half-title, the volume ("Volume 2 of 3") on the title page, the call number on the

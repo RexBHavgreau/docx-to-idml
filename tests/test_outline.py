@@ -307,6 +307,9 @@ def test_front_matter_files_by_formatting():
     # title repeated at the top of the foreword is left out there.
     assert out.title == "A Theology of Soul Care: Essays in Biblical Counseling"
     assert out.author == "Nicolas Ellen and Josh Stephens"
+    assert out.creators == [{"role": "editor", "name": "Nicolas Ellen"},
+                            {"role": "editor", "name": "Josh Stephens"},
+                            {"role": "foreword", "name": "Lance Quinn"}]   # "Foreword by ..."
     fw = docs[2]
     assert sm.paragraph_mapping(fw, fw.paragraphs[0]).role == "skip"
     assert out.copyright_found

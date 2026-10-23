@@ -357,14 +357,16 @@ def test_contributors_in_order():
         app.fill_front()
         _wait(app, root)
         assert app.creators == [{"role": "editor", "name": "Nicolas Ellen"},
-                                {"role": "editor", "name": "Josh Stephens"}]
+                                {"role": "editor", "name": "Josh Stephens"},
+                                {"role": "foreword", "name": "Lance Quinn"}]
         app.creator_role.set("translator")
         app.creator_name.set("Ana Traductora")
         app.add_creator()
-        app.creator_tree.selection_set("2")
+        app.creator_tree.selection_set("3")
+        app.move_creator(-1)
         app.move_creator(-1)
         assert [c["name"] for c in app.creators] == ["Nicolas Ellen", "Ana Traductora",
-                                                     "Josh Stephens"]
+                                                     "Josh Stephens", "Lance Quinn"]
         app._forms_to_book()
         assert app.book.settings["front"]["creators"][1] == {"role": "translator",
                                                              "name": "Ana Traductora"}
