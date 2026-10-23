@@ -126,7 +126,6 @@ class Unit:
     detected_by: str
     words: int = 0
     note_refs: int = 0
-    endnote_refs: int = 0
     subheads: list = field(default_factory=list)   # first-level section titles
     page_break_before: bool = True   # starts at a section break or at the top of a file
 
@@ -405,7 +404,6 @@ def _fill(unit, fo, paras):
             continue
         unit.words += _word_count(p.text)
         unit.note_refs += p.footnotes
-        unit.endnote_refs += p.endnotes
         m = fo.mapping(p)
         if m.role == "heading" and m.level == 1 and p.text.strip():
             unit.subheads.append(" ".join(p.text.split()))

@@ -77,64 +77,33 @@ Result: **works**, **partly** (say what differs) or **lost**.
 
 DesignCraft is checked later by script (its CLI exports each page as PNG).
 
-## Keeping them
+## What is kept here
 
-Put the `.idml` files (and `images/`) in `reference/idml/` in this repository. They are the
-standard the generator is compared against. Check each one with
-`python tools/idml_check.py reference/idml/*.idml` (structure and Adobe's schema), and
-summarize one with `python tools/idml_inspect.py`. The `.indd` and PDFs can stay on your machine.
+Only what the tests and tools use:
 
-## Footnote variants (October 21)
+- `idml/*.idml`: the thirteen reference files as InDesign 2026 wrote them. The tests validate
+  them all (a check on the checker), compare the generator's footnotes with 01 and read styles
+  from 12; `tools/make_base.py` builds the generator's base from 01 and 11. Rebuild them with
+  `make_reference_files.jsx` for a new InDesign version, then rerun `tools/make_base.py`.
+- `manuscript/`: the sample manuscript (`tools/make_sample_book.py`), used by the window's tests.
 
-Affinity mishandles the footnotes in 01 even though the IDML is clean: body text after a
-callout shows "Footnote Reference", note 1 loses its formatting at the italic, and later notes
-lose the Footnote style. To find the structure Affinity reads correctly,
-`python tools/make_footnote_variants.py` makes fifteen variants of 01 in `reference/variants/`,
-each changing one thing (all pass the schema):
+Not kept (removed October 23, still in the git history before that date): the `.indd` files and
+InDesign PDFs, the script's log, the fifteen footnote variants and the tool that made them,
+and the generator's output files. `tools/make_generated_files.py` and
+`tools/make_sample_book.py` write those to `reference/generated/` (ignored by git) when they
+are wanted for opening in InDesign or Affinity.
 
-| File | What changes | Affinity: body text after callouts plain? | Note 1 right through the italic? | Notes 2-3 keep Footnote style or look right? | Notes |
-|---|---|---|---|---|---|
-| fn-0-base | Nothing (01 as InDesign wrote it) | | | | |
-| fn-a-plain-callout | Callout runs have no character style; the marker style is left to the footnote options | | | | |
-| fn-b-local-superscript | Callouts plain with local superscript; no marker style in the options (the Assumption article's pattern) | | | | |
-| fn-c-note-formatting | Note text also carries the Footnote style's settings (size, indent, font) directly | | | **Formatting kept; only note 1 keeps the style name "Footnote"** | |
-| fn-d-note-local-italic | Italic inside notes as local formatting, not the Italic style | | | | |
-| fn-e-all | b + c + d together | | | **Formatting kept; only note 1 keeps the style name "Footnote"** | |
-| fn-f-note-break | Each note paragraph ends with a paragraph break (InDesign writes none) | | | | |
-| fn-g-renamed-styles | Note styles renamed "Note Text" and "Note Callout" (in case Affinity's own "Footnote" style takes over) | | | | |
-| fn-h-renamed-break | f + g together | | | | |
-| fn-i-split-number | The footnote number and separator in a text run of their own, so every note has at least two runs | | | | |
-| fn-j-split-plain-callout | i + callout runs with no character style | | | | |
-| fn-k-split-no-italic | i, with no character style anywhere in the notes (note 1's italic made plain) | | | | |
-| fn-l-split-local-italic | i, with italic in notes as local formatting instead of the Italic style | | | | |
-| fn-m-split-formatting | i, plus the Footnote style's font, size, leading and indent written directly on all note text | | | | |
-| fn-n-split-root-arno10 | Diagnostic: i, with the root style "[No paragraph style]" changed from Minion Pro 12 pt to Arno Pro 10 pt | | | | |
+## Footnotes: what the variants found (October 21)
 
-For each: open in Affinity, click into the body text after the first callout and look at the
-character style; click into notes 1, 2 and 3 and look at the paragraph style and size (9 pt);
-check that the callout numbers are superscript and the notes still restart at 1 in chapter two.
+Affinity mishandled the footnotes in 01 though the IDML was clean. Fifteen variants of 01,
+each changing one thing, found the cause and the fix:
 
-**Finding (October 21):** in both 01 and the Assumption article, Affinity read a note as a proper
-footnote (settings available, style applied) only when the note's text had two or more text
-runs (e.g. it contained italic); notes written as a single run were broken. fn-i and fn-j test
-the workaround: the number in its own run. Check every note: settings available, Footnote style
-shown, and a change to the document-wide footnote style reaching all notes.
-
-**Result (October 21):** fn-m (number in its own run, Footnote settings also written on the note
-text) works in Affinity and InDesign, and editing the Footnote style reaches every note in both.
-The generator writes footnotes that way. fn-n confirmed the cause of the rest: Affinity lays the
-root style `[No paragraph style]` over note text.
-
-### Footnote rule and spacing
-
-| File | Settings | InDesign | Affinity |
-|---|---|---|---|
-| fn-o-rule-spaced | Rule above the notes and above continued notes; 12 pt above the notes; first baseline at least 16 pt below the rule | Works | Works |
-| fn-p-space-only | No rules; 12 pt between body text and notes | Works | Works |
-| fn-q-continuation-rule | Rule only above the note continued onto page 2; 12 pt above the notes | Works | Works |
-
-Both rules are now 1 inch (the continuation rule was first the full text width).
-
-Check: the space between body text and rule (or notes), the space between rule and note text,
-whether the continuation rule appears only on page 2 (the long note 3 runs over), and whether
-Affinity shows the same.
+- Affinity reads a note as a proper footnote only when its text has two or more runs; notes
+  written as a single run broke. The fix: the footnote number and separator in a run of their
+  own.
+- Affinity lays the root style `[No paragraph style]` over note text, so the Footnote style's
+  font, size, leading and indent are also written on every note run.
+- That structure (variant "fn-m") works in Affinity and InDesign, and editing the Footnote
+  style still reaches every note in both. The generator writes footnotes that way.
+- Rules and spacing (variants o, p, q) work in both programs: a rule above the notes and/or
+  above continued notes (1 inch), 12 pt between the text and the notes.

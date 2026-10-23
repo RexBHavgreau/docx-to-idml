@@ -19,7 +19,12 @@
   the inside unless you set it so.
 - The running heads' style can be set in the Running Heads tab: small caps, all caps or as
   typed; italic; size; letter-spacing; font.
-- Profile version 6 (line length, running-head style); saved profiles are upgraded.
+- Profile version 6 (line length, running-head style); saved profiles are upgraded. Two
+  settings that did nothing are dropped (OpenType small caps; endnotes: "ask").
+- Preflight reports tables inside tables: their text is kept in the outer table's cell, but
+  the inner table's rows and columns are not (they went unreported before).
+- Housekeeping: unused code removed; the reference folder keeps only what the tests and tools
+  use (the InDesign files, PDFs and footnote experiments are in the history).
 - Fixed: when a chapter ran longer than estimated, InDesign added one page, which pushed
   the next chapter's opening page (B-Opener) onto a left-hand page; the chapter title then
   jumped to the following right-hand page, which had the A-Body master. InDesign now adds

@@ -14,7 +14,6 @@ Title page, front matter, parts and the first chapter open on a recto; later cha
 recto or the next page, as the profile says. Blank versos get the E-Blank master.
 """
 
-import math
 from dataclasses import dataclass, field
 
 # KDP paperback: minimum inside margin (inches) by page count, up to the page count given.
@@ -172,10 +171,6 @@ def page_count_notes(pages):
                          % (pages, limit, kdp_gutter(limit) / 72, limit,
                             kdp_gutter(limit + 1) / 72))
     return notes
-
-
-def ceil_pages(height, text_height):
-    return max(1, math.ceil(height / text_height))
 
 
 # Leading as a share of the body size, for tight, standard and open setting (at 11 pt about

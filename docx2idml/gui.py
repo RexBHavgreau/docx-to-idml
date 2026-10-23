@@ -20,9 +20,9 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from . import APP_NAME, __version__, appsettings, updates
+from . import __version__, appsettings, updates
 from . import profile as profiles
-from .book import Book, collect
+from .book import Book
 from .export import TRIMS, ExportError, export
 from .outline import KIND_LABELS, KINDS, kind_key
 from .stylemap import ROLES
@@ -522,8 +522,7 @@ class App:
                           ("Move to top", lambda: self.move("top")),
                           ("Move to bottom", lambda: self.move("bottom")), (None, None),
                           ("Sort by filename", self.sort_files),
-                          ("Run preflight", self.run_preflight),
-                          ("Map styles...", self.open_mapping)):
+                          ("Run preflight", self.run_preflight)):
             if text is None:
                 ttk.Separator(btns).pack(fill="x", pady=6)
             else:
@@ -1187,10 +1186,6 @@ class App:
             self.status.set("Preflight done: %d warning%s." % (
                 len(rep.warnings), "" if len(rep.warnings) == 1 else "s"))
         self._run(lambda: preflight(files, prof), done, "Reading the manuscript...")
-
-    def open_mapping(self):
-        """The Style Map tab (reading the manuscript first if needed)."""
-        self._need_report(lambda: self.tabs.select(self.styles_tab))
 
     def mapping_changed(self, n):
         """After the mapping changed: read the manuscript again with it (the outline depends

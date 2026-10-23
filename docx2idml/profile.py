@@ -66,14 +66,12 @@ DEFAULT_PROFILE = {
         "space_between": 3,            # points between notes
         "rule_length": 72,             # points (1 inch), for both rules
     },
-    "endnotes": "convert",             # convert to footnotes, or ask
     "front_matter": {"language": "en", "contents_depth": "chapters"},
     "notices": [],                     # the user's own notice library: {"name", "text"}
     "typography": {
         "paragraph_composer": True,
         "optical_margins": True,
         "hyphenation": True,
-        "small_caps_opentype": True,
         "ligatures": True,
         "oldstyle_figures": True,
         "balance_ragged_headings": True,
@@ -162,7 +160,11 @@ def _from_4(data):
 
 def _from_5(data):
     """Version 5: the measure was set for 65 characters (now 30 times the type size); the
-    running heads' style was fixed (small caps, tracked 20)."""
+    running heads' style was fixed (small caps, tracked 20). Two settings nothing used are
+    dropped: typography.small_caps_opentype and endnotes (endnotes are always converted)."""
+    data.pop("endnotes", None)
+    if isinstance(data.get("typography"), dict):
+        data["typography"].pop("small_caps_opentype", None)
     data.setdefault("page", {}).setdefault("measure", 30)
     data.setdefault("running_heads", {}).setdefault("style", {
         "case": "small_caps", "italic": False, "size": None, "tracking": 20, "font": None})

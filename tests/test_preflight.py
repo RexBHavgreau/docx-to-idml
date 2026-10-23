@@ -11,7 +11,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from docx_builder import (endnote_ref, field, footnote_ref, make_docx, para, run, run_tests,
+from docx_builder import (table, endnote_ref, field, footnote_ref, make_docx, para, run, run_tests,
                           textbox)
 from docx2idml import profile as profiles
 from docx2idml.book import Book, apply_saved_order, collect, natural_sort
@@ -75,6 +75,17 @@ def test_report():
     assert "Early Chapter" in text and "Needs attention" in text and "Hebrew:" in text
     data = json.loads(rep.to_json())
     assert data["outline"]["units"][0]["title"] == "Early Chapter"
+
+
+def test_nested_table_reported():
+    """A table inside a table keeps its text in the outer cell; preflight says the inner
+    table's rows and columns are lost (nothing disappears silently)."""
+    inner = table([["inner a", "inner b"]])
+    path = make_docx(os.path.join(TMP, "nested.docx"), [
+        para("Chapter", "Heading1"),
+        table([["outer", inner + para("")]])])
+    rep = preflight([path])
+    assert any("1 table inside other tables" in w for w in rep.warnings), rep.warnings
 
 
 def test_bad_file_reported():

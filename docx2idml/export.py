@@ -2,11 +2,11 @@
 
     files -> docx_reader (styles, outline) + content (text) -> Document -> writer.export_book
 
-What it does now:
+What it does:
 - Styles: a book set (Body, Body First, Chapter Title, Heading A-C, Block Quote, Footnote...)
-  with the profile's fonts, falling back to Word's; custom Word styles kept under their own
-  names, based on their role's style, carrying what Word sets on them (alignment, indents,
-  spacing, italic/bold, size relative to the body).
+  with the profile's fonts, else installed book fonts (never Word's). Word's paragraph styles
+  give names and roles only; a custom style with no book counterpart is kept under its own
+  name with its distinct look in book terms (_word_look), unless the style map says "book".
 - Text: italic, bold, small caps, capitals, superscript, subscript, underline and strikethrough
   become character styles (Italic, Bold, Small Caps...), so they survive a change of font;
   Word's own character styles are mapped by the style map. Other direct formatting (fonts,
@@ -18,8 +18,10 @@ What it does now:
 - Tables (Book Table style; header rows; merged cells across), images (JPEG, PNG; others are
   listed and left as a placeholder line), list and heading numbers as static text.
 - One story per unit of the outline, each on new pages, in one section per unit so footnote
-  numbers restart per chapter. Pages are a rough estimate with a page to spare; trim, margins,
-  masters and recto rules are step 5, running heads and front matter step 6.
+  numbers restart per chapter. Pages are estimated (spare pages as the profile says); the
+  geometry comes from layout.py, front matter and running heads from frontmatter.py and
+  _front_matter / _masters here. Hebrew and Greek in generated text get their styles too
+  (_generated_scripts).
 """
 
 import math
@@ -527,15 +529,6 @@ class Exporter:
     def _resolved_attrs(self, name):
         attrs, _font, _lead = self.doc.resolved(name)
         return attrs
-
-    def _word_style(self, name):
-        """(DocxFile, style id) of the first file defining this Word style name."""
-        key = norm(name)
-        for d in self.docs:
-            for sid, st in d.styles.items():
-                if norm(st.name) == key:
-                    return d, sid
-        return None, None
 
     def _custom_paragraph_style(self, mapping, docx, style_id):
         """A Word style kept under its own name, based on its parent's IDML style (or its
