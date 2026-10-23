@@ -2,6 +2,11 @@
 
 ## 0.4.1 (not yet released)
 
+- Fixed: when a chapter ran longer than estimated, InDesign added one page, which pushed
+  the next chapter's opening page (B-Opener) onto a left-hand page; the chapter title then
+  jumped to the following right-hand page, which had the A-Body master. InDesign now adds
+  pages two at a time (Smart Text Reflow's "Preserve Facing-Page Spreads"), so openers stay
+  on right-hand pages with their master.
 - Fixed: Hebrew and Greek in text the program writes itself (the book's title on the
   half-title and title pages, the title or author in a running head, a part's title) were set
   in the style's own font. They now get the Hebrew and Greek styles and fonts, as in the

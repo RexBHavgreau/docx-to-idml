@@ -287,6 +287,11 @@ class Writer:
             for k in ("Top", "Bottom", "OutsideOrRight"):
                 dp.set("DocumentBleed%sOffset" % k, _num(doc.bleed))
             dp.set("DocumentBleedInsideOrLeftOffset", "0")
+        # Smart Text Reflow adds pages when a story runs past its estimate. In a facing
+        # document it adds them two at a time, or one extra page would turn every later recto
+        # (and its chapter opener master) into a verso.
+        p.find("TextPreference").set("PreserveFacingPageSpreads",
+                                     "true" if doc.facing else "false")
         # PagesPerDocument stays as InDesign writes it (1): it is the page count for a new
         # document, not this one's. Set to the real count, InDesign adds that many pages before
         # the file's own when opening it.

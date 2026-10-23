@@ -83,6 +83,9 @@ def test_pages_per_document_stays_one():
     path = write_idml(g01_footnotes(), os.path.join(TMP, "ppd.idml"))
     prefs = etree.fromstring(zipfile.ZipFile(path).read("Resources/Preferences.xml"))
     assert prefs.find("DocumentPreference").get("PagesPerDocument") == "1"
+    # Pages added by Smart Text Reflow come two at a time: rectos (and openers) stay rectos.
+    tp = prefs.find("TextPreference")
+    assert tp.get("PreserveFacingPageSpreads") == "true" and tp.get("SmartTextReflow") == "true"
 
 
 def test_g01_validates():

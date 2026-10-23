@@ -78,6 +78,9 @@ keep it up to date when decisions change.
   `<Document>`; without it InDesign says it "may not support the file format". The schema
   doesn't require it; `idml_check.py` does. Write parts with `writer.serialize()` (whole
   document, double-quoted XML declaration), never `tostring(root)`, which drops the line.
+- `TextPreference PreserveFacingPageSpreads="true"` in facing documents (0.4.1): Smart Text
+  Reflow adding one page shifted every later opener onto a verso (Beaux, a real paper).
+  DeleteEmptyPages stays false, so spare pages survive.
 - `DocumentPreference PagesPerDocument` stays 1 (the new-document default InDesign writes); set
   to the real page count, InDesign adds that many pages at the start when opening the file.
 - In facing documents a page's side follows its number (odd = recto), as in InDesign; a recto
