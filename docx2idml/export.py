@@ -267,6 +267,7 @@ class Exporter:
             if layout.kdp_band(new) == layout.kdp_band(pages):
                 break
             pages = new
+        self._generated_scripts()
         self.report += self.geo.notes + layout.page_count_notes(self.doc.page_count)
         self._finish_styles()
         return self.doc
@@ -842,28 +843,62 @@ class Exporter:
             if cr.image is not None or not cr.text:
                 continue
             style, local = self._run_attrs(cr, para_style, docx, note)
-            for script, part in segments(cr.text):
-                if script:
-                    name = "Hebrew" if script == "hebrew" else "Greek"
-                    sattrs = self._char_style(name)
-                    want = dict(local)
-                    if style and style in self.used_char:
-                        for k, v in self.used_char[style].attrs.items():
-                            want.setdefault(k, v)
-                    if script == "hebrew":
-                        want.pop("FontStyle", None)
-                    out.append(Run(part, name, {k: v for k, v in want.items()
-                                                if sattrs.get(k) != v}))
-                else:
-                    out.append(Run(part, style, dict(local)))
-        merged = []
-        for r in out:
-            if merged and r.footnote is None and merged[-1].footnote is None and \
-                    merged[-1].style == r.style and merged[-1].attrs == r.attrs:
-                merged[-1].text += r.text
+            out += self._script_runs(cr.text, style, local)
+        return _merge_runs(out)
+
+    def _script_runs(self, text, style, local):
+        """A run's text split into runs: Hebrew and Greek in their character styles (keeping
+        the run's own style's settings as local ones, except a face for Hebrew)."""
+        out = []
+        for script, part in segments(text):
+            if script:
+                name = "Hebrew" if script == "hebrew" else "Greek"
+                sattrs = self._char_style(name)
+                want = dict(local)
+                if style and style in self.used_char:
+                    for k, v in self.used_char[style].attrs.items():
+                        want.setdefault(k, v)
+                if script == "hebrew":
+                    want.pop("FontStyle", None)
+                out.append(Run(part, name, {k: v for k, v in want.items()
+                                            if sattrs.get(k) != v}))
             else:
-                merged.append(r)
-        return merged
+                out.append(Run(part, style, dict(local)))
+        return out
+
+    def _generated_scripts(self):
+        """Hebrew and Greek in text the program wrote itself (half-title, title and copyright
+        pages, running heads) set as in the manuscript's text: in the Hebrew and Greek
+        styles, and a Hebrew line with the World-Ready composer, right to left when mostly
+        Hebrew. The manuscript's runs are split already and pass through unchanged."""
+        paras = [p for st in self.doc.stories for p in st.paragraphs]
+        paras += [p for m in self.doc.masters for f in m.frames for p in f.paragraphs]
+        for p in paras:
+            if not any(r.text and r.style not in ("Hebrew", "Greek") and
+                       any(is_hebrew(c) or is_greek(c) for c in r.text) for r in p.runs):
+                continue
+            runs = []
+            for r in p.runs:
+                if r.text and r.style not in ("Hebrew", "Greek") and r.footnote is None:
+                    runs += self._script_runs(r.text, r.style, r.attrs)
+                else:
+                    runs.append(r)
+            p.runs = _merge_runs(runs)
+            text = "".join(r.text for r in p.runs if r.text)
+            heb = sum(1 for c in text if is_hebrew(c))
+            if heb:
+                p.attrs["Composer"] = "HL Composer Optyca"
+                if heb > sum(1 for c in text if c.isalpha() and not is_hebrew(c)):
+                    p.attrs["ParagraphDirection"] = "RightToLeftDirection"
+        heads = [s.marker for s in self.doc.sections
+                 if s.marker and any(is_hebrew(c) or is_greek(c) for c in s.marker)]
+        if heads:
+            self.report.append(
+                "Running heads with Hebrew or Greek (%s) are set in the running-head font: "
+                "a running head comes from the section marker, which can't change font. Give "
+                "these chapters a short title in the Running heads tab, or set the running "
+                "head's font in InDesign." % "; ".join("\u201c%s\u201d" % h for h in heads))
+
 
     def _runt_style(self, name):
         """Paragraphs of running text (Body, notes, quotations...), not headings or display."""
@@ -1415,6 +1450,20 @@ class Exporter:
             for k, title in enumerate(parts, 1):
                 doc.masters.append(Master("P%d" % k, "Body",
                                           frames=frames(True, [Run(title)], recto)))
+
+
+def _merge_runs(out):
+    """Neighbouring text runs with the same style and settings as one."""
+    merged = []
+    for r in out:
+        prev = merged[-1] if merged else None
+        if prev and not any((r.footnote, prev.footnote, r.special, prev.special, r.table,
+                             prev.table, r.image, prev.image)) and \
+                prev.style == r.style and prev.attrs == r.attrs:
+            prev.text += r.text
+        else:
+            merged.append(r)
+    return merged
 
 
 def _label_run(text):

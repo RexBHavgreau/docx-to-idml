@@ -187,6 +187,10 @@ keep it up to date when decisions change.
   entries ({"idml", "role", "level", "look"}; a character entry is a name or None for no
   style); choices are `export.BOOK_STYLE_ROLES` plus a style template's styles. Preflight runs
   again after OK, since the outline depends on the map.
+- Hebrew/Greek in generated text (0.4.1): `Exporter._generated_scripts` runs after the
+  build over every story and master frame, splitting runs not yet in the Hebrew/Greek styles
+  (`_script_runs`, the same split as the manuscript's runs). Section markers can't carry a
+  character style; a marker with Hebrew/Greek is reported.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 

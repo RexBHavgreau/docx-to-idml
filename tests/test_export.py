@@ -354,6 +354,35 @@ def test_front_matter_and_heads():
         ex.cleanup()
 
 
+def test_hebrew_in_generated_text():
+    """Hebrew in the book's title gets the Hebrew style on the half-title and title pages and
+    in a running head, as in the manuscript's own headings; a section marker can't, so it's
+    reported."""
+    from idml_check import check
+    from docx2idml.idml.writer import write_idml
+    path = make_docx(os.path.join(TMP, "heb-title.docx"), [
+        para("The " + HEB + " Covenant", "Title"),
+        para("Chapter One: " + HEB, "Heading1"),
+        para("Text of the chapter.")])
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        titles = [p for st in doc.stories for p in st.paragraphs
+                  if p.style in ("Half Title", "Book Title", "Chapter Title")]
+        assert len(titles) == 3
+        for p in titles:
+            assert (HEB, "Hebrew") in [(r.text, r.style) for r in p.runs], p
+            assert p.attrs.get("Composer") == "HL Composer Optyca"
+        a = [m for m in doc.masters if m.name == "A-Body"][0]
+        vhead = [f for f in a.frames if f.key == "vhead"][0].paragraphs[0]
+        assert [(r.text, r.style) for r in vhead.runs] == [
+            ("The ", None), (HEB, "Hebrew"), (" Covenant", None)]
+        assert any("section marker" in line and HEB in line for line in ex.report)
+        assert not check(write_idml(doc, os.path.join(TMP, "heb-title.idml")))
+    finally:
+        ex.cleanup()
+
+
 def test_short_title_flagged_and_part_heads():
     from docx2idml.outline import Unit
     from docx2idml.export import Block

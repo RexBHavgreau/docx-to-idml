@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1 (not yet released)
+
+- Fixed: Hebrew and Greek in text the program writes itself (the book's title on the
+  half-title and title pages, the title or author in a running head, a part's title) were set
+  in the style's own font. They now get the Hebrew and Greek styles and fonts, as in the
+  manuscript's text, and a line with Hebrew uses the World-Ready composer. Running heads taken
+  from the chapter title can't change font partway; when one has Hebrew or Greek, the report
+  says so (give the chapter a short title in the Running heads tab).
+
 ## 0.4.0 (October 22, 2026)
 
 - Style mapping in one window (as InDesign's style mapping when placing a Word file): after
