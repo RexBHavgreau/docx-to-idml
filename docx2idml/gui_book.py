@@ -231,6 +231,11 @@ class BookTabMixin:
             if value and not front.get(key):
                 front[key] = value
                 filled.append(key)
+        details = getattr(o, "details", {}) or {}
+        for key, value in details.items():
+            if value and not front.get(key):
+                front[key] = value
+                filled.append(key)
         found_people = creators({}, o)
         if found_people and not self.creators:
             self.creators = found_people
@@ -250,4 +255,10 @@ class BookTabMixin:
                 found.append("%s: \u201c%s\u201d, from %s (%s)" % (label, value, source, state))
             else:
                 found.append("%s: not found in the manuscript" % label)
+        labels = {key: label for key, label, _k in PUBLICATION_FIELDS}
+        if details:
+            found.append("from the copyright page: " + ", ".join(
+                "%s %s" % (labels.get(k, k).split(" (")[0].lower(),
+                           "filled in" if k in filled else "already set, kept")
+                for k in details))
         self.front_sources.set("Found in the manuscript \u2014 " + "; ".join(found) + ".")

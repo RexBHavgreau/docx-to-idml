@@ -24,6 +24,7 @@ Contributors and series editors don't go on the title page.
 """
 
 import datetime
+import re
 import math
 
 from .idml.model import Paragraph, Run
@@ -68,7 +69,6 @@ _SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "phd", "ph.d.", "dmin"
 def split_names(text):
     """Names in a line: "Nicolas Ellen, Josh Stephens, and Brett Williams" -> three names;
     "John Smith, Jr." stays one."""
-    import re
     parts = [x.strip() for x in re.split(r",\s*(?:and\s+|&\s*)?|\s+(?:and|&|y)\s+|;\s*",
                                            text or "") if x and x.strip()]
     names = []
@@ -78,6 +78,57 @@ def split_names(text):
         else:
             names.append(part)
     return names
+
+
+_NOTICE = re.compile(r"scripture|bible|quotations?|used by permission|version", re.I)
+_HOLDER = re.compile(r"^(?:copyright\s*)?(?:\u00a9|\(c\)|copyright)\s*((?:\d{4}[,\s\u2013-]*)+)"
+                     r"(?:by\s+|por\s+)?(.+?)\.?$", re.I)
+_PUBLISHED = re.compile(r"^(?:published|publicado)\s+(?:by|por)\s+(.+?)\.?$", re.I)
+_ISBN = re.compile(r"\bisbn(?:-1[03])?:?\s*([\dxX][\d\s-]{8,}[\dxX])\s*(\(([^)]*)\))?", re.I)
+_PRINTED = re.compile(r"^(?:printed|impreso)\s+(?:in|en)\s+(.+?)\.?$", re.I)
+_EDITION = re.compile(r"^(first|second|third|fourth|fifth|\d+(?:st|nd|rd|th))\s+"
+                      r"(edition|printing)\b.*$|^(primera|segunda|tercera)\s+edici[oó]n\b.*$",
+                      re.I)
+_WEB = re.compile(r"^(?:https?://|www\.)\S+$", re.I)
+_EBOOK = re.compile(r"e-?book|epub|kindle|digital|electr[oó]nico|pdf", re.I)
+
+
+def parse_copyright(lines):
+    """Book details read from a copyright page's lines: year and holder ("Copyright \u00a9 2026
+    by X"; notices for Bible versions are passed over), publisher ("Published by X"), the
+    publisher's web address, ISBNs (print, ebook by their labels), "Printed in ...", an edition
+    or printing line. Returns {field: value} with the fields of Book Details."""
+    out = {}
+    isbns = []
+    for raw in lines:
+        line = " ".join((raw or "").split())
+        if not line:
+            continue
+        m = _HOLDER.match(line)
+        if m and "year" not in out and not _NOTICE.search(line):
+            out["year"] = m.group(1).strip(" ,\u2013-")
+            holder = re.split(r"\.\s+all rights|\.\s+todos los", m.group(2), flags=re.I)[0]
+            out["holder"] = holder.strip(" .")
+            continue
+        for m in _ISBN.finditer(line):
+            isbns.append((re.sub(r"\s", "", m.group(1)), m.group(3) or ""))
+        m = _PUBLISHED.match(line)
+        if m and "publisher" not in out:
+            out["publisher"] = m.group(1).strip()
+        m = _PRINTED.match(line)
+        if m and "printed_in" not in out:
+            out["printed_in"] = m.group(1).strip()
+        if _EDITION.match(line) and "edition" not in out:
+            out["edition"] = line
+        if _WEB.match(line) and "publisher_address" not in out:
+            out["publisher_address"] = line
+    for number, label in isbns:
+        key = "isbn_ebook" if _EBOOK.search(label) else "isbn_print"
+        if key in out:
+            key = "isbn_ebook" if key == "isbn_print" else None
+        if key and key not in out:
+            out[key] = number
+    return out
 
 
 def join_names(names, lang="en"):
@@ -136,6 +187,11 @@ def book_info(outline, front=None, lang="en"):
     # "The author" where one name is wanted (copyright holder, a running head): the authors,
     # else the editors, else the translators.
     lead = next((by_role[r] for r in LEAD_ROLES if by_role.get(r)), [])
+    found = getattr(outline, "details", None) or {}
+
+    def got(key):
+        """Book Details' value, else what the manuscript's copyright page says."""
+        return front.get(key) or found.get(key) or ""
     info = {
         "half_title": front.get("half_title", True),
         "title": front.get("title") or outline.title,
@@ -149,15 +205,15 @@ def book_info(outline, front=None, lang="en"):
         "volumes": front.get("volumes") or "",
         "call_number": front.get("call_number") or "",
         "short_title": front.get("short_title"),
-        "publisher": front.get("publisher") or "",
-        "publisher_address": front.get("publisher_address") or "",
-        "year": front.get("year") or datetime.date.today().year,
-        "holder": front.get("holder"),
-        "edition": front.get("edition") or "",
-        "isbn_print": front.get("isbn_print") or "",
-        "isbn_ebook": front.get("isbn_ebook") or "",
+        "publisher": got("publisher"),
+        "publisher_address": got("publisher_address"),
+        "year": got("year") or datetime.date.today().year,
+        "holder": got("holder") or None,
+        "edition": got("edition"),
+        "isbn_print": got("isbn_print"),
+        "isbn_ebook": got("isbn_ebook"),
         "credits": front.get("credits") or "",
-        "printed_in": front.get("printed_in") or "",
+        "printed_in": got("printed_in"),
         "notices": list(front.get("notices") or []),
         "contents": front.get("contents", True),
         "contents_pages": front.get("contents_pages"),

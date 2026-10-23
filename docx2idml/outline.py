@@ -157,7 +157,8 @@ class Outline:
     subtitle_source: str = None
     author: str = None
     author_source: str = None
-    creators: list = field(default_factory=list)   # [{"role", "name"}] when the role is known
+    creators: list = field(default_factory=list)
+    details: dict = field(default_factory=dict)    # read from a copyright page (frontmatter fields)   # [{"role", "name"}] when the role is known
     file_creator: str = None        # docProps creator: usually whoever made the file
     copyright_found: bool = False
     toc_field: bool = False         # a Word contents field (it will be replaced)
@@ -426,6 +427,7 @@ def _copyright_file(out, fo, units):
     u.kind, u.type = "display", "copyright"
     u.detected_by += " (copyright lines: the book's copyright page)"
     out.copyright_found = True
+    _read_copyright(out, [p.text for p in paras])
     for p in paras:
         line = " ".join(p.text.split())
         m = _EDITED.match(line)
@@ -490,16 +492,28 @@ def _fill(unit, fo, paras):
             unit.subheads.append(" ".join(p.text.split()))
 
 
+def _read_copyright(out, lines):
+    """Book details from copyright lines, keeping what was found first."""
+    from .frontmatter import parse_copyright
+    for key, value in parse_copyright(lines).items():
+        out.details.setdefault(key, value)
+
+
 def _scan_opening(out, paras):
+    lines = []
     for p in paras:
         text = " ".join(p.text.split())
         if not text:
             continue
-        if "©" in text or re.match(r"^copyright\b", text, re.I) or "derechos reservados" in text.lower():
+        if lines or "©" in text or re.match(r"^copyright\b", text, re.I) or \
+                "derechos reservados" in text.lower():
             out.copyright_found = True
+            lines.append(text)          # from the copyright line on: the copyright lines
         m = _BY.match(text)
         if m and not out.author and len(text) < 80:
             out.author, out.author_source = m.group(2).strip(), "title page text"
+    if lines:
+        _read_copyright(out, lines)
 
 
 def _check_outline(out):

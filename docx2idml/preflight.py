@@ -401,6 +401,12 @@ def render_text(rep):
     if out.file_creator:
         add("            (the file's author property says %s, but that is usually whoever "
             "made the file)" % out.file_creator)
+    if getattr(out, "details", None):
+        names = {"year": "year", "holder": "holder", "publisher": "publisher",
+                 "publisher_address": "place", "isbn_print": "ISBN (print)",
+                 "isbn_ebook": "ISBN (ebook)", "printed_in": "printed in", "edition": "edition"}
+        add("  Copyright page (the manuscript's, used as it is): %s" % "; ".join(
+            "%s %s" % (names.get(k, k), v) for k, v in out.details.items()))
     add("  Words:    %d in the text" % out.words)
     if rep.page:
         pg = rep.page

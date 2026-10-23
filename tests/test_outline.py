@@ -313,6 +313,28 @@ def test_front_matter_files_by_formatting():
     fw = docs[2]
     assert sm.paragraph_mapping(fw, fw.paragraphs[0]).role == "skip"
     assert out.copyright_found
+    # The copyright page's details, for Book Details (notices for Bible versions passed over).
+    assert out.details == {"year": "2026", "holder": "A Seminary",
+                           "isbn_print": "978-1-934952-94-8"}
+
+
+def test_copyright_lines_read():
+    from docx2idml.frontmatter import parse_copyright
+    got = parse_copyright([
+        "A Theology of Soul Care", "Copyright \u00a9 2026 by Central Baptist Seminary",
+        "Published by Kress Biblical Resources", "www.kressbiblical.com",
+        "All rights reserved.", "ISBN: 978-1-934952-94-8 (paperback)",
+        "ISBN 978-1-934952-95-5 (ebook)",
+        "Scripture quotations marked NKJV are taken from the New King James Version\u00ae. "
+        "Copyright \u00a9 1982 by Thomas Nelson. Used by permission.",
+        "Printed in the United States of America", "First edition"])
+    assert got == {"year": "2026", "holder": "Central Baptist Seminary",
+                   "publisher": "Kress Biblical Resources",
+                   "publisher_address": "www.kressbiblical.com",
+                   "isbn_print": "978-1-934952-94-8", "isbn_ebook": "978-1-934952-95-5",
+                   "printed_in": "the United States of America", "edition": "First edition"}
+    assert parse_copyright(["\u00a9 2019 Jane Smith. All rights reserved."]) == {
+        "year": "2019", "holder": "Jane Smith"}
 
 
 def test_styled_manuscript_not_guessed():

@@ -367,6 +367,11 @@ def test_contributors_in_order():
         app.move_creator(-1)
         assert [c["name"] for c in app.creators] == ["Nicolas Ellen", "Ana Traductora",
                                                      "Josh Stephens", "Lance Quinn"]
+        # The copyright page's details fill the empty fields.
+        assert app.front_form.vars[("year",)][0].get() == "2026"
+        assert app.front_form.vars[("holder",)][0].get() == "A Seminary"
+        assert app.front_form.vars[("isbn_print",)][0].get() == "978-1-934952-94-8"
+        assert "from the copyright page: copyright year filled in" in app.front_sources.get()
         app._forms_to_book()
         assert app.book.settings["front"]["creators"][1] == {"role": "translator",
                                                              "name": "Ana Traductora"}

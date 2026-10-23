@@ -247,7 +247,10 @@ keep it up to date when decisions change.
   Not in single-file books (there the first heading is the first chapter).
 - Front matter files (0.6.0, Beaux's edited volume): `outline._copyright_file` makes a short
   file with 2+ copyright marks (©, all rights reserved, ISBN) a display/copyright unit, used
-  instead of the generated page; "Edited by ..." gives the author. A whole-file unit whose
+  instead of the generated page; "Edited by ..." gives the editors; `frontmatter.
+  parse_copyright` reads year/holder, publisher, web address, ISBNs, printed in, edition into
+  `outline.details` (also from title-page copyright lines), used by `book_info` for empty
+  fields and by "Fill from the manuscript". A whole-file unit whose
   first line isn't a title gets `outline.file_title(name)`. classify reads "Foreword by X" as a
   foreword; "contributors" is front matter.
 - Book details (Beaux, 0.6.0): `front` is a bibliographic record (Zotero's Book fields, our
