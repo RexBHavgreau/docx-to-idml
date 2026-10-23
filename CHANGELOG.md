@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.7.0 (not yet released)
+## 0.7.0 (October 23, 2026)
 
 - Running Head Style is in two parts. Case: As typed, Title Case (Chicago: articles,
   prepositions and "and, but, for, or, nor" lower case unless first or last) or Sentence case

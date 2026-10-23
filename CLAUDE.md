@@ -374,6 +374,10 @@ writes one.
 - 0.2.0 additions not yet opened: StartParagraph NextOddPage on Chapter Title (does Affinity
   keep it, and does InDesign leave a title already at the top of a recto where it is?); a
   style template's styles in InDesign and Affinity.
+- 0.7.0: the opener drop tested in both programs by o01 (rule in InDesign; Space Before in
+  Affinity with "Only at column top"); not yet a full export opened in either, nor the
+  rule's offset matching the old position. Title/sentence case heads, the front-page
+  preview, the points fields and the window height not yet seen on Windows.
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).
 - Scribus 1.6.1 (tried here October 23, headless, `apt install scribus`): opens our IDML with
   pages, masters, running heads, folios, sections, images, tables and justification; but every
