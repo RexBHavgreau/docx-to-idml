@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 (not yet released)
+
+- Page Margins: the line length field says it's a multiple of the type size, and shows what
+  that comes to in inches and picas (30 at 11 pt: 4.58 in, 27.5 picas); the note under the
+  margins gives it too, with the characters per line.
+
 ## 0.5.0 (October 23, 2026)
 
 - The Style Map tab is now the one view of every style found in the manuscript, with the

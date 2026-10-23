@@ -50,8 +50,8 @@ PROFILE_FIELDS = {
              ["0", "1", "2"]),
         ],
         "Page Margins": [
-            (("page", "measure"), "Line length (times the type size; 30 usual, 20\u201340)",
-             "number", None),
+            (("page", "measure"), "Line length (a multiple of the type size; 30 usual, "
+             "20\u201340)", "number", None),
             (("page", "margins", "top"), "Top margin (in)", "number", None),
             (("page", "margins", "bottom"), "Bottom margin (in)", "number", None),
             (("page", "margins", "inside"), "Inside margin (in)", "number", None),
@@ -733,6 +733,9 @@ class App:
         for side in self.MARGINS:
             lab, text = form.labels[("page", "margins", side)]
             lab.configure(text="%s, calculated %.2f" % (text, g.margins[side] / 72))
+        # What the multiple comes to: 30 x 11 pt = 330 pt = 27.5 picas = 4.58 in.
+        lab, text = form.labels[("page", "measure")]
+        lab.configure(text="%s: %.2f in (%.1f picas)" % (text, g.measure / 72, g.measure / 12))
         from . import fonts
         font = (self.pvar(("fonts", "body")).get() or "").strip() or \
             fonts.book_font()
@@ -740,11 +743,13 @@ class App:
             "%s isn't installed: an average book font" % font
         self.margin_note.set(
             "Calculated margins (in): top %.2f, bottom %.2f, inside %.2f, outside %.2f, for "
-            "about %d pages (%s), %d characters per line at %g pt. Blank margin fields use "
+            "about %d pages (%s). Line length %.2f in (%.1f picas), %d characters per line at "
+            "%g pt. Blank margin fields use "
             "the calculated values, which follow the page count (KDP's inside minimum grows "
             "with it); a value typed in is used as it is."
             % (g.margins["top"] / 72, g.margins["bottom"] / 72, g.margins["inside"] / 72,
-               g.margins["outside"] / 72, pages, basis, round(g.cpl),
+               g.margins["outside"] / 72, pages, basis, g.measure / 72, g.measure / 12,
+               round(g.cpl),
                _num(self.pvar(("body_size",)).get(), "number") or 11))
 
     def _update_leading_note(self, g):

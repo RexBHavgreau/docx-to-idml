@@ -200,6 +200,9 @@ def test_calculated_margins_shown_and_filled():
         assert "calculated" in str(lab.cget("text"))
         note = app.margin_note.get()
         assert note.startswith("Calculated margins (in): top ") and "about 200 pages" in note
+        assert "picas" in note
+        mlab, _t = app._form_of(("page", "measure")).labels[("page", "measure")]
+        assert "picas)" in str(mlab.cget("text"))
         g, _pages, _found = app.calculated()
         # By default the outside margin is never wider than the inside.
         assert g.margins["outside"] <= g.margins["inside"]
