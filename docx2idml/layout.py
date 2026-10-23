@@ -1,9 +1,12 @@
 """Page geometry and pagination (build step 5).
 
-Geometry: the measure is set for about 65 characters of the body font; the margins take the
-rest of the width (inside smaller than outside) and a share of the height (bottom larger than
-top), with floors of 0.5 in and KDP's gutter minimum for the page count. The text height is a
-whole number of body lines.
+Geometry: the measure (line length) is about 30 times the type size (Bringhurst: "usually
+around 30 times the size of the type", 20 to 40 within the expectable range), kept between 45
+and 80 characters of the body font as measured (his copyfitting table in effect: characters
+per line from the font's widths). The margins take the rest of the width, the inside never
+smaller than the outside (binding takes some of it), and a share of the height (bottom larger
+than top), with floors of 0.5 in and KDP's gutter minimum for the page count. The text height
+is a whole number of body lines.
 
 Pagination: display pages (title page...) and front matter in one roman section from i, with
 display pages counted but carrying no folio; the first chapter (or part) starts arabic 1.
@@ -19,10 +22,12 @@ KDP_GUTTER = [(150, 0.375), (300, 0.5), (500, 0.625), (700, 0.75), (828, 0.875)]
 KDP_MAX_PAGES = 828
 KDP_MIN_PAGES = 24
 FLOOR = 36                  # every margin at least 0.5 in
-TARGET_CPL, MIN_CPL = 65, 60
-VERTICAL_SHARE = 0.19       # of the page height, for top and bottom margins together
+MEASURE_EMS = 30            # the measure, in times the type size (Bringhurst)
+MIN_CPL, MAX_CPL = 45, 80   # characters per line the measure is kept within
+TARGET_CPL = 65             # lines of this length take the base leading (longer want more)
+VERTICAL_SHARE = 0.15       # of the page height, for top and bottom margins together
 TOP_SHARE = 0.45            # of that, for the top
-INSIDE_SHARE = 0.4          # of the width left over, for the inside margin
+OUTSIDE_SHARE = 0.42        # of the width left over, for the outside margin
 
 
 def kdp_gutter(pages):
@@ -54,25 +59,25 @@ class Geometry:
     notes: list = field(default_factory=list)
 
 
-def geometry(width, height, size, lead, avg_width, pages, overrides=None):
+def geometry(width, height, size, lead, avg_width, pages, overrides=None, measure_ems=None):
     """Margins (points) for a trim, body size and leading, the body font's average character
-    width (ems) and the estimated page count. overrides: the user's margins in inches."""
+    width (ems) and the estimated page count. overrides: the user's margins in inches.
+    measure_ems: the line length in times the type size (default 30)."""
     overrides = {k: v for k, v in (overrides or {}).items() if v}
     notes = []
     char = size * avg_width
     gutter = max(FLOOR, kdp_gutter(pages))
-    measure = TARGET_CPL * char
+    measure = (measure_ems or MEASURE_EMS) * size
+    measure = min(max(measure, MIN_CPL * char), MAX_CPL * char)
     left_over = width - measure
-    inside = max(gutter, left_over * INSIDE_SHARE)
-    outside = max(FLOOR, left_over - inside)
+    outside = max(FLOOR, left_over * OUTSIDE_SHARE)
+    inside = max(gutter, outside, left_over - outside)
     if inside + outside > left_over:
-        # The floors win: the measure gives way, down to 60 characters.
-        measure = max(MIN_CPL * char, width - inside - outside)
-        if inside + outside + measure > width:
-            measure = width - inside - outside
+        # The floors win: the measure gives way.
+        measure = width - inside - outside
+        if measure < MIN_CPL * char:
             notes.append("The text width is under %d characters per line at %g pt on this trim. "
                          "Choose a smaller type size or a larger trim." % (MIN_CPL, size))
-        outside = width - inside - measure
     if "inside" in overrides:
         inside = _half(overrides["inside"] * 72)
         if inside < kdp_gutter(pages):

@@ -200,6 +200,15 @@ keep it up to date when decisions change.
 - Title page (0.4.1): text above the Title line is endorsements only when
   `outline._endorsement_like` (25+ words, or a quotation/attribution); otherwise it belongs
   to the title page. "author"/"autor" are default style names for the author role.
+- 0.4.1 window: the Style Map tab is `gui.StyleMappingPanel(app, tab)` (no Toplevel, no
+  per-style dialog); `refresh()` after each preflight, `save()` (changed rows into the
+  profile, also from `_forms_to_profile`), `apply()` (save and read again), `reset()`. TOC
+  and TOC Heading styles aren't listed. Profile fields are found with `App.pvar(path)` /
+  `_form_of(path)` (the Page Layout tab has three forms in LabelFrames). Running-head style:
+  profile `running_heads.style` (case, italic, size, tracking, font) ->
+  `Exporter._running_head_style`, form `head_style_form`.
+- Margins (0.4.1): measure = `page.measure` (30) x type size within 45-80 characters;
+  outside 42% of the rest, inside never less than the outside (`layout.geometry`).
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 

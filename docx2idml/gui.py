@@ -35,19 +35,29 @@ LOOKS = {"book": "the book style's", "word": "Word's, in book terms"}
 # IDML file, with Browse), font (a dropdown of installed fonts that can also
 # be typed in; its choices name a script, "hebrew" or "greek", to list only fonts that have it).
 PROFILE_FIELDS = {
-    "Page": [
-        (("page", "trim"), "Trim size", "choice", list(TRIMS) + ["custom"]),
-        (("page", "custom_width"), "Custom width (in)", "number", None),
-        (("page", "custom_height"), "Custom height (in)", "number", None),
-        (("page", "facing"), "Facing pages", "bool", None),
-        (("page", "bleed"), "Bleed (0.125 in)", "bool", None),
-        (("page", "margins", "top"), "Top margin (in)", "number", None),
-        (("page", "margins", "bottom"), "Bottom margin (in)", "number", None),
-        (("page", "margins", "inside"), "Inside margin (in)", "number", None),
-        (("page", "margins", "outside"), "Outside margin (in)", "number", None),
-        (("chapters_open",), "Chapters open on", "choice", ["recto", "next_page"]),
-        (("page", "spare_pages"), "Spare pages after each chapter", "int_choice", ["0", "1", "2"]),
-    ],
+    # The Page Layout tab in three sections.
+    "Page Layout": {
+        "Page Size": [
+            (("page", "trim"), "Trim size", "choice", list(TRIMS) + ["custom"]),
+            (("page", "custom_width"), "Custom width (in)", "number", None),
+            (("page", "custom_height"), "Custom height (in)", "number", None),
+            (("page", "bleed"), "Bleed (0.125 in)", "bool", None),
+        ],
+        "Page Organization": [
+            (("page", "facing"), "Facing pages", "bool", None),
+            (("chapters_open",), "Chapters open on", "choice", ["recto", "next_page"]),
+            (("page", "spare_pages"), "Spare pages after each chapter", "int_choice",
+             ["0", "1", "2"]),
+        ],
+        "Page Margins": [
+            (("page", "measure"), "Line length (times the type size; 30 usual, 20\u201340)",
+             "number", None),
+            (("page", "margins", "top"), "Top margin (in)", "number", None),
+            (("page", "margins", "bottom"), "Bottom margin (in)", "number", None),
+            (("page", "margins", "inside"), "Inside margin (in)", "number", None),
+            (("page", "margins", "outside"), "Outside margin (in)", "number", None),
+        ],
+    },
     "Type": [
         (("styles_template",), "Styles from an IDML file (optional)", "file", None),
         (("fonts", "body"), "Body font (blank = an installed book font)", "font", None),
@@ -74,7 +84,7 @@ PROFILE_FIELDS = {
         (("typography", "last_line_min_chars"), "Shortest last line (characters, 0 = off)",
          "int", None),
     ],
-    "Notes and contents": [
+    "Notes and Contents": [
         (("footnotes", "numbering"), "Footnote numbering", "choice", ["per_chapter", "continuous"]),
         (("footnotes", "rule"), "Rule above the notes", "bool", None),
         (("footnotes", "continuation_rule"), "Rule above continued notes", "bool", None),
@@ -94,6 +104,16 @@ HEAD_FIELDS = [
     (("running_heads", "suppress_on_openers"), "No heads on chapter openers", "bool", None),
     (("running_heads", "suppress_on_display"), "No heads on display pages", "bool", None),
     (("running_heads", "suppress_on_blanks"), "No heads on blank pages", "bool", None),
+]
+HEAD_STYLE_FIELDS = [
+    (("running_heads", "style", "case"), "Letters", "choice",
+     ["small_caps", "all_caps", "as_typed"]),
+    (("running_heads", "style", "italic"), "Italic", "bool", None),
+    (("running_heads", "style", "size"), "Size (pt; blank = 2 pt below the body)", "number",
+     None),
+    (("running_heads", "style", "tracking"), "Letter-spacing (thousandths of an em)", "int",
+     None),
+    (("running_heads", "style", "font"), "Font (blank = the body font)", "font", None),
 ]
 # Book settings (book.settings["front"]).
 FRONT_FIELDS = [
@@ -219,16 +239,43 @@ OWN, LEAVE_OUT, NONE = "(its own name)", "(leave out)", "(no character style)"
 
 
 class StyleMappingPanel:
-    """All the manuscript's styles in one window, with the IDML style each becomes (as
-    InDesign's Place > Style Mapping): the automatic mapping first, the user's choices over
-    it. Saved in the profile's style map."""
+    """The Style Map tab: all the manuscript's styles in one view, with the IDML style each
+    becomes (as InDesign's Place > Style Mapping): the automatic mapping first, the user's
+    choices over it, saved in the profile's style map. The manuscript's own contents (Word's
+    TOC styles) isn't mapped: a new contents replaces it."""
 
-    def __init__(self, app):
+    def __init__(self, app, parent):
+        self.app = app
+        self.rows, self.char_rows = [], []
+        ttk.Label(parent, wraplength=960, justify="left", text=(
+            "The styles found in the manuscript and the IDML style each becomes, as the tool "
+            "mapped them. Change any of them: choose a book style, a style from your "
+            "template, or \u201c%s\u201d to keep the Word style under its own name. Choosing "
+            "a book style sets the role to match. Rows marked \u26a0 were guessed; check "
+            "them. The mapping is kept in the profile (Profile > Save profile keeps it for "
+            "the series)." % OWN)).pack(fill="x", pady=(0, 6))
+        outer = ttk.Frame(parent)
+        outer.pack(fill="both", expand=True)
+        canvas = self.canvas = tk.Canvas(outer, highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        self.grid = ttk.Frame(canvas)
+        self.grid.bind("<Configure>",
+                       lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=self.grid, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        sb.pack(side="left", fill="y")
+        buttons = ttk.Frame(parent, padding=(0, 8, 0, 0))
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="Back to the automatic mapping",
+                   command=self.reset).pack(side="left")
+        ttk.Button(buttons, text="Apply the mapping", command=self.apply).pack(side="right")
+        self.refresh()
+
+    def _choices(self):
         from .export import BOOK_STYLE_ROLES, CHAR_STYLES
-        self.app, self.roles = app, BOOK_STYLE_ROLES
-        rep = app.report
         tpl_para, tpl_char = [], []
-        path = app.profile.get("styles_template")
+        path = self.app.profile.get("styles_template")
         if path:
             try:
                 from .template import read_template
@@ -236,42 +283,37 @@ class StyleMappingPanel:
                 tpl_para, tpl_char = sorted(tp), sorted(tc)
             except Exception:
                 pass
-        para_choices = [OWN] + list(BOOK_STYLE_ROLES) + \
+        para = [OWN] + list(BOOK_STYLE_ROLES) + \
             [n for n in tpl_para if n not in BOOK_STYLE_ROLES] + [LEAVE_OUT]
-        char_choices = [OWN, NONE] + [n for n in CHAR_STYLES if n != "No Break"] + \
+        char = [OWN, NONE] + [n for n in CHAR_STYLES if n != "No Break"] + \
             [n for n in tpl_char if n not in CHAR_STYLES]
-        old = getattr(app, "mapping_panel", None)
-        if old is not None and old.top.winfo_exists():
-            old.top.destroy()                         # one panel at a time
-        top = self.top = tk.Toplevel(app.root)
-        app.mapping_panel = self
-        top.title("Style mapping")
-        top.geometry("1000x620")
-        top.transient(app.root)
-        ttk.Label(top, padding=(10, 8, 10, 4), wraplength=960, justify="left", text=(
-            "The styles found in the manuscript and the IDML style each becomes, as the tool "
-            "mapped them. Change any of them here: choose a book style, a style from your "
-            "template, or \u201c%s\u201d to keep the Word style under its own name. Choosing a "
-            "book style sets the role to match. Rows marked \u26a0 were guessed; check them. "
-            "The mapping is saved in the profile (Profile > Save profile keeps it for the "
-            "series)." % OWN)).pack(fill="x")
-        outer = ttk.Frame(top)
-        outer.pack(fill="both", expand=True, padx=10)
-        canvas = tk.Canvas(outer, highlightthickness=0)
-        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
-        grid = ttk.Frame(canvas)
-        grid.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=grid, anchor="nw")
-        canvas.configure(yscrollcommand=sb.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        sb.pack(side="left", fill="y")
+        return para, char
+
+    def refresh(self):
+        """The rows for the current preflight report (or how to get one)."""
+        from .export import BOOK_STYLE_ROLES
+        self.roles = BOOK_STYLE_ROLES
+        grid, app, rep = self.grid, self.app, self.app.report
+        for w in grid.winfo_children():
+            w.destroy()
+        self.rows, self.char_rows = [], []
+        if rep is None:
+            ttk.Label(grid, text="Add the manuscript's files, then read them to list their "
+                                 "styles.").grid(row=0, column=0, sticky="w", pady=4)
+            ttk.Button(grid, text="Read the manuscript", command=app.run_preflight).grid(
+                row=1, column=0, sticky="w")
+            return
+        para_choices, char_choices = self._choices()
         heads = ("", "Word style", "Paragraphs", "IDML style", "Role", "Look", "Mapped by")
         for c, h in enumerate(heads):
             ttk.Label(grid, text=h, font=("TkDefaultFont", 9, "bold")).grid(
                 row=0, column=c, sticky="w", padx=4, pady=(0, 4))
-        self.rows = []          # paragraph rows: (word, idml var, role var, look var, initial)
         r = 1
+        tocs = []
         for s in rep.paragraph_styles:
+            if s.role in ("toc", "toc_title"):
+                tocs.append(s.word)          # replaced by a new contents, not mapped
+                continue
             idml = s.word if s.idml == s.word and s.idml not in BOOK_STYLE_ROLES else s.idml
             shown = OWN if idml == s.word and s.word not in BOOK_STYLE_ROLES else \
                 (idml or LEAVE_OUT)
@@ -283,15 +325,21 @@ class StyleMappingPanel:
             ttk.Label(grid, text=str(s.count)).grid(row=r, column=2, sticky="e", padx=4)
             box = ttk.Combobox(grid, textvariable=iv, values=para_choices, width=24)
             box.grid(row=r, column=3, padx=4, pady=1)
-            ttk.Combobox(grid, textvariable=rv, values=ROLES, state="readonly", width=11).grid(
-                row=r, column=4, padx=4)
+            ttk.Combobox(grid, textvariable=rv, values=[x for x in ROLES
+                                                        if x not in ("toc", "toc_title")],
+                         state="readonly", width=11).grid(row=r, column=4, padx=4)
             ttk.Combobox(grid, textvariable=lv, values=list(LOOKS.values()), state="readonly",
                          width=20).grid(row=r, column=5, padx=4)
             ttk.Label(grid, text=s.source).grid(row=r, column=6, sticky="w", padx=4)
             box.bind("<<ComboboxSelected>>", lambda e, iv=iv, rv=rv: self._role_for(iv, rv))
             self.rows.append((s.word, iv, rv, lv, (shown, s.role, LOOKS[look])))
             r += 1
-        self.char_rows = []
+        if tocs:
+            ttk.Label(grid, wraplength=700, justify="left", text=(
+                "The manuscript's own contents (%s) is replaced by a new contents, so its "
+                "styles aren't mapped." % ", ".join(tocs))).grid(
+                row=r, column=1, columnspan=6, sticky="w", padx=4, pady=(6, 0))
+            r += 1
         chars = [c for c in rep.character_styles if c.role != "skip"]
         if chars:
             ttk.Label(grid, text="Character styles", font=("TkDefaultFont", 9, "bold")).grid(
@@ -308,20 +356,16 @@ class StyleMappingPanel:
                 ttk.Label(grid, text=c.source).grid(row=r, column=6, sticky="w", padx=4)
                 self.char_rows.append((c.word, cv, shown))
                 r += 1
-        buttons = ttk.Frame(top, padding=10)
-        buttons.pack(fill="x")
-        ttk.Button(buttons, text="Back to the automatic mapping",
-                   command=self.reset).pack(side="left")
-        ttk.Button(buttons, text="Cancel", command=top.destroy).pack(side="right")
-        ttk.Button(buttons, text="Use this mapping", command=self.ok).pack(side="right", padx=6)
+        self.canvas.yview_moveto(0)
 
     def _role_for(self, iv, rv):
         """A book style sets its role (Heading B: a heading at level 2...)."""
         if iv.get() in self.roles:
             rv.set(self.roles[iv.get()][0])
 
-    def ok(self):
-        """Save the rows changed from the automatic mapping (and keep earlier choices)."""
+    def save(self):
+        """Put the rows changed from the automatic mapping into the profile (earlier choices
+        are kept). Returns how many changed."""
         sm = self.app.profile.setdefault("style_map", {})
         para, char = sm.setdefault("paragraph", {}), sm.setdefault("character", {})
         changed = 0
@@ -343,9 +387,16 @@ class StyleMappingPanel:
                 continue
             char[word] = word if now == OWN else (None if now == NONE else now)
             changed += 1
-        self.top.destroy()
+        return changed
+
+    def apply(self):
+        """Save the changes and read the manuscript again with them (the outline depends on
+        the mapping)."""
+        changed = self.save()
         if changed:
             self.app.mapping_changed(changed)
+        else:
+            self.app.status.set("No changes to the mapping.")
 
     def reset(self):
         """Forget the choices made for these styles; the automatic mapping comes back."""
@@ -356,8 +407,8 @@ class StyleMappingPanel:
             m = sm.get(kind) or {}
             for k in [k for k in m if norm(k) in names]:
                 del m[k]
-        self.top.destroy()
-        self.app.mapping_changed(0, reopen=True)
+        self.rows, self.char_rows = [], []      # nothing left to save over the reset
+        self.app.mapping_changed(0)
 
 
 class App:
@@ -492,7 +543,7 @@ class App:
 
     def _book_tab(self):
         tab = ttk.Frame(self.tabs, padding=8)
-        self.tabs.add(tab, text="Book details")
+        self.tabs.add(tab, text="Book Details")
         row = ttk.Frame(tab)
         row.pack(fill="x", pady=(0, 4))
         ttk.Button(row, text="Fill from the manuscript", command=self.fill_front).pack(side="left")
@@ -520,10 +571,13 @@ class App:
 
     def _heads_tab(self):
         tab = ttk.Frame(self.tabs, padding=8)
-        self.tabs.add(tab, text="Running heads")
+        self.tabs.add(tab, text="Running Heads")
         form = ttk.Frame(tab)
         form.pack(fill="x")
         self.heads_form = Form(form, HEAD_FIELDS, columns=2)
+        box = ttk.LabelFrame(tab, text="Running Head Style", padding=6)
+        box.pack(fill="x", pady=(8, 0))
+        self.head_style_form = Form(box, HEAD_STYLE_FIELDS, columns=2)
         ttk.Label(tab, text="Units of the book (double-click a running head to give a short "
                             "title, or a kind to change what the unit is; \"too long\" means "
                             "the head won't fit the page):").pack(anchor="w", pady=(10, 2))
@@ -537,62 +591,61 @@ class App:
 
     def _layout_tab(self):
         tab = ttk.Frame(self.tabs, padding=8)
-        self.tabs.add(tab, text="Layout profile")
+        self.tabs.add(tab, text="Layout Profile")
         inner = ttk.Notebook(tab)
         inner.pack(fill="both", expand=True)
         self.profile_forms = []
         for name, fields in PROFILE_FIELDS.items():
             f = ttk.Frame(inner, padding=8)
             inner.add(f, text=name)
-            # The Page tab in one column, so the four margins read together.
-            self.profile_forms.append(Form(f, fields, columns=1 if name == "Page" else 2,
-                                           by_column=True))
+            if isinstance(fields, dict):         # sections, one above the other
+                for title, section in fields.items():
+                    box = ttk.LabelFrame(f, text=title, padding=6)
+                    box.pack(fill="x", pady=(0, 6))
+                    self.profile_forms.append(Form(box, section, columns=1))
+                    if title == "Page Margins":
+                        margins = box
+            else:
+                self.profile_forms.append(Form(f, fields, columns=2, by_column=True))
+                if name == "Type":
+                    typetab, ntype = f, len(fields)
         # The suggested leading for the size and font, under the Type fields.
-        typetab = inner.nametowidget(inner.tabs()[1])
         self.leading_note = tk.StringVar()
         ttk.Label(typetab, textvariable=self.leading_note, wraplength=820, justify="left").grid(
-            row=-(-len(PROFILE_FIELDS["Type"]) // 2) + 1, column=0, columnspan=4, sticky="w", padx=6,
-            pady=(10, 4))
-        # The margins the export would calculate, shown beside the margin fields.
-        page = inner.nametowidget(inner.tabs()[0])
-        row = len(PROFILE_FIELDS["Page"]) + 1
+            row=-(-ntype // 2) + 1, column=0, columnspan=4, sticky="w", padx=6, pady=(10, 4))
+        # The margins the export would calculate, under the margin fields.
+        row = len(PROFILE_FIELDS["Page Layout"]["Page Margins"]) + 1
         self.margin_note = tk.StringVar()
-        ttk.Label(page, textvariable=self.margin_note, wraplength=820, justify="left").grid(
+        ttk.Label(margins, textvariable=self.margin_note, wraplength=820, justify="left").grid(
             row=row, column=0, columnspan=4, sticky="w", padx=6, pady=(10, 4))
-        ttk.Button(page, text="Fill in the calculated margins", command=self.fill_margins).grid(
-            row=row + 1, column=0, columnspan=2, sticky="w", padx=6)
-        form = self.profile_forms[0]
-        watched = [form.vars[p][0] for p in (("page", "trim"), ("page", "custom_width"),
-                                              ("page", "custom_height"))]
-        watched += [self.profile_forms[1].vars[p][0] for p in (("fonts", "body"),
-                                                               ("leading", "value"),
-                                                               ("leading", "unit"),
-                                                               ("leading", "feel"),
-                                                               ("body_size",))]
+        ttk.Button(margins, text="Fill in the calculated margins",
+                   command=self.fill_margins).grid(row=row + 1, column=0, columnspan=2,
+                                                   sticky="w", padx=6)
+        watched = [self.pvar(p) for p in (("page", "trim"), ("page", "custom_width"),
+                                          ("page", "custom_height"), ("page", "measure"),
+                                          ("fonts", "body"), ("leading", "value"),
+                                          ("leading", "unit"), ("leading", "feel"),
+                                          ("body_size",))]
         for var in watched:
             var.trace_add("write", lambda *_: self._margins_later())
         ttk.Label(tab, text="Changes apply to the next export. Profile > Save profile keeps them "
                             "for the next book in the series.").pack(anchor="w", pady=(6, 0))
 
+    def pvar(self, path):
+        """The variable of a profile field, whichever form it is in."""
+        for form in self.profile_forms:
+            if path in form.vars:
+                return form.vars[path][0]
+        raise KeyError(path)
+
+    def _form_of(self, path):
+        return next(f for f in self.profile_forms if path in f.vars)
+
     def _styles_tab(self):
         tab = ttk.Frame(self.tabs, padding=8)
-        self.tabs.add(tab, text="Style map")
-        ttk.Label(tab, text="Paragraph styles in the manuscript (run preflight to fill). "
-                            "Double-click to map a Word style to an IDML style and role, and "
-                            "to choose its look: the book style's, or (for a special paragraph "
-                            "the author set up) Word's, in book terms. The map is saved in the "
-                            "profile.", wraplength=900, justify="left").pack(anchor="w")
-        self.styles = ttk.Treeview(tab, columns=("word", "count", "idml", "role", "look",
-                                                 "source"), show="headings")
-        for c, t, w in (("word", "Word style", 200), ("count", "Paragraphs", 70),
-                        ("idml", "IDML style", 170), ("role", "Role", 80),
-                        ("look", "Look", 150), ("source", "Found by", 220)):
-            self.styles.heading(c, text=t)
-            self.styles.column(c, width=w)
-        self.styles.pack(fill="both", expand=True, pady=4)
-        ttk.Button(tab, text="Map all the styles in one window...",
-                   command=self.open_mapping).pack(anchor="w")
-        self.styles.bind("<Double-1>", self._edit_style)
+        self.tabs.add(tab, text="Style Map")
+        self.styles_tab = tab
+        self.mapping = StyleMappingPanel(self, tab)
 
     def _report_tab(self):
         tab = ttk.Frame(self.tabs, padding=8)
@@ -617,6 +670,7 @@ class App:
         for form in self.profile_forms:
             form.load(self.profile)
         self.heads_form.load(self.profile)
+        self.head_style_form.load(self.profile)
         self._margins_later()
         self.notice_list.delete(0, "end")
         chosen = set((self.book.settings.get("front") or {}).get("notices") or [])
@@ -643,7 +697,7 @@ class App:
 
     def _fonts_read(self, lists):
         self.font_lists = lists
-        for form in self.profile_forms:
+        for form in self.profile_forms + [self.head_style_form]:
             form.set_fonts(lists)
 
     MARGINS = ("top", "bottom", "inside", "outside")
@@ -676,12 +730,12 @@ class App:
         except Exception:
             return
         self._update_leading_note(g)
-        form = self.profile_forms[0]
+        form = self._form_of(("page", "margins", "top"))
         for side in self.MARGINS:
             lab, text = form.labels[("page", "margins", side)]
             lab.configure(text="%s, calculated %.2f" % (text, g.margins[side] / 72))
         from . import fonts
-        font = (self.profile_forms[1].vars[("fonts", "body")][0].get() or "").strip() or \
+        font = (self.pvar(("fonts", "body")).get() or "").strip() or \
             fonts.book_font()
         basis = ("%s, measured" % font) if found else \
             "%s isn't installed: an average book font" % font
@@ -692,7 +746,7 @@ class App:
             "with it); a value typed in is used as it is."
             % (g.margins["top"] / 72, g.margins["bottom"] / 72, g.margins["inside"] / 72,
                g.margins["outside"] / 72, pages, basis, round(g.cpl),
-               _num(self.profile_forms[1].vars[("body_size",)][0].get(), "number") or 11))
+               _num(self.pvar(("body_size",)).get(), "number") or 11))
 
     def _update_leading_note(self, g):
         """The suggested leading ranges for the size and font, and the leading the export
@@ -719,9 +773,8 @@ class App:
 
     def fill_margins(self):
         g, _pages, _found = self.calculated()
-        form = self.profile_forms[0]
         for side in self.MARGINS:
-            var = form.vars[("page", "margins", side)][0]
+            var = self.pvar(("page", "margins", side))
             if not var.get().strip():
                 var.set("%.3g" % (g.margins[side] / 72))
         self.status.set("Calculated margins filled in; they are now fixed for this profile "
@@ -730,7 +783,10 @@ class App:
     def _forms_to_profile(self):
         for form in self.profile_forms:
             form.save(self.profile)
+        if getattr(self, "mapping", None) is not None:
+            self.mapping.save()          # mapping changes not yet applied
         self.heads_form.save(self.profile)
+        self.head_style_form.save(self.profile)
 
     def _profile_chosen(self, _event=None):
         name = self.profile_var.get()
@@ -1057,13 +1113,7 @@ class App:
     # ---- style map ----
 
     def _refresh_styles(self):
-        self.styles.delete(*self.styles.get_children())
-        if not self.report:
-            return
-        for s in self.report.paragraph_styles:
-            self.styles.insert("", "end", iid=s.word, values=(
-                s.word, s.count, s.idml or "(left out)", s.role,
-                LOOKS[self._look(s.word, s.idml, s.role)], s.source))
+        self.mapping.refresh()
 
     def _look(self, word, idml, role):
         """As the export decides: the style map's choice, else Word's look only for a style
@@ -1074,50 +1124,6 @@ class App:
             if norm(k) == norm(word) and isinstance(v, dict) and v.get("look") in LOOKS:
                 return v["look"]
         return "word" if role == "body" and idml == word else "book"
-
-    def set_style(self, word, idml, role, look):
-        """Map a Word style (the profile's style map)."""
-        sm = self.profile.setdefault("style_map", {}).setdefault("paragraph", {})
-        sm[word] = {"idml": idml or None, "role": role, "look": look}
-        if self.styles.exists(word):
-            self.styles.set(word, "idml", idml or "(left out)")
-            self.styles.set(word, "role", role)
-            self.styles.set(word, "look", LOOKS[look])
-            self.styles.set(word, "source", "profile (save the profile to keep it)")
-        self.report = None       # mappings change the outline
-
-    def _edit_style(self, event):
-        item = self.styles.identify_row(event.y)
-        if not item:
-            return
-        dlg = tk.Toplevel(self.root)
-        dlg.title("Map %s" % item)
-        dlg.transient(self.root)
-        idml = tk.StringVar(value=self.styles.set(item, "idml"))
-        role = tk.StringVar(value=self.styles.set(item, "role"))
-        ttk.Label(dlg, text="IDML style for Word's “%s”:" % item).grid(
-            row=0, column=0, sticky="w", padx=8, pady=4)
-        ttk.Entry(dlg, textvariable=idml, width=30).grid(row=0, column=1, padx=8)
-        ttk.Label(dlg, text="Role:").grid(row=1, column=0, sticky="w", padx=8, pady=4)
-        ttk.Combobox(dlg, textvariable=role, values=ROLES, state="readonly").grid(
-            row=1, column=1, padx=8, sticky="w")
-        look = tk.StringVar(value=self.styles.set(item, "look"))
-        ttk.Label(dlg, text="Look:").grid(row=2, column=0, sticky="w", padx=8, pady=4)
-        ttk.Combobox(dlg, textvariable=look, values=list(LOOKS.values()), state="readonly",
-                     width=30).grid(row=2, column=1, padx=8, sticky="w")
-        ttk.Label(dlg, text="Word's look keeps the style's alignment, indents, italic or bold, "
-                            "and size and spacing in proportion to the body; never Word's "
-                            "fonts. It applies to a style kept under its own name.",
-                  wraplength=380, justify="left").grid(row=3, column=0, columnspan=2,
-                                                       padx=8, sticky="w")
-
-        def ok():
-            key = [k for k, v in LOOKS.items() if v == look.get()] or ["book"]
-            idml_name = idml.get().strip()
-            self.set_style(item, None if idml_name == "(left out)" else idml_name, role.get(),
-                           key[0])
-            dlg.destroy()
-        ttk.Button(dlg, text="OK", command=ok).grid(row=4, column=1, sticky="e", padx=8, pady=8)
 
     # ---- preflight and export ----
 
@@ -1183,24 +1189,26 @@ class App:
         self._run(lambda: preflight(files, prof), done, "Reading the manuscript...")
 
     def open_mapping(self):
-        """The style mapping panel (runs preflight first if needed)."""
-        self._need_report(lambda: StyleMappingPanel(self))
+        """The Style Map tab (reading the manuscript first if needed)."""
+        self._need_report(lambda: self.tabs.select(self.styles_tab))
 
-    def mapping_changed(self, n, reopen=False):
-        """After the panel: read the manuscript again with the new map (the outline depends
-        on it), then show the result."""
+    def mapping_changed(self, n):
+        """After the mapping changed: read the manuscript again with it (the outline depends
+        on it); the Style Map tab shows the result."""
         self.report = None
         self.status.set("%d style%s mapped by you. Save the profile to keep the mapping." % (
             n, "" if n == 1 else "s") if n else "Back to the automatic mapping.")
-        self._need_report(lambda: StyleMappingPanel(self) if reopen else None)
+        self._need_report(lambda: self.tabs.select(self.styles_tab))
 
     def _preflighted(self, rep):
         self.report = rep
-        # The first time a set of files is read, show the mapping to check.
+        # The first time a set of files is read, show the mapping to check (after the
+        # report, which is shown first).
         files = tuple(self.book.files)
         if getattr(self, "_mapped_files", None) != files and rep.paragraph_styles:
             self._mapped_files = files
-            self.root.after(100, lambda: StyleMappingPanel(self) if self.report is rep else None)
+            self.root.after(100, lambda: self.tabs.select(self.styles_tab)
+                            if self.report is rep else None)
         # (title, kind as detected): the book settings' choices are applied when shown.
         self.units = [(u.title, kind_key(u)) for u in rep.outline.units] if rep.outline else []
         self._refresh_files()

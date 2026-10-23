@@ -78,10 +78,10 @@ The main use is preparing books for **KDP print**, but the tool is not tied to o
 
 ### Margins and measure
 Calculated, then shown as editable values:
-1. **Measure:** text width set for 60–70 characters per line (aim ~65), calculated from the actual body font file (fontTools), weighting average character width by letter frequency, or by measuring sample paragraphs from the manuscript.
-2. **Margins** take the remaining width and height, split by proportion (inner smaller than outer, bottom larger than top), with room for running heads and folios.
+1. **Measure (changed in 0.4.1, Beaux):** about **30 times the type size** (Bringhurst: "usually around 30 times the size of the type", 20–40 expectable; profile `page.measure`), kept between 45 and 80 characters of the body font as measured from the font file with the manuscript's text (in effect his copyfitting table). At 11 pt that is 4.6″, about 71 characters; the old basis (65 characters) gave margins of about an inch, wider than trade books (Beaux measured a 6×9 at 74–76 characters, about 1″ inside, 0.6″ outside and top, 0.75″ bottom).
+2. **Margins** take the remaining width and height: the outside 42% of the spare width, the inside the rest and **never less than the outside** by default (only a value the user types can make the outside wider); top and bottom 15% of the page height, 45/55, with room for running heads and folios.
 3. **Floors:** every margin at least **0.5″**; the gutter also at least **KDP's minimum for the estimated page count**.
-4. If the floors leave too little width, the measure gives way within 60–70 first; beyond that, the tool reports the problem and suggests a smaller size or a larger trim.
+4. If the floors leave too little width, the measure gives way; under 45 characters the tool reports the problem and suggests a smaller size or a larger trim.
 - **Page-count estimate:** words → characters per line → lines per page, plus pages added by structure (front matter, chapter openers, blank versos from recto rules). Pick the gutter band, recompute, repeat until stable. The report shows the estimated count, the KDP band, a warning near a band boundary, and a note for very short books (KDP minimum, even-page rounding).
 - **User overrides:** any margin can be changed; the page count is re-estimated, with a warning (not a block) if the gutter drops below KDP's band minimum. Wider margins are always safe for printers with lower minimums.
 - **Very large trims** with small type: the tool suggests a larger size or two columns.

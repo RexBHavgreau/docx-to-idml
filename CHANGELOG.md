@@ -2,6 +2,24 @@
 
 ## 0.4.1 (not yet released)
 
+- The Style Map tab is now the one view of every style found in the manuscript, with the
+  IDML style, role and look of each as dropdowns (it replaces the list with a dialog per
+  style and the separate window). "Apply the mapping" reads the manuscript again with it;
+  changes not yet applied are still used by the export. The tab is shown after the
+  manuscript is first read. The manuscript's own contents (Word's TOC styles) isn't listed:
+  a new contents replaces it.
+- Tabs are in title case (Book Details, Running Heads, Layout Profile, Style Map; Page
+  Layout, Notes and Contents).
+- The Page Layout tab (was Page) is in three sections: Page Size, Page Organization and Page
+  Margins.
+- Narrower default margins: the line length is now about 30 times the type size (Bringhurst;
+  a setting in Page Margins, 20–40), kept between 45 and 80 characters, instead of 65
+  characters. At 11 pt on 6 x 9 the margins are about 0.82 in inside, 0.6 in outside and top,
+  0.76 in bottom, and lines run about 71 characters. The outside margin is never wider than
+  the inside unless you set it so.
+- The running heads' style can be set in the Running Heads tab: small caps, all caps or as
+  typed; italic; size; letter-spacing; font.
+- Profile version 6 (line length, running-head style); saved profiles are upgraded.
 - Fixed: when a chapter ran longer than estimated, InDesign added one page, which pushed
   the next chapter's opening page (B-Opener) onto a left-hand page; the chapter title then
   jumped to the following right-hand page, which had the A-Body master. InDesign now adds

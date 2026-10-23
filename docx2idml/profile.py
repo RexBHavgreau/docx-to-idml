@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import APP_NAME
 
-PROFILE_VERSION = 5
+PROFILE_VERSION = 6
 
 DEFAULT_PROFILE = {
     "profile_version": PROFILE_VERSION,
@@ -29,6 +29,7 @@ DEFAULT_PROFILE = {
         "facing": True,
         "bleed": False,
         "margins": {},                 # user overrides, inches: top, bottom, inside, outside
+        "measure": 30,                 # line length in times the type size (Bringhurst: 20-40)
         "spare_pages": 0,              # spare pages after each chapter: 0, 1 or 2 (a pair)
     },
     "styles_template": None,           # an IDML whose styles replace the tool's of the same name
@@ -46,6 +47,14 @@ DEFAULT_PROFILE = {
         "suppress_on_openers": True,
         "suppress_on_display": True,
         "suppress_on_blanks": True,
+        # The Running Head paragraph style.
+        "style": {
+            "case": "small_caps",      # small_caps, all_caps, as_typed
+            "italic": False,
+            "size": None,              # points; None = 2 pt below the body size
+            "tracking": 20,            # letter-spacing, thousandths of an em
+            "font": None,              # None = the body font
+        },
     },
     "chapters_open": "recto",          # recto or next_page
     "footnotes": {
@@ -151,7 +160,16 @@ def _from_4(data):
     return data
 
 
-MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2, 3: _from_3, 4: _from_4}   # version n -> function that upgrades it to n + 1
+def _from_5(data):
+    """Version 5: the measure was set for 65 characters (now 30 times the type size); the
+    running heads' style was fixed (small caps, tracked 20)."""
+    data.setdefault("page", {}).setdefault("measure", 30)
+    data.setdefault("running_heads", {}).setdefault("style", {
+        "case": "small_caps", "italic": False, "size": None, "tracking": 20, "font": None})
+    return data
+
+
+MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2, 3: _from_3, 4: _from_4, 5: _from_5}   # version n -> function that upgrades it to n + 1
 
 
 def migrate(data):

@@ -417,6 +417,26 @@ def test_paper_cover_page():
         ex.cleanup()
 
 
+def test_running_head_style_from_profile():
+    prof = default_profile()
+    ex = Exporter(_files(), prof)
+    try:
+        attrs = ex.build().style("Running Head").attrs
+        assert attrs["Capitalization"] == "SmallCaps" and attrs["Tracking"] == 20
+    finally:
+        ex.cleanup()
+    prof["running_heads"]["style"].update({"case": "as_typed", "italic": True, "size": 8,
+                                           "tracking": 0, "font": "Arno Pro"})
+    ex = Exporter(_files(), prof)
+    try:
+        st = ex.build().style("Running Head")
+        assert "Capitalization" not in st.attrs and st.attrs["FontStyle"] == "Italic"
+        assert st.attrs["PointSize"] == 8 and st.attrs["Tracking"] == 0
+        assert st.font == "Arno Pro"
+    finally:
+        ex.cleanup()
+
+
 def test_regular_face_by_its_own_name():
     """InDesign wants a face's own name: the Culmus Hebrew fonts' upright face is "Medium"."""
     from docx2idml import fonts
@@ -436,7 +456,8 @@ def test_short_title_flagged_and_part_heads():
     ex = Exporter(_files(), prof)
     try:
         ex.build()
-        assert ex._too_long("A Very Long Chapter Title That Goes On and On Past the Measure")
+        assert ex._too_long("A Very Long Chapter Title That Goes On and On and On, Well Past "
+                            "the Measure of the Page")
         assert not ex._too_long("Chapter One")
         part = Block(Unit("part", "part", "Part One", "", 0, "test"), [])
         ch = Block(Unit("chapter", "chapter", "Inside", "", 0, "test"), [])

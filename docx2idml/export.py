@@ -146,7 +146,8 @@ def calculated_margins(profile, pages=200, text=None):
             found = None
     size = body_size(profile)
     return layout.geometry(_half(w * 72), _half(h * 72), size,
-                           leading_for(profile, size, xh), avg, pages), bool(found)
+                           leading_for(profile, size, xh), avg, pages,
+                           measure_ems=page.get("measure")), bool(found)
 
 
 class ExportError(Exception):
@@ -322,14 +323,16 @@ class Exporter:
         chars = sum(len(p.text) for d in self.docs for p in d.paragraphs)
         notes = sum(len(p.text) for d in self.docs for p in d.note_paragraphs)
         g = layout.geometry(self.doc.width, self.doc.height, self.body_size, self.body_lead,
-                            self.avg_width, 100)
+                            self.avg_width, 100,
+                            measure_ems=self.profile["page"].get("measure"))
         per_page = g.cpl * g.lines
         return int((chars + notes * 0.8) / per_page) + 2 * len(self.outline.units) + 4
 
     def _geometry(self, pages):
         doc = self.doc
         g = layout.geometry(doc.width, doc.height, self.body_size, self.body_lead,
-                            self.avg_width, pages, self.profile["page"].get("margins"))
+                            self.avg_width, pages, self.profile["page"].get("margins"),
+                            self.profile["page"].get("measure"))
         self.geo = g
         doc.margins = g.margins
         self.measure, self.text_height = g.measure, g.text_height
@@ -347,7 +350,7 @@ class Exporter:
         if not body:
             body = fonts.book_font()
             self.report.append("Body font: %s (no font set in the profile; a book font "
-                               "installed on this computer). Choose another in Layout profile "
+                               "installed on this computer). Choose another in Layout Profile "
                                "> Type." % body)
         heads = pf.get("headings") or body
         notes = pf.get("notes") or body
@@ -487,9 +490,7 @@ class Exporter:
             S("Table Head", "Table Body", {"FontStyle": "Bold"}),
             S("Folio", font=f["body"], leading=lead,
               attrs={"PointSize": size - 2, "Justification": "CenterAlign"}),
-            S("Running Head", font=f["body"], leading=lead,
-              attrs={"PointSize": size - 2, "Justification": "CenterAlign",
-                     "Capitalization": "SmallCaps", "Tracking": 20, "Hyphenation": False}),
+            self._running_head_style(size, lead),
             S("Half Title", "Book Title", {"PointSize": _half(size * 1.6)},
               leading=_half(size * 2)),
             S("Publisher", "Book Title", {"PointSize": size, "SpaceBefore": lead * 6},
@@ -898,7 +899,7 @@ class Exporter:
             self.report.append(
                 "Running heads with Hebrew or Greek (%s) are set in the running-head font: "
                 "a running head comes from the section marker, which can't change font. Give "
-                "these chapters a short title in the Running heads tab, or set the running "
+                "these chapters a short title in the Running Heads tab, or set the running "
                 "head's font in InDesign." % "; ".join("\u201c%s\u201d" % h for h in heads))
 
 
@@ -1247,7 +1248,7 @@ class Exporter:
             lines = ["".join(r.text for r in p.runs).strip() for p in extras]
             self.report.append(
                 "Left out from the manuscript's title page: %s. If any belongs in the book "
-                "(the publisher, say), enter it in Book details."
+                "(the publisher, say), enter it in Book Details."
                 % "; ".join("\u201c%s\u201d" % t for t in lines if t))
         blocks += display
         if info["contents"]:
@@ -1406,6 +1407,21 @@ class Exporter:
                     self.body_size, self.body_lead, source, self.body_size,
                     sug["tight"][0], sug["tight"][1], sug["standard"][0], sug["standard"][1],
                     sug["open"][0], sug["open"][1], (" (%s)" % why) if why else ""))
+
+    def _running_head_style(self, size, lead):
+        """The Running Head style as the profile sets it (case, italic, size, letter-spacing,
+        font)."""
+        rs = (self.profile.get("running_heads") or {}).get("style") or {}
+        attrs = {"PointSize": rs.get("size") or size - 2, "Justification": "CenterAlign",
+                 "Tracking": rs.get("tracking") if rs.get("tracking") is not None else 20,
+                 "Hyphenation": False}
+        case = rs.get("case", "small_caps")
+        if case in ("small_caps", "all_caps"):
+            attrs["Capitalization"] = "SmallCaps" if case == "small_caps" else "AllCaps"
+        if rs.get("italic"):
+            attrs["FontStyle"] = "Italic"
+        return Style("Running Head", font=rs.get("font") or self.fonts["body"], leading=lead,
+                     attrs=attrs)
 
     def _spare(self):
         try:
