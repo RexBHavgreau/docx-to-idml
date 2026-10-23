@@ -25,6 +25,7 @@ What it does:
 """
 
 import math
+import re
 from dataclasses import dataclass, replace
 import os
 import shutil
@@ -853,7 +854,11 @@ class Exporter(PaginationMixin):
                 continue
             style, local = self._run_attrs(cr, para_style, docx, note)
             out += self._script_runs(cr.text, style, local, para_style)
-        return _merge_runs(out)
+        out = _merge_runs(out)
+        for r in out:
+            if r.text and ("//" in r.text or "www." in r.text):
+                r.text = url_breaks(r.text)
+        return out
 
     def _script_runs(self, text, style, local, para_style=None):
         """A run's text split into runs: Hebrew and Greek in their character styles, keeping
@@ -1359,6 +1364,42 @@ class Exporter(PaginationMixin):
             attrs["Underline"] = True
         return Style("Running Head", font=rs.get("font") or self.fonts["body"], leading=lead,
                      attrs=attrs)
+
+_URL = re.compile(r"(?:https?://|www\.|doi\.org/)[^\s<>\"\u201c\u201d]+", re.I)
+ZWSP = "\u200b"
+
+
+def url_breaks(text):
+    """Web addresses with places to break a line (a zero-width space, no hyphen), as Chicago
+    6.8 has them: after a colon or a double slash; before a single slash, a period, a comma,
+    a hyphen, an underscore, a tilde, a question mark, a number sign or a percent sign; before
+    or after an equals sign or an ampersand. Without them a long address in justified text
+    (a footnote's database link) is spaced out letter by letter. A closing period or comma
+    stays outside the address."""
+    def breaks(m):
+        url = m.group(0)
+        tail = ""
+        while url and url[-1] in ".,;:)":
+            url, tail = url[:-1], url[-1] + tail
+        out, i = [], 0
+        while i < len(url):
+            c = url[i]
+            if url.startswith("//", i):
+                out.append("//" + ZWSP)
+                i += 2
+                continue
+            if c in "/.,-_~?#%" and i > 0 and out and not out[-1].endswith(ZWSP):
+                out.append(ZWSP + c)
+            elif c in "=&":
+                out.append((ZWSP if out and not out[-1].endswith(ZWSP) else "") + c + ZWSP)
+            elif c == ":" and not url.startswith("//", i + 1):
+                out.append(c + ZWSP)
+            else:
+                out.append(c)
+            i += 1
+        return "".join(out).replace(ZWSP + ZWSP, ZWSP) + tail
+    return _URL.sub(breaks, text)
+
 
 def _merge_runs(out):
     """Neighbouring text runs with the same style and settings as one."""

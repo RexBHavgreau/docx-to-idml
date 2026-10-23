@@ -4,6 +4,11 @@
 
 - Fixed: the "Open the export folder" button didn't appear after an export (0.7.0 gave the
   tabs all the room it was placed in). It now appears in the export row, beside Export IDML.
+- Fixed: a long web address in justified text (a footnote's EBSCO or JSTOR link) had no
+  place to break, so its line was spaced out letter by letter (found in DesignCraft). Web
+  addresses now carry invisible break points (zero-width spaces) where Chicago 6.8 allows a
+  break: after a colon or double slash; before a single slash, period, comma, hyphen,
+  underscore, tilde, question mark, number or percent sign; before or after = and &.
 
 ## 0.7.0 (October 23, 2026)
 

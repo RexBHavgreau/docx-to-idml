@@ -290,6 +290,9 @@ keep it up to date when decisions change.
   Volume style), call_number (copyright page; blank = none). `book.BOOK_VERSION` 2:
   `book.migrate_settings` turns the old "author" into creators. GUI: `gui_book.BookTabMixin`
   (`app.creators`, `add/change/remove/move_creator`).
+- Web addresses (0.7.1): `export.url_breaks` puts zero-width spaces at Chicago 6.8's break
+  points in every run's text (after `_merge_runs`), so justified lines with long links
+  don't letter-space.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
@@ -340,7 +343,10 @@ writes one.
 
 ## Not yet checked
 - Step 2: Affinity done (all files; footnotes settled as fn-m, rule and spacing as fn-o/p/q).
-  DesignCraft not yet.
+  DesignCraft 0.12.0 (a friend of Beaux's, October 23, the Ezekiel paper's 0.6.0 export,
+  fonts substituted): all pages and footnotes, recto openers, front matter, folios, Hebrew
+  right to left in the text; Hebrew in a section-marker head shows boxes (head font lacks
+  it); no page added for a chapter that runs long (as Affinity).
 - Step 3: g01 (footnotes) opens in Affinity and looks right; confirmed in InDesign and Affinity.
   g02-g04 confirmed in both programs. g05-g10, g12, g13 (primary text frame, contents style,
   table, OpenType, baseline grid, Hebrew/Greek, character styles, chapter stories) validate and

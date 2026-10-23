@@ -509,6 +509,27 @@ def test_running_head_style_from_profile():
             ex.cleanup()
 
 
+def test_web_addresses_can_break():
+    """Chicago 6.8 break points in web addresses (zero-width spaces), so a justified line
+    with a long link isn't spaced out letter by letter."""
+    from docx2idml.export import url_breaks
+    z = "\u200b"
+    assert url_breaks("See https://search.ebscohost.com/login.aspx?db=rfh&AN=1.") == (
+        "See https://" + z + "search" + z + ".ebscohost" + z + ".com" + z + "/login" + z +
+        ".aspx" + z + "?db" + z + "=" + z + "rfh" + z + "&" + z + "AN" + z + "=" + z + "1.")
+    assert url_breaks("no address here: a/b.") == "no address here: a/b."
+    path = make_docx(os.path.join(TMP, "url.docx"), [para("Book", "Title"),
+                     para("Chapter", "Heading1"),
+                     para("Available at www.jstor.org/stable/1234 in full. " * 3)])
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        text = "".join(r.text for st in doc.stories for p in st.paragraphs for r in p.runs)
+        assert "www" + z + ".jstor" + z + ".org" + z + "/stable" + z + "/1234 in" in text
+    finally:
+        ex.cleanup()
+
+
 def test_title_and_sentence_case():
     from docx2idml import textcase as t
     assert t.title_case("the objectives of soul care: a look into the church") == \
