@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.1 (not yet released)
+## 0.5.0 (not yet released)
 
 - The Style Map tab is now the one view of every style found in the manuscript, with the
   IDML style, role and look of each as dropdowns (it replaces the list with a dialog per
@@ -100,7 +100,7 @@
   where each value was found (which style in which file, or the title page's "by" line), or
   that it wasn't found.
 
-## 0.2.0 (October 21, 2026, released)
+## 0.2.0 (October 21, 2026)
 
 - Fonts are chosen from dropdowns of the fonts installed on the computer (you can still type a
   name, or leave the box blank to use Word's). The Hebrew and Greek lists show only fonts that

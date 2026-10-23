@@ -78,7 +78,7 @@ keep it up to date when decisions change.
   `<Document>`; without it InDesign says it "may not support the file format". The schema
   doesn't require it; `idml_check.py` does. Write parts with `writer.serialize()` (whole
   document, double-quoted XML declaration), never `tostring(root)`, which drops the line.
-- `TextPreference PreserveFacingPageSpreads="true"` in facing documents (0.4.1): Smart Text
+- `TextPreference PreserveFacingPageSpreads="true"` in facing documents (0.5.0): Smart Text
   Reflow adding one page shifted every later opener onto a verso (Beaux, a real paper).
   DeleteEmptyPages stays false, so spare pages survive.
 - `DocumentPreference PagesPerDocument` stays 1 (the new-document default InDesign writes); set
@@ -137,7 +137,7 @@ keep it up to date when decisions change.
   (i), title (recto), copyright (the verso after it, set at the foot), the manuscript's display
   pages, reserved contents (recto; its page count estimated or set), then front matter, text,
   back matter. The manuscript's title page is replaced (copyright lines from it go on the
-  copyright page; other lines left out and listed in the report, Beaux 0.4.1); its typed
+  copyright page; other lines left out and listed in the report, Beaux 0.5.0); its typed
   contents is dropped.
   Running heads: recto = section marker (short title from `settings["short_titles"]`), verso =
   book title / author / chapter / custom on A-Body; C-Front shows the marker both sides; B, D, E
@@ -191,29 +191,42 @@ keep it up to date when decisions change.
   entries ({"idml", "role", "level", "look"}; a character entry is a name or None for no
   style); choices are `export.BOOK_STYLE_ROLES` plus a style template's styles. Preflight runs
   again after OK, since the outline depends on the map.
-- Hebrew/Greek in generated text (0.4.1): `Exporter._generated_scripts` runs after the
+- Hebrew/Greek in generated text (0.5.0): `Exporter._generated_scripts` runs after the
   build over every story and master frame, splitting runs not yet in the Hebrew/Greek styles
   (`_script_runs`, the same split as the manuscript's runs). Section markers can't carry a
   character style; a marker with Hebrew/Greek is reported.
-- Faces (0.4.1): FontStyle for the body, notes and Hebrew styles is `fonts.regular_face()`,
+- Faces (0.5.0): FontStyle for the body, notes and Hebrew styles is `fonts.regular_face()`,
   the installed face's own name (Culmus fonts: "Medium"); "Regular" when not installed here.
-- Title page (0.4.1): text above the Title line is endorsements only when
+- Title page (0.5.0): text above the Title line is endorsements only when
   `outline._endorsement_like` (25+ words, or a quotation/attribution); otherwise it belongs
   to the title page. "author"/"autor" are default style names for the author role.
-- 0.4.1 window: the Style Map tab is `gui.StyleMappingPanel(app, tab)` (no Toplevel, no
+- 0.5.0 window: the Style Map tab is `gui.StyleMappingPanel(app, tab)` (no Toplevel, no
   per-style dialog); `refresh()` after each preflight, `save()` (changed rows into the
   profile, also from `_forms_to_profile`), `apply()` (save and read again), `reset()`. TOC
   and TOC Heading styles aren't listed. Profile fields are found with `App.pvar(path)` /
   `_form_of(path)` (the Page Layout tab has three forms in LabelFrames). Running-head style:
   profile `running_heads.style` (case, italic, size, tracking, font) ->
   `Exporter._running_head_style`, form `head_style_form`.
-- Margins (0.4.1): measure = `page.measure` (30) x type size within 45-80 characters;
+- Margins (0.5.0): measure = `page.measure` (30) x type size within 45-80 characters;
   outside 42% of the rest, inside never less than the outside (`layout.geometry`).
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
 ## Releases
 
+- **Version numbers (Beaux, October 23):** while below 1.0, X.Y.Z means:
+  - **Patch (Z, e.g. 0.4.1):** bug fixes only; the same settings give the same output except
+    where the fix corrects it.
+  - **Minor (Y, e.g. 0.5.0):** any new feature, a changed default or a change in the output
+    (margins, styles, layout), or a profile version change. A batch with both fixes and
+    features is minor.
+  - **1.0.0:** when Beaux would trust it on real books without standing by (real manuscripts
+    through InDesign and Affinity, front matter and heads opened and checked, a real update
+    on Windows, a settled name). His call.
+  - Label work on the branch with the version it will ship as (in CHANGELOG's "not yet
+    released" heading); change the label if the batch grows from fixes into features.
+- **README:** the top of README.md lists the latest release and the few before it (one or
+  two lines each, the version in progress first). Update it with every release.
 - Version in `docx2idml/__init__.py` (`EXE_BASE` and `REPO` there too); a dated entry at the
   top of `CHANGELOG.md`. Pushing a tag `vX.Y.Z` (matching `__version__`) runs
   `.github/workflows/build.yml` on Windows: tests, the .exe, a check that it carries the IDML
