@@ -288,6 +288,7 @@ writes one.
 - Step 6: e01 with front matter and running heads: validates, not yet opened.
 - Step 7: the window tested under Xvfb here and by its tests on GitHub's Windows runner.
   Released: v0.2.0 (October 21, the first release with the .exe), v0.3.0 and v0.4.0 (October 22),
+  v0.5.0 (October 23),
   each built by the tag's workflow from main. The updater's real run worked (Beaux, October
   22): 0.2.0 found 0.3.0 by Help > Check for updates (the startup check didn't, fixed in
   0.4.0), downloaded it, opened it, and 0.3.0 offered to delete 0.2.0. From 0.4.0 shortcuts

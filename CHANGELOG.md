@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 (not yet released)
+## 0.5.0 (October 23, 2026)
 
 - The Style Map tab is now the one view of every style found in the manuscript, with the
   IDML style, role and look of each as dropdowns (it replaces the list with a dialog per

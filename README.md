@@ -10,12 +10,12 @@ Download the program (`docx-to-idml-X.Y.Z.exe`) from
 [Releases](https://github.com/RexBHavgreau/docx-to-idml/releases); once installed, it offers
 new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md).
 
-- **0.5.0** (in progress): the Style Map tab shows every style in one view; narrower default
+- **0.5.0** (October 23, 2026, latest release): the Style Map tab shows every style in one view; narrower default
   margins (line length about 30 times the type size, outside never wider than inside);
   running-head style settings; Page Layout in three sections. Fixes: Hebrew in the title
   pages and running heads, chapter openers kept on right-hand pages when InDesign adds pages,
   a paper's cover page read better.
-- **0.4.0** (October 22, 2026, latest release): style mapping in one window; after an
+- **0.4.0** (October 22, 2026): style mapping in one window; after an
   update, shortcuts and taskbar pins point at the new version; the update check runs at
   every start.
 - **0.3.0** (October 22, 2026): endorsements recognized and set first; no Word formatting in
