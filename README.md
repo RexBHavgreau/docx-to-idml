@@ -13,8 +13,8 @@ new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md)
 - **0.5.1** (in progress): the line length setting says what it measures and shows the
   result in inches and picas.
 - **0.5.0** (October 23, 2026, latest release): the Style Map tab shows every style in one
-  view; narrower default margins (line length about 30 times the type size, outside never wider than inside);
-  running-head style settings; Page Layout in three sections. Fixes: Hebrew in the title
+  view; narrower default margins (line length about 30 times the type size, outside never
+  wider than inside); running-head style settings; Page Layout in three sections. Fixes: Hebrew in the title
   pages and running heads, chapter openers kept on right-hand pages when InDesign adds pages,
   a paper's cover page read better.
 - **0.4.0** (October 22, 2026): style mapping in one window; after an
