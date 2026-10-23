@@ -87,12 +87,16 @@ def test_preflight_export_and_book_file():
         assert app.heads.set("Covenant and Community", "head") == "(no running heads)"
         app.set_kind("Covenant and Community", "chapter")
         assert app.book.settings["unit_kinds"] == {}
-        # The style map shows each style's look; one can be switched.
-        assert app.styles.set("Epigraph", "look") == "Word's, in book terms"
-        assert app.styles.set("Normal", "look") == "the book style's"
-        app.set_style("Epigraph", "Epigraph", "body", "book")
+        # The Style Map tab shows each style's look; one can be switched.
+        looks = {w: lv for w, _iv, _rv, lv, _i in app.mapping.rows}
+        assert looks["Epigraph"].get() == "Word's, in book terms"
+        assert looks["Normal"].get() == "the book style's"
+        looks["Epigraph"].set("the book style's")
+        app.mapping.apply()
+        _wait(app, root)
         assert app.profile["style_map"]["paragraph"]["Epigraph"]["look"] == "book"
-        assert app.styles.set("Epigraph", "look") == "the book style's"
+        looks = {w: lv for w, _iv, _rv, lv, _i in app.mapping.rows}
+        assert looks["Epigraph"].get() == "the book style's"
         app.book.settings["short_titles"] = {"The Formula in the Prophets": "The Formula"}
         app._refresh_heads()
         assert app.heads.set("The Formula in the Prophets", "head") == "The Formula"
@@ -106,7 +110,7 @@ def test_preflight_export_and_book_file():
         assert "Title: \u201cThe Covenant Formula\u201d, from style Title in 00 Front.docx" in sources
         assert "Author: \u201cA. N. Author\u201d, from title page text" in sources
         # A profile setting from the form.
-        app.profile_forms[0].vars[("page", "trim")][0].set("5.5x8.5")
+        app.pvar(("page", "trim")).set("5.5x8.5")
         out = os.path.join(TMP, "out")
         os.makedirs(out)
         app.out_var.set(out)
@@ -134,7 +138,7 @@ def test_profile_save_and_settings():
     from docx2idml import profile as profiles
     app, root = _app()
     try:
-        app.profile_forms[1].vars[("fonts", "body")][0].set("Arno Pro")
+        app.pvar(("fonts", "body")).set("Arno Pro")
         app.profile_name = "Series A"
         app.save_profile()
         assert profiles.load("Series A")["fonts"]["body"] == "Arno Pro"
@@ -155,7 +159,7 @@ def test_font_dropdowns():
             time.sleep(0.02)
         assert app.font_lists is not None, "fonts not read"
         installed = fonts.families()
-        form = app.profile_forms[1]
+        form = app._form_of(("fonts", "body"))
         boxes = {script: box for box, script in form.font_boxes}
         assert list(boxes[None]["values"]) == installed
         for script in ("hebrew", "greek"):
@@ -176,9 +180,8 @@ def test_leading_note():
         app.update_margins()
         note = app.leading_note.get()
         assert note.startswith("Suggested for 11 pt") and "standard 13.5" in note
-        form = app.profile_forms[1]
-        form.vars[("body_size",)][0].set("10")
-        form.vars[("leading", "feel")][0].set("tight")
+        app.pvar(("body_size",)).set("10")
+        app.pvar(("leading", "feel")).set("tight")
         app.update_margins()
         assert "Suggested for 10 pt" in app.leading_note.get()
         assert "(tight)" in app.leading_note.get()
@@ -192,13 +195,15 @@ def test_calculated_margins_shown_and_filled():
     app, root = _app()
     try:
         app.update_margins()
-        form = app.profile_forms[0]
+        form = app._form_of(("page", "margins", "inside"))
         lab, _text = form.labels[("page", "margins", "inside")]
         assert "calculated" in str(lab.cget("text"))
         note = app.margin_note.get()
         assert note.startswith("Calculated margins (in): top ") and "about 200 pages" in note
         g, _pages, _found = app.calculated()
-        form.vars[("page", "trim")][0].set("5x8")
+        # By default the outside margin is never wider than the inside.
+        assert g.margins["outside"] <= g.margins["inside"]
+        app.pvar(("page", "trim")).set("5x8")
         g2, _p, _f = app.calculated()
         assert g2.measure != g.measure or g2.margins != g.margins
         form.vars[("page", "margins", "top")][0].set("1")
@@ -247,22 +252,24 @@ def test_update_check_at_every_start():
 
 
 def test_style_mapping_panel():
-    """All styles in one panel after the automatic mapping; the user's choices are saved in
-    the profile and used by the export."""
+    """All styles in the Style Map tab after the automatic mapping (shown after the first
+    preflight); the user's choices are saved in the profile and used by the export. The
+    manuscript's own contents styles aren't listed."""
     from docx2idml import gui
     app, root = _app()
     try:
+        assert not app.mapping.rows                   # nothing read yet
         app._add(_files())
         app.run_preflight()
         _wait(app, root)
         end = time.time() + 5
-        while getattr(app, "mapping_panel", None) is None and time.time() < end:
+        while app.tabs.select() != str(app.styles_tab) and time.time() < end:
             root.update()
             time.sleep(0.02)
-        assert app.mapping_panel, "the panel opens after the first preflight"
-        panel = gui.StyleMappingPanel(app)            # replaces the open one
-        assert len([w for w in root.winfo_children() if isinstance(w, tk.Toplevel)]) == 1
+        assert app.tabs.select() == str(app.styles_tab), "the mapping is shown after preflight"
+        panel = app.mapping
         rows = {w: (iv, rv, lv) for w, iv, rv, lv, _i in panel.rows}
+        assert not [w for w in rows if w.lower().startswith("toc")]
         assert rows["Epigraph"][0].get() == gui.OWN
         assert rows["Heading 1"][0].get() == "Chapter Title"
         iv, rv, lv = rows["Epigraph"]
@@ -271,7 +278,7 @@ def test_style_mapping_panel():
         assert rv.get() == "quote"
         chars = {w: cv for w, cv, _i in panel.char_rows}
         chars["Scripture Ref"].set("Small Caps")
-        panel.ok()
+        panel.apply()
         _wait(app, root)
         sm = app.profile["style_map"]
         assert sm["paragraph"]["Epigraph"]["idml"] == "Block Quote"
@@ -279,6 +286,8 @@ def test_style_mapping_panel():
         assert "Normal" not in sm["paragraph"]         # unchanged rows aren't saved
         assert sm["character"]["Scripture Ref"] == "Small Caps"
         assert app.report is not None                 # read again with the new map
+        rows = {w: iv for w, iv, _rv, _lv, _i in app.mapping.rows}
+        assert rows["Epigraph"].get() == "Block Quote"
         from docx2idml.export import Exporter
         ex = Exporter(app.book.files, app.profile)
         try:
@@ -290,11 +299,32 @@ def test_style_mapping_panel():
             assert runs and runs[0].style == "Small Caps"
         finally:
             ex.cleanup()
+        # A change not yet applied is kept when the profile is read from the window.
+        rows = {w: iv for w, iv, _rv, _lv, _i in app.mapping.rows}
+        rows["Normal"].set("Block Quote")
+        app._forms_to_profile()
+        assert app.profile["style_map"]["paragraph"]["Normal"]["idml"] == "Block Quote"
         # Back to the automatic mapping.
-        gui.StyleMappingPanel(app).reset()
+        app.mapping.reset()
         _wait(app, root)
         assert "Epigraph" not in app.profile["style_map"]["paragraph"]
+        assert "Normal" not in app.profile["style_map"]["paragraph"]
         assert "Scripture Ref" not in app.profile["style_map"]["character"]
+    finally:
+        app.quit(force=True)
+
+
+def test_tabs_in_title_case_and_head_style():
+    app, root = _app()
+    try:
+        names = [app.tabs.tab(t, "text") for t in app.tabs.tabs()]
+        assert names == ["Files", "Book Details", "Running Heads", "Layout Profile", "Style Map",
+                         "Report"]
+        app.head_style_form.vars[("running_heads", "style", "case")][0].set("as_typed")
+        app.head_style_form.vars[("running_heads", "style", "italic")][0].set(True)
+        app._forms_to_profile()
+        rs = app.profile["running_heads"]["style"]
+        assert rs["case"] == "as_typed" and rs["italic"] is True
     finally:
         app.quit(force=True)
 

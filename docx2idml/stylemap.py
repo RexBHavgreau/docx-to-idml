@@ -30,6 +30,8 @@ PARAGRAPH_DEFAULTS = {
     "normal (web)": ("Body", "body"),
     "normal indent": ("Body", "body"),
     "title": ("Book Title", "book_title"),
+    "author": ("Author", "author"),     # not built in, but the usual name
+    "autor": ("Author", "author"),
     "subtitle": ("Book Subtitle", "subtitle"),
     "heading 1": ("Chapter Title", "chapter"),
     "heading 2": ("Heading A", "heading", 1),

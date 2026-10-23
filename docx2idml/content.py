@@ -240,7 +240,6 @@ class _Content:
                                                "continuationNotice"):
                         continue
                     self.notes[(typ[:-1], _attr(note, "id"))] = (note, note_rels)
-        self.images_skipped = []
         self.pending_break = False
 
     def style_numbering(self, style_id):

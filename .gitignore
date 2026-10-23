@@ -5,3 +5,5 @@ dist/
 *.spec
 *.log
 .venv/
+*.whl
+reference/generated/

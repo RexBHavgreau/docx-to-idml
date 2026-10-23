@@ -32,8 +32,6 @@ P, R, T = W + "p", W + "r", W + "t"
 TXBX = W + "txbxContent"
 FALLBACK = "{%s}Fallback" % NS["mc"]
 
-REL_BASE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
-
 # Run properties that change the look of the type rather than mark emphasis. Runs carrying
 # these as direct formatting are "hotspots": they will not follow the book's styles.
 FONT_PROPS = {"rFonts", "sz", "szCs", "color", "highlight", "spacing", "w", "kern",
@@ -97,8 +95,6 @@ class Section:
     page_height: float = None
     margins: dict = field(default_factory=dict)   # top, bottom, left, right, gutter, header, footer
     title_page: bool = False      # different first page
-    page_number_format: str = None
-    page_number_start: int = None
     columns: int = 1
     header_ids: list = field(default_factory=list)
 
@@ -288,11 +284,6 @@ def _in(el, tag):
     return False
 
 
-def _own(p, tag):
-    """Descendants of paragraph p with this tag that belong to p itself (not a text box in it)."""
-    return [e for e in p.iter(tag) if _para_of(e) is p]
-
-
 def _xml(z, name):
     try:
         data = z.read(name)
@@ -460,11 +451,6 @@ def _read_sections(body, doc):
                     sec.margins[k] = abs(v)
         tp = s.find(W + "titlePg")
         sec.title_page = tp is not None and _attr(tp, "val") not in ("0", "false")
-        pn = s.find(W + "pgNumType")
-        if pn is not None:
-            sec.page_number_format = _attr(pn, "fmt")
-            st = _attr(pn, "start")
-            sec.page_number_start = int(st) if st and st.isdigit() else None
         cols = s.find(W + "cols")
         num = _attr(cols, "num")
         sec.columns = int(num) if num and num.isdigit() else 1

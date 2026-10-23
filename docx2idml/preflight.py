@@ -301,6 +301,11 @@ def _warnings(rep, docs):
         w.append("This book has Hebrew (%s). Lay it out in InDesign: Affinity does not "
                  "support Hebrew and sets it left to right with the letters reversed."
                  % plural(heb["runs"], "run"))
+    nested = sum(d.nested_tables for d in docs)
+    if nested:
+        w.append("%s inside other tables: the text is kept in the outer table's cell, without "
+                 "the inner table's rows and columns. Rebuild them in InDesign, or unnest them "
+                 "in Word." % plural(nested, "table"))
     if any(d.endnote_count for d in docs):
         n = sum(d.endnote_count for d in docs)
         w.append("%s. Endnotes are not supported; they will be converted to footnotes."

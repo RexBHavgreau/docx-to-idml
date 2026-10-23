@@ -354,6 +354,99 @@ def test_front_matter_and_heads():
         ex.cleanup()
 
 
+def test_hebrew_in_generated_text():
+    """Hebrew in the book's title gets the Hebrew style on the half-title and title pages and
+    in a running head, as in the manuscript's own headings; a section marker can't, so it's
+    reported."""
+    from idml_check import check
+    from docx2idml.idml.writer import write_idml
+    path = make_docx(os.path.join(TMP, "heb-title.docx"), [
+        para("The " + HEB + " Covenant", "Title"),
+        para("Chapter One: " + HEB, "Heading1"),
+        para("Text of the chapter.")])
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        titles = [p for st in doc.stories for p in st.paragraphs
+                  if p.style in ("Half Title", "Book Title", "Chapter Title")]
+        assert len(titles) == 3
+        for p in titles:
+            assert (HEB, "Hebrew") in [(r.text, r.style) for r in p.runs], p
+            assert p.attrs.get("Composer") == "HL Composer Optyca"
+        a = [m for m in doc.masters if m.name == "A-Body"][0]
+        vhead = [f for f in a.frames if f.key == "vhead"][0].paragraphs[0]
+        assert [(r.text, r.style) for r in vhead.runs] == [
+            ("The ", None), (HEB, "Hebrew"), (" Covenant", None)]
+        assert any("section marker" in line and HEB in line for line in ex.report)
+        assert not check(write_idml(doc, os.path.join(TMP, "heb-title.idml")))
+    finally:
+        ex.cleanup()
+
+
+def test_paper_cover_page():
+    """A seminary paper's cover: the school's name above the title is part of the title page
+    (not endorsements); an "Author" style gives the author; a bare "by" line and the typed
+    contents' title are dropped with the contents."""
+    styles = ['<w:style w:type="paragraph" w:customStyle="1" w:styleId="Caratula">'
+              '<w:name w:val="Car\u00e1tula"/><w:basedOn w:val="Normal"/></w:style>',
+              '<w:style w:type="paragraph" w:customStyle="1" w:styleId="AuthorS">'
+              '<w:name w:val="Author"/><w:basedOn w:val="Normal"/></w:style>',
+              '<w:style w:type="paragraph" w:styleId="TOC2"><w:name w:val="toc 2"/>'
+              '<w:basedOn w:val="Normal"/></w:style>']
+    path = make_docx(os.path.join(TMP, "paper.docx"), [
+        para("The Master\u2019s Seminary", "Caratula"),
+        para("A Study of the " + HEB, "Title"),
+        para("by", "Caratula"),
+        para("Beaux Hargrove", "AuthorS"),
+        para("July 2026", "Caratula"),
+        para("CONTENTS", "Caratula"),
+        para("Introduction\t1", "TOC2"),
+        para("Introduction", "Heading1"),
+        para("Text of the paper.")], extra_styles=styles)
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        assert [u.type for u in ex.outline.units][:2] == ["title page", "chapter"]
+        assert ex.outline.author == "Beaux Hargrove"
+        texts = ["".join(r.text for r in p.runs) for st in doc.stories for p in st.paragraphs]
+        assert "Beaux Hargrove" in texts and "[Author]" not in " ".join(texts)
+        assert "by" not in texts and "CONTENTS" not in texts
+        assert "The Master\u2019s Seminary" not in texts and "July 2026" not in texts
+        assert any("Left out" in line and "July 2026" in line for line in ex.report)
+    finally:
+        ex.cleanup()
+
+
+def test_running_head_style_from_profile():
+    prof = default_profile()
+    ex = Exporter(_files(), prof)
+    try:
+        attrs = ex.build().style("Running Head").attrs
+        assert attrs["Capitalization"] == "SmallCaps" and attrs["Tracking"] == 20
+    finally:
+        ex.cleanup()
+    prof["running_heads"]["style"].update({"case": "as_typed", "italic": True, "size": 8,
+                                           "tracking": 0, "font": "Arno Pro"})
+    ex = Exporter(_files(), prof)
+    try:
+        st = ex.build().style("Running Head")
+        assert "Capitalization" not in st.attrs and st.attrs["FontStyle"] == "Italic"
+        assert st.attrs["PointSize"] == 8 and st.attrs["Tracking"] == 0
+        assert st.font == "Arno Pro"
+    finally:
+        ex.cleanup()
+
+
+def test_regular_face_by_its_own_name():
+    """InDesign wants a face's own name: the Culmus Hebrew fonts' upright face is "Medium"."""
+    from docx2idml import fonts
+    index = {"taamey david clm": {"medium": ("a", 0), "bold": ("b", 0)},
+             "minion pro": {"regular": ("c", 0), "italic": ("d", 0)}}
+    assert fonts.regular_face("Taamey David CLM", index) == "Medium"
+    assert fonts.regular_face("Minion Pro", index) == "Regular"
+    assert fonts.regular_face("Not Installed", index) == "Regular"
+
+
 def test_short_title_flagged_and_part_heads():
     from docx2idml.outline import Unit
     from docx2idml.export import Block
@@ -363,7 +456,8 @@ def test_short_title_flagged_and_part_heads():
     ex = Exporter(_files(), prof)
     try:
         ex.build()
-        assert ex._too_long("A Very Long Chapter Title That Goes On and On Past the Measure")
+        assert ex._too_long("A Very Long Chapter Title That Goes On and On and On, Well Past "
+                            "the Measure of the Page")
         assert not ex._too_long("Chapter One")
         part = Block(Unit("part", "part", "Part One", "", 0, "test"), [])
         ch = Block(Unit("chapter", "chapter", "Inside", "", 0, "test"), [])

@@ -60,6 +60,8 @@ _PART_WORDS = {"one", "two", "three", "four", "five", "six", "seven", "eight", "
                "first", "second", "third", "fourth", "fifth", "uno", "dos", "tres", "cuatro",
                "cinco", "primera", "segunda", "tercera", "cuarta", "quinta", "i", "ii", "iii",
                "iv", "v", "vi", "vii", "viii", "ix", "x"}
+ENDORSEMENT_MIN_WORDS = 25    # less than this above the title is part of the title page
+
 _BY = re.compile(r"^(by|por)\s+(.+)$", re.I)
 
 
@@ -124,7 +126,6 @@ class Unit:
     detected_by: str
     words: int = 0
     note_refs: int = 0
-    endnote_refs: int = 0
     subheads: list = field(default_factory=list)   # first-level section titles
     page_break_before: bool = True   # starts at a section break or at the top of a file
 
@@ -276,6 +277,10 @@ def build_outline(docs, stylemap=None):
                     _is_title_page(fo, lead_text[ti:]):
                 # The title page, found by its title line. Whatever comes before it
                 # (endorsements, seldom with a heading) is preliminary matter.
+                # A line or two above the title (a school's or publisher's name) is part of
+                # the title page; endorsements run to sentences or are quotations.
+                if ti and not _endorsement_like(lead_text[:ti]):
+                    ti = 0
                 start = lead_text[ti].index
                 if ti:
                     pre = Unit("display", "endorsements", "(endorsements)", doc.name,
@@ -361,6 +366,19 @@ def _before_title_page(out):
             u.detected_by += " (before the title page: endorsements)"
 
 
+def _endorsement_like(paras):
+    """Text above the title that reads as endorsements: some sentences, or a quotation or an
+    attribution ("\u2014 A. Reader"). Not a school's or publisher's name."""
+    if sum(_word_count(p.text) for p in paras) >= ENDORSEMENT_MIN_WORDS:
+        return True
+    for p in paras:
+        t = p.text.strip()
+        if t[:1] in "\u201c\"\u00ab\u2018'" or t[:1] in "\u2014\u2013" or \
+                re.search(r"[\u201d\"\u00bb]\s*[\u2014\u2013-]\s*\S", t):
+            return True
+    return False
+
+
 def _is_title_page(fo, lead_text):
     """Text before the book's first chapter heading is a title page when it is short and has
     no headings; otherwise (an article's title and body, say) it is a unit of its own."""
@@ -386,7 +404,6 @@ def _fill(unit, fo, paras):
             continue
         unit.words += _word_count(p.text)
         unit.note_refs += p.footnotes
-        unit.endnote_refs += p.endnotes
         m = fo.mapping(p)
         if m.role == "heading" and m.level == 1 and p.text.strip():
             unit.subheads.append(" ".join(p.text.split()))

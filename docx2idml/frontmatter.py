@@ -27,11 +27,6 @@ TEXT = {
            "isbn_print": "ISBN: {isbn} (rústica)", "isbn_ebook": "ISBN: {isbn} (libro electrónico)"},
 }
 
-FIELDS = ("half_title", "title", "subtitle", "author", "short_title", "publisher",
-          "publisher_address", "year", "holder", "edition", "isbn_print", "isbn_ebook", "credits",
-          "printed_in", "notices", "contents", "contents_pages")
-
-
 def texts(lang):
     return TEXT.get(lang, TEXT["en"])
 

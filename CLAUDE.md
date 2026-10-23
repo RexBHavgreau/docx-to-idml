@@ -13,6 +13,15 @@ keep it up to date when decisions change.
 - Ask before merging to `main` or tagging a release. Work on a branch and push it; Beaux merges.
 - He is an editor and Hebrew/OT scholar; conventions follow the Chicago Manual of Style. When an
   editorial choice is unclear, ask rather than guess.
+- **Future-proofing (Beaux, October 23):** when he asks for something, point out its
+  implications for the future in a line or two: what it would make harder later (another
+  program, a Mac version, other languages, saved profiles and books), a simpler way that
+  keeps options open, and anything that should be decided now rather than patched later.
+- Keep the code clean as it grows: remove what a change makes unused, keep descriptions
+  current, and keep only what the tests and tools use in `reference/`. `export.py` and
+  `gui.py` are large: when a change mostly touches one part of them, move that part into a
+  module of its own first (export: styles, pagination and masters, front-matter assembly;
+  gui: one module per tab), tests passing before and after, in a commit of its own.
 
 ## Rules from the plan
 
@@ -38,17 +47,17 @@ keep it up to date when decisions change.
 | `docx2idml/book.py` | Input files: drop/folder collection, natural order, saved order |
 | `docx2idml/content.py` | The text of a .docx for the exporter: runs with formatting features, notes, tables, images, list numbers; paragraph indexes match `docx_reader`'s |
 | `docx2idml/export.py` | Step 4, the exporter core: book styles, Word styles kept by name, runs to character styles, Hebrew/Greek, one story and section per outline unit, page estimate; `export()` writes the export folder |
-| `docx2idml/layout.py` | Step 5: margins and measure (65 characters, floors, KDP gutter by page count), pagination (roman front matter, recto rules, masters per page) |
+| `docx2idml/layout.py` | Step 5: margins and measure (30 times the type size within 45-80 characters, floors, KDP gutter by page count), pagination (roman front matter, recto rules, masters per page) |
 | `docx2idml/frontmatter.py` | Step 6: book details (settings, then detected, else bracketed placeholders), half-title, title, copyright (English/Spanish, notices from the profile's library), contents entries and reserved pages |
 | `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile`; no arguments opens the window |
-| `docx2idml/gui.py` | Step 7, the window (ttk): Files, Book details, Running heads, Layout profile, Style map, Report tabs; forms declared as field tables bound to the profile and book settings; work in threads, results through a queue polled by the window |
+| `docx2idml/gui.py` | Step 7, the window (ttk): Files, Book Details, Running Heads, Layout Profile, Style Map, Report tabs; forms declared as field tables bound to the profile and book settings; work in threads, results through a queue polled by the window |
 | `docx2idml/updates.py`, `appsettings.py` | Update check and install (as Indicat's: versioned .exe beside the running one, SHA-256 digest, Downloads fallback, older copies offered for deletion); the program's own settings.json |
 | `run_app.py`, `build_exe.bat`, `.github/workflows/build.yml` | The .exe (PyInstaller, one file, "docx-to-idml-X.Y.Z.exe", with `docx2idml/idml/base`); the workflow builds and releases on a `vX.Y.Z` tag, or by hand |
 | `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `images.py` (image size and resolution from file headers), `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
-| `reference/` | `make_reference_files.jsx` (builds the InDesign reference files), README with the Affinity checklist; reference IDMLs go in `reference/idml/` |
+| `reference/` | `idml/` (the 13 InDesign reference IDMLs, used by tests and `tools/make_base.py`), `manuscript/` (the sample manuscript), `make_reference_files.jsx` (rebuilds the references in InDesign), README (what was checked, footnote findings). No .indd, PDFs or generated files (removed October 23) |
 | `idml-schema/` | Adobe's IDML schema for InDesign 2026 (21.6.0.57, DOM 21.5): `rnc/` as InDesign wrote it, `rng/` converted by `tools/prepare_schema.py` |
-| `tools/make_generated_files.py` | Step 3: the generator's versions of the reference files, in `reference/generated/` |
+| `tools/make_generated_files.py` | Step 3: the generator's versions of the reference files, in `reference/generated/` (ignored by git; tests build them in a temp folder) |
 | `tools/idml_check.py`, `tools/idml_inspect.py` | Development tools: structural check of an IDML package plus jing against the schema; summary of a package (masters, pages, overrides, sections, stories, styles) for comparing with references |
 | `tools/make_sample_book.py` | Step 4: a sample manuscript (`reference/manuscript/`, three .docx) exported to `reference/generated/e01-sample-book/` |
 | `tests/docx_builder.py` | Builds test .docx files from raw WordprocessingML (images, tables, numbering too); the test runner |
@@ -67,8 +76,8 @@ keep it up to date when decisions change.
   `HL Composer Optyca` (World-Ready). They are InDesign's own, not plug-ins.
 - IDML: a parent-master item removed on a child master, or a master item removed on a page,
   is an `OverrideList` pair with `n` as the page item.
-- Footnotes are written as in `reference/variants/fn-m-split-formatting.idml` (decided after
-  Affinity tests, see PLAN.md): Footnote paragraph style; the number `<?ACE 4?>` and separator in
+- Footnotes are written as the footnote variant "fn-m" (decided after Affinity tests; the
+  variants are gone, the findings are in reference/README.md and PLAN.md): Footnote paragraph style; the number `<?ACE 4?>` and separator in
   a run of their own (Affinity breaks single-run notes); the Footnote style's font, size,
   leading, indent and alignment also on every note run (Affinity otherwise lays the root style
   `[No paragraph style]` over note text). Style edits still reach every note in both programs.
@@ -78,6 +87,9 @@ keep it up to date when decisions change.
   `<Document>`; without it InDesign says it "may not support the file format". The schema
   doesn't require it; `idml_check.py` does. Write parts with `writer.serialize()` (whole
   document, double-quoted XML declaration), never `tostring(root)`, which drops the line.
+- `TextPreference PreserveFacingPageSpreads="true"` in facing documents (0.5.0): Smart Text
+  Reflow adding one page shifted every later opener onto a verso (Beaux, a real paper).
+  DeleteEmptyPages stays false, so spare pages survive.
 - `DocumentPreference PagesPerDocument` stays 1 (the new-document default InDesign writes); set
   to the real page count, InDesign adds that many pages at the start when opening the file.
 - In facing documents a page's side follows its number (odd = recto), as in InDesign; a recto
@@ -134,7 +146,8 @@ keep it up to date when decisions change.
   (i), title (recto), copyright (the verso after it, set at the foot), the manuscript's display
   pages, reserved contents (recto; its page count estimated or set), then front matter, text,
   back matter. The manuscript's title page is replaced (copyright lines from it go on the
-  copyright page; other lines on a display page of their own); its typed contents is dropped.
+  copyright page; other lines left out and listed in the report, Beaux 0.5.0); its typed
+  contents is dropped.
   Running heads: recto = section marker (short title from `settings["short_titles"]`), verso =
   book title / author / chapter / custom on A-Body; C-Front shows the marker both sides; B, D, E
   none unless the profile's suppress toggles are off. Verso "part": one copy of A-Body per part
@@ -181,17 +194,47 @@ keep it up to date when decisions change.
 - Font fields in the window are editable dropdowns of the installed families
   (`fonts.families()`; Hebrew and Greek lists filtered by a look at each regular font's
   character map, once, cached); read in a background thread at startup.
-- Style mapping panel (0.4.0, `gui.StyleMappingPanel`): all styles in one window after the
-  automatic mapping, opened once per set of files after preflight and by the "Map styles..."
-  buttons. Only rows changed from the automatic mapping are saved, as profile `style_map`
-  entries ({"idml", "role", "level", "look"}; a character entry is a name or None for no
-  style); choices are `export.BOOK_STYLE_ROLES` plus a style template's styles. Preflight runs
-  again after OK, since the outline depends on the map.
+- Style mapping (0.4.0, a tab since 0.5.0; `gui.StyleMappingPanel`): only rows changed from
+  the automatic mapping are saved, as profile `style_map` entries ({"idml", "role", "level",
+  "look"}; a character entry is a name or None for no style); choices are
+  `export.BOOK_STYLE_ROLES` plus a style template's styles. Preflight runs again after Apply,
+  since the outline depends on the map.
+- Hebrew/Greek in generated text (0.5.0): `Exporter._generated_scripts` runs after the
+  build over every story and master frame, splitting runs not yet in the Hebrew/Greek styles
+  (`_script_runs`, the same split as the manuscript's runs). Section markers can't carry a
+  character style; a marker with Hebrew/Greek is reported.
+- Faces (0.5.0): FontStyle for the body, notes and Hebrew styles is `fonts.regular_face()`,
+  the installed face's own name (Culmus fonts: "Medium"); "Regular" when not installed here.
+- Title page (0.5.0): text above the Title line is endorsements only when
+  `outline._endorsement_like` (25+ words, or a quotation/attribution); otherwise it belongs
+  to the title page. "author"/"autor" are default style names for the author role.
+- 0.5.0 window: the Style Map tab is `gui.StyleMappingPanel(app, tab)` (no Toplevel, no
+  per-style dialog); `refresh()` after each preflight, `save()` (changed rows into the
+  profile, also from `_forms_to_profile`), `apply()` (save and read again), `reset()`. TOC
+  and TOC Heading styles aren't listed. Profile fields are found with `App.pvar(path)` /
+  `_form_of(path)` (the Page Layout tab has three forms in LabelFrames). Running-head style:
+  profile `running_heads.style` (case, italic, size, tracking, font) ->
+  `Exporter._running_head_style`, form `head_style_form`.
+- Margins (0.5.0): measure = `page.measure` (30) x type size within 45-80 characters;
+  outside 42% of the rest, inside never less than the outside (`layout.geometry`).
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 
 ## Releases
 
+- **Version numbers (Beaux, October 23):** while below 1.0, X.Y.Z means:
+  - **Patch (Z, e.g. 0.4.1):** bug fixes only; the same settings give the same output except
+    where the fix corrects it.
+  - **Minor (Y, e.g. 0.5.0):** any new feature, a changed default or a change in the output
+    (margins, styles, layout), or a profile version change. A batch with both fixes and
+    features is minor.
+  - **1.0.0:** when Beaux would trust it on real books without standing by (real manuscripts
+    through InDesign and Affinity, front matter and heads opened and checked, a real update
+    on Windows, a settled name). His call.
+  - Label work on the branch with the version it will ship as (in CHANGELOG's "not yet
+    released" heading); change the label if the batch grows from fixes into features.
+- **README:** the top of README.md lists the latest release and the few before it (one or
+  two lines each, the version in progress first). Update it with every release.
 - Version in `docx2idml/__init__.py` (`EXE_BASE` and `REPO` there too); a dated entry at the
   top of `CHANGELOG.md`. Pushing a tag `vX.Y.Z` (matching `__version__`) runs
   `.github/workflows/build.yml` on Windows: tests, the .exe, a check that it carries the IDML
@@ -245,6 +288,7 @@ writes one.
 - Step 6: e01 with front matter and running heads: validates, not yet opened.
 - Step 7: the window tested under Xvfb here and by its tests on GitHub's Windows runner.
   Released: v0.2.0 (October 21, the first release with the .exe), v0.3.0 and v0.4.0 (October 22),
+  v0.5.0 (October 23),
   each built by the tag's workflow from main. The updater's real run worked (Beaux, October
   22): 0.2.0 found 0.3.0 by Help > Check for updates (the startup check didn't, fixed in
   0.4.0), downloaded it, opened it, and 0.3.0 offered to delete 0.2.0. From 0.4.0 shortcuts

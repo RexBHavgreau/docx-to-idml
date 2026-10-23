@@ -22,8 +22,12 @@ def test_kdp_gutter():
 def test_geometry_6x9():
     g = layout.geometry(432, 648, 11, 14, 0.42, 200)
     m = g.margins
-    assert round(g.cpl) == 65
-    assert m["inside"] < m["outside"] and m["top"] < m["bottom"]
+    # The measure about 30 times the type size (Bringhurst): 4.6 in, about 71 characters.
+    assert abs(g.measure - 330) <= 1 and round(g.cpl) == 71
+    # Never the outside wider than the inside by default; margins near a trade 6x9's
+    # (Beaux: about 0.6 in outside and top, 0.75 in bottom).
+    assert m["inside"] >= m["outside"] and m["top"] < m["bottom"]
+    assert 0.55 <= m["outside"] / 72 <= 0.65 and 0.55 <= m["top"] / 72 <= 0.65
     assert min(m.values()) >= 36
     assert m["top"] + m["bottom"] + g.lines * 14 == 648      # whole lines
     assert g.measure == 432 - m["inside"] - m["outside"]
@@ -34,8 +38,8 @@ def test_geometry_floors():
     # A long book on a small trim: KDP's gutter (0.875 in) wins and the measure gives way.
     g = layout.geometry(360, 576, 12, 15, 0.5, 800)
     assert g.margins["inside"] >= 63 and g.margins["outside"] >= 36
-    assert g.cpl < 65
-    assert any("under 60 characters" in n for n in g.notes)
+    assert g.cpl < 45
+    assert any("under 45 characters" in n for n in g.notes)
 
 
 def test_geometry_wide_trim_and_overrides():
@@ -44,6 +48,16 @@ def test_geometry_wide_trim_and_overrides():
     g = layout.geometry(432, 648, 11, 14, 0.42, 400, {"inside": 0.5, "top": 1})
     assert g.margins["inside"] == 36 and g.margins["top"] == 72
     assert any("below KDP's minimum" in n for n in g.notes)
+
+
+def test_measure_setting_and_limits():
+    # A shorter line by choice (25 times the type size); a very narrow font is held at 80
+    # characters, a very wide one at 45.
+    g = layout.geometry(432, 648, 11, 14, 0.42, 200, measure_ems=25)
+    assert abs(g.measure - 275) <= 1
+    assert round(layout.geometry(432, 648, 11, 14, 0.3, 200).cpl) == 80
+    g = layout.geometry(504, 720, 11, 14, 0.8, 200)          # 7 x 10
+    assert round(g.cpl) == 45 and g.margins["inside"] >= g.margins["outside"]
 
 
 def test_plan_pages_recto_rules():

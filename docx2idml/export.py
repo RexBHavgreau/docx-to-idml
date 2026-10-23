@@ -2,11 +2,11 @@
 
     files -> docx_reader (styles, outline) + content (text) -> Document -> writer.export_book
 
-What it does now:
+What it does:
 - Styles: a book set (Body, Body First, Chapter Title, Heading A-C, Block Quote, Footnote...)
-  with the profile's fonts, falling back to Word's; custom Word styles kept under their own
-  names, based on their role's style, carrying what Word sets on them (alignment, indents,
-  spacing, italic/bold, size relative to the body).
+  with the profile's fonts, else installed book fonts (never Word's). Word's paragraph styles
+  give names and roles only; a custom style with no book counterpart is kept under its own
+  name with its distinct look in book terms (_word_look), unless the style map says "book".
 - Text: italic, bold, small caps, capitals, superscript, subscript, underline and strikethrough
   become character styles (Italic, Bold, Small Caps...), so they survive a change of font;
   Word's own character styles are mapped by the style map. Other direct formatting (fonts,
@@ -18,8 +18,10 @@ What it does now:
 - Tables (Book Table style; header rows; merged cells across), images (JPEG, PNG; others are
   listed and left as a placeholder line), list and heading numbers as static text.
 - One story per unit of the outline, each on new pages, in one section per unit so footnote
-  numbers restart per chapter. Pages are a rough estimate with a page to spare; trim, margins,
-  masters and recto rules are step 5, running heads and front matter step 6.
+  numbers restart per chapter. Pages are estimated (spare pages as the profile says); the
+  geometry comes from layout.py, front matter and running heads from frontmatter.py and
+  _front_matter / _masters here. Hebrew and Greek in generated text get their styles too
+  (_generated_scripts).
 """
 
 import math
@@ -35,7 +37,7 @@ from .docx_reader import is_greek, is_hebrew, read_docx
 from .idml.images import image_info
 from .idml.model import (CellStyle, Document, Frame, Image, Master, Paragraph, Run, Section,
                          Story, Style, Table, TableStyle, TOCStyle)
-from .outline import _BACK, Unit, apply_kinds, build_outline, title_key
+from .outline import _BACK, _FRONT, Unit, apply_kinds, build_outline, title_key
 from .stylemap import StyleMap, norm
 from .template import TemplateError, apply_template, read_template
 
@@ -146,7 +148,8 @@ def calculated_margins(profile, pages=200, text=None):
             found = None
     size = body_size(profile)
     return layout.geometry(_half(w * 72), _half(h * 72), size,
-                           leading_for(profile, size, xh), avg, pages), bool(found)
+                           leading_for(profile, size, xh), avg, pages,
+                           measure_ems=page.get("measure")), bool(found)
 
 
 class ExportError(Exception):
@@ -267,6 +270,7 @@ class Exporter:
             if layout.kdp_band(new) == layout.kdp_band(pages):
                 break
             pages = new
+        self._generated_scripts()
         self.report += self.geo.notes + layout.page_count_notes(self.doc.page_count)
         self._finish_styles()
         return self.doc
@@ -321,14 +325,16 @@ class Exporter:
         chars = sum(len(p.text) for d in self.docs for p in d.paragraphs)
         notes = sum(len(p.text) for d in self.docs for p in d.note_paragraphs)
         g = layout.geometry(self.doc.width, self.doc.height, self.body_size, self.body_lead,
-                            self.avg_width, 100)
+                            self.avg_width, 100,
+                            measure_ems=self.profile["page"].get("measure"))
         per_page = g.cpl * g.lines
         return int((chars + notes * 0.8) / per_page) + 2 * len(self.outline.units) + 4
 
     def _geometry(self, pages):
         doc = self.doc
         g = layout.geometry(doc.width, doc.height, self.body_size, self.body_lead,
-                            self.avg_width, pages, self.profile["page"].get("margins"))
+                            self.avg_width, pages, self.profile["page"].get("margins"),
+                            self.profile["page"].get("measure"))
         self.geo = g
         doc.margins = g.margins
         self.measure, self.text_height = g.measure, g.text_height
@@ -346,7 +352,7 @@ class Exporter:
         if not body:
             body = fonts.book_font()
             self.report.append("Body font: %s (no font set in the profile; a book font "
-                               "installed on this computer). Choose another in Layout profile "
+                               "installed on this computer). Choose another in Layout Profile "
                                "> Type." % body)
         heads = pf.get("headings") or body
         notes = pf.get("notes") or body
@@ -397,7 +403,8 @@ class Exporter:
         self.body_size, self.body_lead = size, lead
         indent = _half(size * 1.5)
         lang = LANGUAGES.get(self.profile["front_matter"].get("language"), LANGUAGES["en"])
-        body = {"FontStyle": "Regular", "PointSize": size, "FirstLineIndent": indent,
+        body = {"FontStyle": fonts.regular_face(f["body"]), "PointSize": size,
+                "FirstLineIndent": indent,
                 "Justification": "LeftJustified", "Hyphenation": bool(typo["hyphenation"]),
                 "Composer": self._composer(typo),
                 "AppliedLanguage": lang, "Ligatures": bool(typo["ligatures"])}
@@ -466,7 +473,7 @@ class Exporter:
             S("Bibliography", "Body", {"FirstLineIndent": -indent, "LeftIndent": indent,
                                        "Justification": "LeftAlign"}),
             S("Footnote", font=f["notes"], leading=note_lead,
-              attrs={"FontStyle": "Regular", "PointSize": note_size, "FirstLineIndent": size - 2,
+              attrs={"FontStyle": fonts.regular_face(f["notes"]), "PointSize": note_size, "FirstLineIndent": size - 2,
                      "Justification": "LeftJustified", "AppliedLanguage": lang,
                      "Hyphenation": bool(typo["hyphenation"]),
                      "Composer": body["Composer"], "HyphenateLastWord": False,
@@ -485,9 +492,7 @@ class Exporter:
             S("Table Head", "Table Body", {"FontStyle": "Bold"}),
             S("Folio", font=f["body"], leading=lead,
               attrs={"PointSize": size - 2, "Justification": "CenterAlign"}),
-            S("Running Head", font=f["body"], leading=lead,
-              attrs={"PointSize": size - 2, "Justification": "CenterAlign",
-                     "Capitalization": "SmallCaps", "Tracking": 20, "Hyphenation": False}),
+            self._running_head_style(size, lead),
             S("Half Title", "Book Title", {"PointSize": _half(size * 1.6)},
               leading=_half(size * 2)),
             S("Publisher", "Book Title", {"PointSize": size, "SpaceBefore": lead * 6},
@@ -524,15 +529,6 @@ class Exporter:
     def _resolved_attrs(self, name):
         attrs, _font, _lead = self.doc.resolved(name)
         return attrs
-
-    def _word_style(self, name):
-        """(DocxFile, style id) of the first file defining this Word style name."""
-        key = norm(name)
-        for d in self.docs:
-            for sid, st in d.styles.items():
-                if norm(st.name) == key:
-                    return d, sid
-        return None, None
 
     def _custom_paragraph_style(self, mapping, docx, style_id):
         """A Word style kept under its own name, based on its parent's IDML style (or its
@@ -636,7 +632,8 @@ class Exporter:
             st = Style(name, attrs=dict(CHAR_STYLES[name]))
         elif name == "Hebrew":
             st = Style(name, font=self.fonts["hebrew"],
-                       attrs={"FontStyle": "Regular", "AppliedLanguage": "$ID/Hebrew",
+                       attrs={"FontStyle": fonts.regular_face(self.fonts["hebrew"]),
+                              "AppliedLanguage": "$ID/Hebrew",
                               "CharacterDirection": "RightToLeftDirection"})
         elif name == "Greek":
             st = Style(name, font=self.fonts["greek"], attrs={"AppliedLanguage": "$ID/Greek"})
@@ -842,28 +839,62 @@ class Exporter:
             if cr.image is not None or not cr.text:
                 continue
             style, local = self._run_attrs(cr, para_style, docx, note)
-            for script, part in segments(cr.text):
-                if script:
-                    name = "Hebrew" if script == "hebrew" else "Greek"
-                    sattrs = self._char_style(name)
-                    want = dict(local)
-                    if style and style in self.used_char:
-                        for k, v in self.used_char[style].attrs.items():
-                            want.setdefault(k, v)
-                    if script == "hebrew":
-                        want.pop("FontStyle", None)
-                    out.append(Run(part, name, {k: v for k, v in want.items()
-                                                if sattrs.get(k) != v}))
-                else:
-                    out.append(Run(part, style, dict(local)))
-        merged = []
-        for r in out:
-            if merged and r.footnote is None and merged[-1].footnote is None and \
-                    merged[-1].style == r.style and merged[-1].attrs == r.attrs:
-                merged[-1].text += r.text
+            out += self._script_runs(cr.text, style, local)
+        return _merge_runs(out)
+
+    def _script_runs(self, text, style, local):
+        """A run's text split into runs: Hebrew and Greek in their character styles (keeping
+        the run's own style's settings as local ones, except a face for Hebrew)."""
+        out = []
+        for script, part in segments(text):
+            if script:
+                name = "Hebrew" if script == "hebrew" else "Greek"
+                sattrs = self._char_style(name)
+                want = dict(local)
+                if style and style in self.used_char:
+                    for k, v in self.used_char[style].attrs.items():
+                        want.setdefault(k, v)
+                if script == "hebrew":
+                    want.pop("FontStyle", None)
+                out.append(Run(part, name, {k: v for k, v in want.items()
+                                            if sattrs.get(k) != v}))
             else:
-                merged.append(r)
-        return merged
+                out.append(Run(part, style, dict(local)))
+        return out
+
+    def _generated_scripts(self):
+        """Hebrew and Greek in text the program wrote itself (half-title, title and copyright
+        pages, running heads) set as in the manuscript's text: in the Hebrew and Greek
+        styles, and a Hebrew line with the World-Ready composer, right to left when mostly
+        Hebrew. The manuscript's runs are split already and pass through unchanged."""
+        paras = [p for st in self.doc.stories for p in st.paragraphs]
+        paras += [p for m in self.doc.masters for f in m.frames for p in f.paragraphs]
+        for p in paras:
+            if not any(r.text and r.style not in ("Hebrew", "Greek") and
+                       any(is_hebrew(c) or is_greek(c) for c in r.text) for r in p.runs):
+                continue
+            runs = []
+            for r in p.runs:
+                if r.text and r.style not in ("Hebrew", "Greek") and r.footnote is None:
+                    runs += self._script_runs(r.text, r.style, r.attrs)
+                else:
+                    runs.append(r)
+            p.runs = _merge_runs(runs)
+            text = "".join(r.text for r in p.runs if r.text)
+            heb = sum(1 for c in text if is_hebrew(c))
+            if heb:
+                p.attrs["Composer"] = "HL Composer Optyca"
+                if heb > sum(1 for c in text if c.isalpha() and not is_hebrew(c)):
+                    p.attrs["ParagraphDirection"] = "RightToLeftDirection"
+        heads = [s.marker for s in self.doc.sections
+                 if s.marker and any(is_hebrew(c) or is_greek(c) for c in s.marker)]
+        if heads:
+            self.report.append(
+                "Running heads with Hebrew or Greek (%s) are set in the running-head font: "
+                "a running head comes from the section marker, which can't change font. Give "
+                "these chapters a short title in the Running Heads tab, or set the running "
+                "head's font in InDesign." % "; ".join("\u201c%s\u201d" % h for h in heads))
+
 
     def _runt_style(self, name):
         """Paragraphs of running text (Body, notes, quotations...), not headings or display."""
@@ -1204,7 +1235,14 @@ class Exporter:
         blocks.append(Block(g("display", "Copyright", "copyright"), paras, opens="next",
                             valign="BottomAlign"))
         if extras:
-            blocks.append(Block(g("display", "(opening)", "opening"), extras))
+            # Other lines of the manuscript's title page (a school, a place, a date) are left
+            # out (Beaux): the generated pages hold what a book needs. Listed, so nothing is
+            # lost unseen.
+            lines = ["".join(r.text for r in p.runs).strip() for p in extras]
+            self.report.append(
+                "Left out from the manuscript's title page: %s. If any belongs in the book "
+                "(the publisher, say), enter it in Book Details."
+                % "; ".join("\u201c%s\u201d" % t for t in lines if t))
         blocks += display
         if info["contents"]:
             depth = self.profile["front_matter"].get("contents_depth", "chapters")
@@ -1225,7 +1263,7 @@ class Exporter:
     def _split_opening(self, paras):
         """The manuscript's own title page: title, subtitle and author lines are replaced by
         the generated title page; from a copyright line on, the text goes on the copyright
-        page; anything else is kept on a display page of its own."""
+        page; anything else is left out (and reported)."""
         copyright_, extras = [], []
         author = (self.outline.author or "").casefold()
         for p in paras:
@@ -1235,8 +1273,10 @@ class Exporter:
                     "derechos reservados" in low:
                 copyright_.append(p)
             elif p.style in ("Book Title", "Book Subtitle", "Author") or \
-                    (author and author in low and len(text) < 80):
-                continue
+                    (author and author in low and len(text) < 80) or \
+                    low in ("by", "por") or \
+                    _FRONT.get(title_key(text)) == ("front", "contents"):
+                continue        # replaced by the generated pages (the contents has its own)
             else:
                 extras.append(p)
         return copyright_, extras
@@ -1361,6 +1401,21 @@ class Exporter:
                     sug["tight"][0], sug["tight"][1], sug["standard"][0], sug["standard"][1],
                     sug["open"][0], sug["open"][1], (" (%s)" % why) if why else ""))
 
+    def _running_head_style(self, size, lead):
+        """The Running Head style as the profile sets it (case, italic, size, letter-spacing,
+        font)."""
+        rs = (self.profile.get("running_heads") or {}).get("style") or {}
+        attrs = {"PointSize": rs.get("size") or size - 2, "Justification": "CenterAlign",
+                 "Tracking": rs.get("tracking") if rs.get("tracking") is not None else 20,
+                 "Hyphenation": False}
+        case = rs.get("case", "small_caps")
+        if case in ("small_caps", "all_caps"):
+            attrs["Capitalization"] = "SmallCaps" if case == "small_caps" else "AllCaps"
+        if rs.get("italic"):
+            attrs["FontStyle"] = "Italic"
+        return Style("Running Head", font=rs.get("font") or self.fonts["body"], leading=lead,
+                     attrs=attrs)
+
     def _spare(self):
         try:
             return max(0, min(2, int(self.profile["page"].get("spare_pages") or 0)))
@@ -1415,6 +1470,20 @@ class Exporter:
             for k, title in enumerate(parts, 1):
                 doc.masters.append(Master("P%d" % k, "Body",
                                           frames=frames(True, [Run(title)], recto)))
+
+
+def _merge_runs(out):
+    """Neighbouring text runs with the same style and settings as one."""
+    merged = []
+    for r in out:
+        prev = merged[-1] if merged else None
+        if prev and not any((r.footnote, prev.footnote, r.special, prev.special, r.table,
+                             prev.table, r.image, prev.image)) and \
+                prev.style == r.style and prev.attrs == r.attrs:
+            prev.text += r.text
+        else:
+            merged.append(r)
+    return merged
 
 
 def _label_run(text):

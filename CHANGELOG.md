@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.5.0 (October 23, 2026)
+
+- The Style Map tab is now the one view of every style found in the manuscript, with the
+  IDML style, role and look of each as dropdowns (it replaces the list with a dialog per
+  style and the separate window). "Apply the mapping" reads the manuscript again with it;
+  changes not yet applied are still used by the export. The tab is shown after the
+  manuscript is first read. The manuscript's own contents (Word's TOC styles) isn't listed:
+  a new contents replaces it.
+- Tabs are in title case (Book Details, Running Heads, Layout Profile, Style Map; Page
+  Layout, Notes and Contents).
+- The Page Layout tab (was Page) is in three sections: Page Size, Page Organization and Page
+  Margins.
+- Narrower default margins: the line length is now about 30 times the type size (Bringhurst;
+  a setting in Page Margins, 20–40), kept between 45 and 80 characters, instead of 65
+  characters. At 11 pt on 6 x 9 the margins are about 0.82 in inside, 0.6 in outside and top,
+  0.76 in bottom, and lines run about 71 characters. The outside margin is never wider than
+  the inside unless you set it so.
+- The running heads' style can be set in the Running Heads tab: small caps, all caps or as
+  typed; italic; size; letter-spacing; font.
+- Profile version 6 (line length, running-head style); saved profiles are upgraded. Two
+  settings that did nothing are dropped (OpenType small caps; endnotes: "ask").
+- Preflight reports tables inside tables: their text is kept in the outer table's cell, but
+  the inner table's rows and columns are not (they went unreported before).
+- Housekeeping: unused code removed; the reference folder keeps only what the tests and tools
+  use (the InDesign files, PDFs and footnote experiments are in the history).
+- Fixed: when a chapter ran longer than estimated, InDesign added one page, which pushed
+  the next chapter's opening page (B-Opener) onto a left-hand page; the chapter title then
+  jumped to the following right-hand page, which had the A-Body master. InDesign now adds
+  pages two at a time (Smart Text Reflow's "Preserve Facing-Page Spreads"), so openers stay
+  on right-hand pages with their master.
+- Fixed: Hebrew and Greek in text the program writes itself (the book's title on the
+  half-title and title pages, the title or author in a running head, a part's title) were set
+  in the style's own font. They now get the Hebrew and Greek styles and fonts, as in the
+  manuscript's text, and a line with Hebrew uses the World-Ready composer. Running heads taken
+  from the chapter title can't change font partway; when one has Hebrew or Greek, the report
+  says so (give the chapter a short title in the Running heads tab).
+- Fonts whose normal face isn't called "Regular" (the Culmus Hebrew fonts such as Taamey
+  David CLM call it "Medium") are asked for by the face's own name, so InDesign doesn't report
+  a missing font.
+- A paper's cover page (from a real manuscript): a line or two above the title, such as a
+  school's name, is now part of the title page rather than a page of endorsements (text above
+  the title still counts as endorsements when it runs to sentences or is a quotation); a Word
+  style named "Author" (or "Autor") gives the author; a bare "by" line and the title of a
+  typed contents are left out with the contents. Other lines of the manuscript's title page
+  (a school, a place, a date) are left out too, and listed in the report; anything that
+  belongs in the book goes in Book details.
+
 ## 0.4.0 (October 22, 2026)
 
 - Style mapping in one window (as InDesign's style mapping when placing a Word file): after
@@ -58,7 +105,7 @@
   where each value was found (which style in which file, or the title page's "by" line), or
   that it wasn't found.
 
-## 0.2.0 (October 21, 2026, released)
+## 0.2.0 (October 21, 2026)
 
 - Fonts are chosen from dropdowns of the fonts installed on the computer (you can still type a
   name, or leave the box blank to use Word's). The Hebrew and Greek lists show only fonts that

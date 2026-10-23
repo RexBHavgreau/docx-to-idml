@@ -4,10 +4,28 @@ Turns a Word book manuscript (one .docx or several) into an IDML file that opens
 Affinity or DesignCraft with most of the book already laid out: page geometry, masters, styles,
 front matter, running heads and pagination. The plan is in [PLAN.md](PLAN.md).
 
-**Status:** step 7 of the build order (the window, .exe and updater), not yet released. Preflight reports what the manuscript holds; export
-writes the text, styles, footnotes, Hebrew and Greek, tables and images as IDML, with margins,
-masters, roman/arabic page numbers and recto rules. Running heads and generated front matter
-(half-title, title, copyright, contents) come next (step 6).
+## Versions
+
+Download the program (`docx-to-idml-X.Y.Z.exe`) from
+[Releases](https://github.com/RexBHavgreau/docx-to-idml/releases); once installed, it offers
+new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md).
+
+- **0.5.0** (October 23, 2026, latest release): the Style Map tab shows every style in one view; narrower default
+  margins (line length about 30 times the type size, outside never wider than inside);
+  running-head style settings; Page Layout in three sections. Fixes: Hebrew in the title
+  pages and running heads, chapter openers kept on right-hand pages when InDesign adds pages,
+  a paper's cover page read better.
+- **0.4.0** (October 22, 2026): style mapping in one window; after an
+  update, shortcuts and taskbar pins point at the new version; the update check runs at
+  every start.
+- **0.3.0** (October 22, 2026): endorsements recognized and set first; no Word formatting in
+  the book's styles; body size, leading choices and baseline grid; calculated margins shown.
+- **0.2.0** (October 21, 2026): font dropdowns; styles from an IDML template; spare pages;
+  World-Ready composer for Hebrew; bibliography and footnote-italics fixes.
+
+**Status:** all seven steps of the build order are in place (preflight, export with styles,
+footnotes, Hebrew and Greek, tables and images, layout and pagination, front matter and
+running heads, the window, the .exe and the updater). Being tried on real manuscripts.
 
 ## The window
 
