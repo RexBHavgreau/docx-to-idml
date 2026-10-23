@@ -13,6 +13,15 @@ keep it up to date when decisions change.
 - Ask before merging to `main` or tagging a release. Work on a branch and push it; Beaux merges.
 - He is an editor and Hebrew/OT scholar; conventions follow the Chicago Manual of Style. When an
   editorial choice is unclear, ask rather than guess.
+- **Future-proofing (Beaux, October 23):** when he asks for something, point out its
+  implications for the future in a line or two: what it would make harder later (another
+  program, a Mac version, other languages, saved profiles and books), a simpler way that
+  keeps options open, and anything that should be decided now rather than patched later.
+- Keep the code clean as it grows: remove what a change makes unused, keep descriptions
+  current, and keep only what the tests and tools use in `reference/`. `export.py` and
+  `gui.py` are large: when a change mostly touches one part of them, move that part into a
+  module of its own first (export: styles, pagination and masters, front-matter assembly;
+  gui: one module per tab), tests passing before and after, in a commit of its own.
 
 ## Rules from the plan
 
