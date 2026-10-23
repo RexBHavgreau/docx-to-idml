@@ -71,7 +71,7 @@ class PaginationMixin:
     def _paginate(self, blocks):
         """Pages, masters, sections and running heads; returns the page count."""
         doc = self.doc
-        sink = _half(self.body_lead * 6)
+        sink = self._opener_drop()
         items = []
         for b in blocks:
             kind = b.kind
@@ -168,6 +168,12 @@ class PaginationMixin:
         attrs = self._resolved_attrs("Running Head")
         size = attrs.get("PointSize", self.body_size)
         return len(text) * size * self.avg_width * 1.1 > self.measure * 0.8
+
+    def _opener_drop(self):
+        """How far chapter titles (and the contents title) are lowered: the profile's
+        page.opener_drop in points, else six body lines."""
+        drop = (self.profile.get("page") or {}).get("opener_drop")
+        return _half(drop) if drop else _half(self.body_lead * 6)
 
     def _sinks(self, blocks):
         """Lower each opener's first paragraph by its block's sink, in the paragraph style

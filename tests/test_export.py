@@ -446,9 +446,21 @@ def test_openers_lowered_by_style():
         assert doc.resolved("Half Title")[0]["SpaceBefore"] == _half(ex.text_height / 4)
         assert doc.resolved("Book Title")[0]["SpaceBefore"] == _half(ex.text_height / 5)
         assert any("Only at column top" in line for line in ex.report)
+        assert doc.resolved("Contents Title")[0]["SpaceBefore"] == sink
         out = os.path.join(TMP, "openers.idml")
         write_idml(doc, out)
         assert check(out) == []
+    finally:
+        ex.cleanup()
+
+
+def test_opener_drop_from_profile():
+    prof = default_profile()
+    prof["page"]["opener_drop"] = 72
+    ex = Exporter(_files(), prof)
+    try:
+        doc = ex.build()
+        assert doc.resolved("Chapter Title")[0]["SpaceBefore"] == 72
     finally:
         ex.cleanup()
 

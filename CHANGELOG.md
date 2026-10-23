@@ -22,6 +22,9 @@
   an invisible rule above kept in the frame, which is how InDesign lowers a paragraph at the
   top of a frame. The report says what to set in Affinity, and to re-apply B-Opener if a
   chapter moves to another page.
+- Layout Profile > Page Organization: "Chapter titles lowered by" sets the drop (blank = six
+  body lines, as before). It shows points with their inches, 72 pt (1"); the arrows step
+  6 pt; points or inches can be typed (72, 1", 1 in). Profile version 9.
 - Fixed: in InDesign, a chapter with many footnotes could run past its last page, and Smart
   Text Reflow then added a page out of place (an unthreaded page before the chapter's last
   one; Beaux's Ezekiel paper, 40 notes in one chapter). Affinity fitted the same text. The

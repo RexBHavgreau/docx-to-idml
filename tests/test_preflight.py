@@ -175,6 +175,7 @@ def test_profiles():
     assert up1["running_heads"]["style"]["caps"] == "small_caps"
     assert up1["running_heads"]["style"]["bold"] is False
     assert up1["running_heads"]["script_masters"] is False
+    assert up1["page"]["opener_drop"] is None
     # Version 7: "case" was the type (all_caps); now the letters, with caps the type.
     v7 = os.path.join(TMP, "v7.json")
     with open(v7, "w") as f:

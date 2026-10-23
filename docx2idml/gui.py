@@ -10,6 +10,7 @@ from Explorer works when tkinterdnd2 is installed (it is bundled in the .exe).
 import copy
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -33,7 +34,8 @@ LOOKS = {"book": "the book style's", "word": "Word's, in book terms"}
 
 # Profile fields: (path in the profile, label, kind, choices). Kinds: bool, text, number
 # (blank allowed = automatic), int, choice, int_choice (a choice saved as a number), file (an
-# IDML file, with Browse), font (a dropdown of installed fonts that can also
+# IDML file, with Browse), points (a measure in points shown with its inches, 72 pt (1"),
+# with arrows; inches may be typed: 1"), font (a dropdown of installed fonts that can also
 # be typed in; its choices name a script, "hebrew" or "greek", to list only fonts that have it).
 PROFILE_FIELDS = {
     # The Page Layout tab in three sections.
@@ -49,6 +51,8 @@ PROFILE_FIELDS = {
             (("chapters_open",), "Chapters open on", "choice", ["recto", "next_page"]),
             (("page", "spare_pages"), "Spare pages after each chapter", "int_choice",
              ["0", "1", "2"]),
+            (("page", "opener_drop"), "Chapter titles lowered by (blank = 6 body lines)",
+             "points", None),
         ],
         "Page Margins": [
             (("page", "measure"), "Line length (a multiple of the type size; 30 usual, "
@@ -138,6 +142,28 @@ def _set(d, path, value):
     d[path[-1]] = value
 
 
+POINTS_STEP = 6                  # the arrows of a points field: 1/12 inch
+
+
+def parse_points(text):
+    """Points from what was typed: "72", "72 pt", "72 pt (1\")", or inches: "1\"", "1 in".
+    None when blank or not a measure."""
+    text = (text or "").strip().lower().replace("\u2033", '"')
+    m = re.match(r'^(\d+(?:\.\d*)?|\.\d+)\s*(pt|p|"|in|inch|inches)?', text)
+    if not m:
+        return None
+    value = float(m.group(1))
+    return value * 72 if m.group(2) in ('"', "in", "inch", "inches") else value
+
+
+def format_points(value):
+    """72 -> '72 pt (1")'; 84 -> '84 pt (1.17")'."""
+    if value is None:
+        return ""
+    inches = ("%.2f" % (value / 72)).rstrip("0").rstrip(".")
+    return '%g pt (%s")' % (round(value * 2) / 2, inches)
+
+
 def _num(text, kind):
     text = (text or "").strip()
     if not text:
@@ -156,6 +182,7 @@ class Form:
         """by_column: fill each column top to bottom (fields listed in reading order down the
         first column, then the second), instead of row by row."""
         self.fields, self.vars, self.font_boxes, self.labels = fields, {}, [], {}
+        self.points_start = None    # a points field's arrows start here when it's blank
         for n, (path, label, kind, choices) in enumerate(fields):
             rows = -(-len(fields) // columns)
             if by_column:
@@ -211,6 +238,25 @@ class Form:
                         if path:
                             var.set(path)
                     ttk.Button(w, text="Browse...", command=browse).pack(side="left", padx=2)
+                elif kind == "points":
+                    w = ttk.Spinbox(parent, textvariable=var, width=24)
+
+                    def step(direction, var=var):
+                        value = parse_points(var.get())
+                        if value is None:
+                            value = self.points_start() if self.points_start else 72
+                        else:
+                            value = max(0, value + direction * POINTS_STEP)
+                        var.set(format_points(value))
+                        return "break"
+
+                    def tidy(_e=None, var=var):
+                        if var.get().strip():
+                            var.set(format_points(parse_points(var.get())))
+                    w.bind("<<Increment>>", lambda e, s=step: s(1))
+                    w.bind("<<Decrement>>", lambda e, s=step: s(-1))
+                    w.bind("<FocusOut>", tidy)
+                    w.bind("<Return>", tidy)
                 elif kind == "font":
                     w = ttk.Combobox(parent, textvariable=var, width=24, height=20,
                                      values=["(reading the installed fonts...)"])
@@ -230,6 +276,8 @@ class Form:
             v = _get(data, path)
             if kind == "bool":
                 var.set(bool(v))
+            elif kind == "points":
+                var.set(format_points(v))
             else:
                 var.set("" if v is None else (("%g" % v) if isinstance(v, float) else str(v)))
 
@@ -243,6 +291,8 @@ class Form:
                 value = _num(var.get(), "int") or 0
             elif kind == "one_of":
                 value = var.get() or None
+            elif kind == "points":
+                value = parse_points(var.get())
             elif kind in ("number", "int"):
                 value = _num(var.get(), kind)
                 if value is None and kind == "int":
@@ -614,6 +664,14 @@ class App(BookTabMixin):
         self.heads.pack(fill="both", expand=True)
         self.heads.bind("<Double-1>", self._edit_head)
 
+    def _auto_drop(self):
+        """The automatic opener drop (six body lines) for the profile as the forms set it."""
+        from .export import body_size, leading_for
+        prof = copy.deepcopy(self.profile)
+        for form in self.profile_forms:
+            form.save(prof)
+        return round(leading_for(prof, body_size(prof)) * 6 * 2) / 2
+
     def _layout_tab(self):
         tab = ttk.Frame(self.tabs, padding=8)
         self.tabs.add(tab, text="Layout Profile")
@@ -634,6 +692,8 @@ class App(BookTabMixin):
                 self.profile_forms.append(Form(f, fields, columns=2, by_column=True))
                 if name == "Type":
                     typetab, ntype = f, len(fields)
+        for form in self.profile_forms:
+            form.points_start = self._auto_drop
         # The suggested leading for the size and font, under the Type fields.
         self.leading_note = tk.StringVar()
         ttk.Label(typetab, textvariable=self.leading_note, wraplength=820, justify="left").grid(

@@ -1291,7 +1291,7 @@ class Exporter(PaginationMixin):
         if info["contents"]:
             depth = self.profile["front_matter"].get("contents_depth", "chapters")
             entries = frontmatter.contents_entries(self.outline, depth)
-            sink = _half(self.body_lead * 6)
+            sink = self._opener_drop()
             pages = info["contents_pages"] or frontmatter.contents_pages(
                 entries, self.geo.cpl, self.body_lead, self.text_height, sink)
             blocks.append(Block(g("front", frontmatter.texts(lang)["contents"], "contents"),

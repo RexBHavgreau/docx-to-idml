@@ -240,6 +240,9 @@ keep it up to date when decisions change.
   plus RuleAbove weight 0, tint 0, offset sink + 0.75 x size, KeepRuleAboveInFrame (InDesign
   ignores Space Before at the top of a frame; Affinity ignores the rule). Text frames are full
   height; `Story.sink` (a shorter first frame) is left for the reference-file generator only.
+  The chapter drop is profile `page.opener_drop` (points; None = six body lines,
+  `_opener_drop`; profile version 9), a Form "points" field (`gui.parse_points` /
+  `format_points`: 72 pt (1"), arrows step 6, blank arrows start at `App._auto_drop`).
 - The main window packs the status line and export row first (side bottom) and sizes itself
   to its requested height within the screen (`App._fit_window`).
 - Margins (0.5.0): measure = `page.measure` (30) x type size within 45-80 characters;

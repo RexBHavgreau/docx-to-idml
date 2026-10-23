@@ -452,6 +452,41 @@ def test_tabs_in_title_case_and_head_style():
         app.quit(force=True)
 
 
+def test_opener_drop_field():
+    """The drop at chapter openings: points shown with inches, arrows step 6 pt, inches or
+    points typed are tidied, blank = automatic."""
+    app, root = _app()
+    try:
+        form = app._form_of(("page", "opener_drop"))
+        var = form.vars[("page", "opener_drop")][0]
+        box = next(w for w in _descendants(app.root) if w.winfo_class() == "TSpinbox" and
+                   str(w.cget("textvariable")) == str(var))
+        assert var.get() == ""                         # automatic
+        box.event_generate("<<Increment>>")
+        assert var.get() == app_auto(app)               # the arrows start from the automatic
+        var.set("72")
+        box.event_generate("<<Increment>>")
+        assert var.get() == '78 pt (1.08")'
+        box.event_generate("<<Decrement>>")
+        box.event_generate("<<Decrement>>")
+        assert var.get() == '66 pt (0.92")'
+        var.set('1.5"')
+        box.event_generate("<FocusOut>")
+        assert var.get() == '108 pt (1.5")'
+        app._forms_to_profile()
+        assert app.profile["page"]["opener_drop"] == 108
+        var.set("")
+        app._forms_to_profile()
+        assert app.profile["page"]["opener_drop"] is None
+    finally:
+        app.quit(force=True)
+
+
+def app_auto(app):
+    from docx2idml.gui import format_points
+    return format_points(app._auto_drop())
+
+
 def test_cleanup_after_update():
     """The new version offers to delete older copies and retarget shortcuts; declined copies
     aren't asked about again."""
