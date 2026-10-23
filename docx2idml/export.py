@@ -510,6 +510,7 @@ class Exporter(PaginationMixin):
             S("Copyright", "Body", {"PointSize": size - 2, "FirstLineIndent": 0,
                                     "Justification": "LeftAlign", "Hyphenation": False,
                                     "SpaceAfter": _half(lead / 2)}, leading=note_lead),
+            S("Copyright Title", "Copyright", {"FontStyle": "Italic"}),
             S("Contents Title", "Chapter Title", next_style="Contents 1"),
             S("Contents 1", "Body", {"FirstLineIndent": 0, "Justification": "LeftAlign",
                                      "SpaceBefore": 6, "Hyphenation": False},
@@ -1330,17 +1331,21 @@ class Exporter(PaginationMixin):
                     sug["open"][0], sug["open"][1], (" (%s)" % why) if why else ""))
 
     def _running_head_style(self, size, lead):
-        """The Running Head style as the profile sets it (case, italic, size, letter-spacing,
-        font)."""
+        """The Running Head style as the profile sets it (capitals, italic, bold, underline,
+        size, letter-spacing, font). Title and sentence case change the text instead
+        (`_head_text`)."""
         rs = (self.profile.get("running_heads") or {}).get("style") or {}
         attrs = {"PointSize": rs.get("size") or size - 2, "Justification": "CenterAlign",
                  "Tracking": rs.get("tracking") if rs.get("tracking") is not None else 20,
                  "Hyphenation": False}
-        case = rs.get("case", "small_caps")
-        if case in ("small_caps", "all_caps"):
-            attrs["Capitalization"] = "SmallCaps" if case == "small_caps" else "AllCaps"
-        if rs.get("italic"):
-            attrs["FontStyle"] = "Italic"
+        caps = rs.get("caps")
+        if caps in ("small_caps", "all_caps"):
+            attrs["Capitalization"] = "SmallCaps" if caps == "small_caps" else "AllCaps"
+        face = FONT_STYLES[(bool(rs.get("bold")), bool(rs.get("italic")))]
+        if face != "Regular":
+            attrs["FontStyle"] = face
+        if rs.get("underline"):
+            attrs["Underline"] = True
         return Style("Running Head", font=rs.get("font") or self.fonts["body"], leading=lead,
                      attrs=attrs)
 

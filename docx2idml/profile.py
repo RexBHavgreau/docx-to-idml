@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import APP_NAME
 
-PROFILE_VERSION = 7
+PROFILE_VERSION = 8
 
 DEFAULT_PROFILE = {
     "profile_version": PROFILE_VERSION,
@@ -52,8 +52,11 @@ DEFAULT_PROFILE = {
         "script_masters": False,
         # The Running Head paragraph style.
         "style": {
-            "case": "small_caps",      # small_caps, all_caps, as_typed
+            "case": "as_typed",        # as_typed, title, sentence (the letters of the text)
+            "caps": "small_caps",      # None, small_caps or all_caps (the type)
             "italic": False,
+            "bold": False,
+            "underline": False,
             "size": None,              # points; None = 2 pt below the body size
             "tracking": 20,            # letter-spacing, thousandths of an em
             "font": None,              # None = the body font
@@ -181,8 +184,19 @@ def _from_6(data):
     return data
 
 
+def _from_7(data):
+    """Version 7: the running-head style's "case" was small_caps, all_caps or as_typed (the
+    type); now case is the letters (as_typed, title, sentence) and caps the type."""
+    style = data.setdefault("running_heads", {}).setdefault("style", {})
+    old = style.get("case", "small_caps")
+    if old in ("small_caps", "all_caps", "as_typed"):
+        style["caps"] = None if old == "as_typed" else old
+        style["case"] = "as_typed"
+    return data
+
+
 MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2, 3: _from_3, 4: _from_4, 5: _from_5,
-              6: _from_6}   # version n -> function that upgrades it to n + 1
+              6: _from_6, 7: _from_7}   # version n -> function that upgrades it to n + 1
 
 
 def migrate(data):

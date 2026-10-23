@@ -105,18 +105,24 @@ HEAD_FIELDS = [
     (("running_heads", "suppress_on_openers"), "No heads on chapter openers", "bool", None),
     (("running_heads", "suppress_on_display"), "No heads on display pages", "bool", None),
     (("running_heads", "suppress_on_blanks"), "No heads on blank pages", "bool", None),
+    (("running_heads", "script_masters"),
+     "Separate masters for heads with Hebrew or Greek (each gets its own font)", "bool", None),
 ]
-HEAD_STYLE_FIELDS = [
-    (("running_heads", "style", "case"), "Letters", "choice",
-     ["small_caps", "all_caps", "as_typed"]),
+HEAD_CASE_FIELDS = [
+    (("running_heads", "style", "case"), "", "radio",
+     [("as_typed", "As typed"), ("title", "Title Case"), ("sentence", "Sentence case")]),
+]
+HEAD_FONT_FIELDS = [
     (("running_heads", "style", "italic"), "Italic", "bool", None),
+    (("running_heads", "style", "bold"), "Boldface", "bool", None),
+    (("running_heads", "style", "underline"), "Underlined", "bool", None),
+    (("running_heads", "style", "caps"), "", "one_of",
+     [("all_caps", "All Caps"), ("small_caps", "Small Caps")]),
     (("running_heads", "style", "size"), "Size (pt; blank = 2 pt below the body)", "number",
      None),
     (("running_heads", "style", "tracking"), "Letter-spacing (thousandths of an em)", "int",
      None),
     (("running_heads", "style", "font"), "Font (blank = the body font)", "font", None),
-    (("running_heads", "script_masters"),
-     "Separate masters for heads with Hebrew or Greek (each gets its own font)", "bool", None),
 ]
 def _get(d, path):
     for k in path:
@@ -160,6 +166,29 @@ class Form:
                 var = tk.BooleanVar()
                 ttk.Checkbutton(parent, text=label, variable=var).grid(
                     row=row, column=col, columnspan=2, sticky="w", padx=6, pady=2)
+            elif kind in ("radio", "one_of"):
+                # radio: one of the choices [(value, label)]; one_of: check boxes of which at
+                # most one is on (the value is None when none is).
+                var = tk.StringVar()
+                box = ttk.Frame(parent)
+                box.grid(row=row, column=col, columnspan=2, sticky="w", padx=6, pady=2)
+                if label:
+                    ttk.Label(box, text=label).pack(side="left", padx=(0, 6))
+                for value, text in choices:
+                    if kind == "radio":
+                        ttk.Radiobutton(box, text=text, value=value, variable=var).pack(
+                            side="left", padx=(0, 8))
+                        continue
+                    check = tk.BooleanVar()
+
+                    def toggled(var=var, check=check, value=value):
+                        var.set(value if check.get() else "")
+                    ttk.Checkbutton(box, text=text, variable=check, command=toggled).pack(
+                        side="left", padx=(0, 8))
+
+                    def follow(*_a, var=var, check=check, value=value):
+                        check.set(var.get() == value)
+                    var.trace_add("write", follow)
             else:
                 var = tk.StringVar()
                 lab = ttk.Label(parent, text=label)
@@ -212,6 +241,8 @@ class Form:
                 value = _num(var.get(), "number") or 11
             elif kind == "int_choice":
                 value = _num(var.get(), "int") or 0
+            elif kind == "one_of":
+                value = var.get() or None
             elif kind in ("number", "int"):
                 value = _num(var.get(), kind)
                 if value is None and kind == "int":
@@ -430,7 +461,6 @@ class App(BookTabMixin):
         except profiles.ProfileError:
             self.profile_name, self.profile = None, profiles.default_profile()
         root.title("%s %s" % (TITLE, __version__))
-        root.geometry("1040x720")
         root.minsize(760, 520)
         self._menus()
         self._build(dnd)
@@ -479,17 +509,13 @@ class App(BookTabMixin):
         self.profile_box.bind("<<ComboboxSelected>>", self._profile_chosen)
         self._refresh_profile_list()
 
-        self.tabs = ttk.Notebook(self.root)
-        self.tabs.pack(fill="both", expand=True, padx=8, pady=8)
-        self._files_tab(dnd)
-        self._book_tab()
-        self._heads_tab()
-        self._layout_tab()
-        self._styles_tab()
-        self._report_tab()
-
+        # The status line and the export row are packed before the tabs, at the bottom, so a
+        # short window shrinks the tabs, not them.
+        self.status = tk.StringVar(value="Add the manuscript's .docx files to begin.")
+        ttk.Label(self.root, textvariable=self.status, padding=(10, 0, 10, 6)).pack(
+            side="bottom", fill="x")
         bottom = ttk.Frame(self.root, padding=(8, 0, 8, 8))
-        bottom.pack(fill="x")
+        bottom.pack(side="bottom", fill="x")
         ttk.Label(bottom, text="Save the export in:").pack(side="left")
         self.out_var = tk.StringVar(value=self.settings.get("out_dir") or str(Path.home()))
         ttk.Entry(bottom, textvariable=self.out_var, width=50).pack(side="left", padx=6,
@@ -499,8 +525,26 @@ class App(BookTabMixin):
         self.export_btn.pack(side="left", padx=(12, 0))
         self.progress = ttk.Progressbar(bottom, mode="indeterminate", length=120)
         self.progress.pack(side="left", padx=6)
-        self.status = tk.StringVar(value="Add the manuscript's .docx files to begin.")
-        ttk.Label(self.root, textvariable=self.status, padding=(10, 0, 10, 6)).pack(fill="x")
+
+        self.tabs = ttk.Notebook(self.root)
+        self.tabs.pack(fill="both", expand=True, padx=8, pady=8)
+        self._files_tab(dnd)
+        self._book_tab()
+        self._heads_tab()
+        self._layout_tab()
+        self._styles_tab()
+        self._report_tab()
+        self._fit_window()
+
+    def _fit_window(self):
+        """Open large enough for the tallest tab and the export row (Windows scales text,
+        so a fixed size cut off the bottom), within the screen."""
+        self.root.update_idletasks()
+        w = max(1040, self.root.winfo_reqwidth())
+        h = max(720, self.root.winfo_reqheight())
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        w, h = min(w, sw - 40), min(h, sh - 80)
+        self.root.geometry("%dx%d+%d+%d" % (w, h, max(0, (sw - w) // 2), max(0, (sh - h) // 3)))
 
     def _files_tab(self, dnd):
         tab = ttk.Frame(self.tabs, padding=8)
@@ -549,7 +593,16 @@ class App(BookTabMixin):
         self.heads_form = Form(form, HEAD_FIELDS, columns=2)
         box = ttk.LabelFrame(tab, text="Running Head Style", padding=6)
         box.pack(fill="x", pady=(8, 0))
-        self.head_style_form = Form(box, HEAD_STYLE_FIELDS, columns=2)
+        case = ttk.LabelFrame(box, text="Case", padding=4)
+        case.pack(fill="x")
+        self.head_case_form = Form(case, HEAD_CASE_FIELDS)
+        ttk.Label(case, foreground="#555", text=(
+            "Title and sentence case change the letters of every head (sentence case keeps the "
+            "names the manuscript capitalizes); the capitals below set the type.")).grid(
+            row=1, column=0, columnspan=2, sticky="w", padx=6)
+        font = ttk.LabelFrame(box, text="Font", padding=4)
+        font.pack(fill="x", pady=(6, 0))
+        self.head_style_form = Form(font, HEAD_FONT_FIELDS, columns=2)
         ttk.Label(tab, text="Units of the book (double-click a running head to give a short "
                             "title, or a kind to change what the unit is; \"too long\" means "
                             "the head won't fit the page):").pack(anchor="w", pady=(10, 2))
@@ -642,6 +695,7 @@ class App(BookTabMixin):
         for form in self.profile_forms:
             form.load(self.profile)
         self.heads_form.load(self.profile)
+        self.head_case_form.load(self.profile)
         self.head_style_form.load(self.profile)
         self._margins_later()
         self.notice_list.delete(0, "end")
@@ -763,6 +817,7 @@ class App(BookTabMixin):
         if getattr(self, "mapping", None) is not None:
             self.mapping.save()          # mapping changes not yet applied
         self.heads_form.save(self.profile)
+        self.head_case_form.save(self.profile)
         self.head_style_form.save(self.profile)
 
     def _profile_chosen(self, _event=None):

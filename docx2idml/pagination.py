@@ -14,7 +14,7 @@ with the head as text, which takes the Hebrew and Greek styles.
 def _has_script(text):
     return any(is_hebrew(c) or is_greek(c) for c in text or "")
 
-from . import fonts, frontmatter, layout
+from . import fonts, frontmatter, layout, textcase
 from .docx_reader import is_greek, is_hebrew
 from .layout import _half
 from .idml.model import Frame, Master, Paragraph, Run, Section, Story, TOCStyle
@@ -24,7 +24,31 @@ class PaginationMixin:
     # ---- pagination and running heads ----
 
     def _short(self, title):
-        return (self.settings.get("short_titles") or {}).get(title) or title
+        """A unit's running head: its short title (or title), in the profile's case."""
+        return self._head_text((self.settings.get("short_titles") or {}).get(title) or title)
+
+    def _head_text(self, text):
+        """Running-head text in the case the profile sets (as typed, title or sentence)."""
+        case = ((self.profile["running_heads"].get("style") or {}).get("case")) or "as_typed"
+        if case not in ("title", "sentence") or not text:
+            return text
+        if case == "sentence" and getattr(self, "_proper", None) is None:
+            self._proper = textcase.proper_nouns(
+                p.text for d in self.docs for p in d.paragraphs
+                if len(p.text.split()) >= 20)
+            # The contributors' names too (a "Foreword by" head names one).
+            for c in (getattr(self, "info", None) or {}).get("creators") or ():
+                self._proper |= {w for w in c.get("name", "").split() if w[:1].isupper()}
+        return textcase.apply(text, case, self.profile["front_matter"].get("language", "en"),
+                              getattr(self, "_proper", None) or ())
+
+    def _verso_heads(self, rh, info, head, part=None):
+        """The verso head's runs for each kind of verso head (head: the chapter's)."""
+        h = self._head_text
+        return {"book_title": [Run(h(info.get("short_title") or info["title"]))],
+                "author": [Run(h(info["author"]))], "chapter": head,
+                "part": [Run(part)] if part else head,
+                "custom": [Run(h(rh.get("verso_custom") or ""))]}
 
     def _head_frames(self, verso, recto):
         """Running heads above the text area: verso and recto paragraphs' runs."""
@@ -152,10 +176,10 @@ class PaginationMixin:
         info = self.info
         marker = [Run(special="section_marker")]
         verso_kind = rh.get("verso", "book_title")
-        verso = {"book_title": [Run(info.get("short_title") or info["title"])],
-                 "author": [Run(info["author"])], "chapter": marker,
-                 "custom": [Run(rh.get("verso_custom") or "")]}.get(verso_kind)
-        recto = [Run(rh.get("recto_custom") or "")] if rh.get("recto") == "custom" else marker
+        verso = self._verso_heads(rh, info, marker).get(verso_kind) if verso_kind != "part" \
+            else None
+        recto = [Run(self._head_text(rh.get("recto_custom") or ""))] \
+            if rh.get("recto") == "custom" else marker
 
         frames = self._master_frames
         doc.masters = [
@@ -226,11 +250,9 @@ class PaginationMixin:
         names = []
         for k, (marker, part, pages) in enumerate(units, 1):
             head = [Run(marker)]
-            recto = [Run(rh.get("recto_custom") or "")] if custom_recto else head
-            verso = {"book_title": [Run(info.get("short_title") or info["title"])],
-                     "author": [Run(info["author"])], "chapter": head,
-                     "part": [Run(part)] if part else head,
-                     "custom": [Run(rh.get("verso_custom") or "")]}.get(verso_kind, head)
+            recto = [Run(self._head_text(rh.get("recto_custom") or ""))] if custom_recto \
+                else head
+            verso = self._verso_heads(rh, info, head, part).get(verso_kind, head)
             made = {}
             for i in pages:
                 base = masters.get(i)

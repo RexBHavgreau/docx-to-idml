@@ -10,6 +10,9 @@ Download the program (`docx-to-idml-X.Y.Z.exe`) from
 [Releases](https://github.com/RexBHavgreau/docx-to-idml/releases); once installed, it offers
 new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md).
 
+- **0.7.0** (in progress): running heads in title or sentence case, with boldface and
+  underline; the title on the copyright page; a preview of the generated front pages; the
+  window opens tall enough to show the Export button.
 - **0.6.0** (October 23, 2026, latest release): Book Details as a bibliographic record
   (contributors in title-page order with bylines, series, volume, call number); the
   manuscript's copyright page read into Book Details and replaced by the generated one, with a

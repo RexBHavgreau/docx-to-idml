@@ -51,6 +51,7 @@ keep it up to date when decisions change.
 | `docx2idml/pagination.py` | `PaginationMixin` of the Exporter (moved out of export.py, 0.6.0): pages, stories, sections and markers, masters and running-head frames |
 | `docx2idml/layout.py` | Step 5: margins and measure (30 times the type size within 45-80 characters, floors, KDP gutter by page count), pagination (roman front matter, recto rules, masters per page) |
 | `docx2idml/frontmatter.py` | Step 6: book details (settings, then detected, else bracketed placeholders), half-title, title, copyright (English/Spanish, notices from the profile's library), contents entries and reserved pages |
+| `docx2idml/textcase.py`, `preview.py` | Title and sentence case for running heads (Chicago); the generated front pages as lines with sizes, for the window's preview (0.7.0) |
 | `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile`; no arguments opens the window |
 | `docx2idml/gui.py` | Step 7, the window (ttk): Files, Book Details, Running Heads, Layout Profile, Style Map, Report tabs; forms declared as field tables bound to the profile and book settings; work in threads, results through a queue polled by the window |
@@ -221,9 +222,19 @@ keep it up to date when decisions change.
   per-style dialog); `refresh()` after each preflight, `save()` (changed rows into the
   profile, also from `_forms_to_profile`), `apply()` (save and read again), `reset()`. TOC
   and TOC Heading styles aren't listed. Profile fields are found with `App.pvar(path)` /
-  `_form_of(path)` (the Page Layout tab has three forms in LabelFrames). Running-head style:
-  profile `running_heads.style` (case, italic, size, tracking, font) ->
-  `Exporter._running_head_style`, form `head_style_form`.
+  `_form_of(path)` (the Page Layout tab has three forms in LabelFrames). Running-head style
+  (0.7.0, profile version 8): `running_heads.style` case (as_typed/title/sentence: the
+  letters, `textcase.py`, applied to every head's text by `PaginationMixin._head_text`;
+  sentence case keeps `textcase.proper_nouns` of the running text) and caps (None,
+  small_caps, all_caps: the type), italic, bold, underline, size, tracking, font ->
+  `Exporter._running_head_style`; forms `head_case_form` and `head_style_form` (Form kinds
+  "radio" and "one_of": at most one of its check boxes).
+- Front-page preview (0.7.0): `preview.front_pages` gives the half-title, title and copyright
+  pages as lines with sizes (its STYLES table follows the exporter's styles; keep them in
+  step), drawn on canvases by `gui_book._draw_page`; the copyright tab shows the manuscript's
+  page beside it. Book setting `front.copyright_title` (Copyright Title style, italic).
+- The main window packs the status line and export row first (side bottom) and sizes itself
+  to its requested height within the screen (`App._fit_window`).
 - Margins (0.5.0): measure = `page.measure` (30) x type size within 45-80 characters;
   outside 42% of the rest, inside never less than the outside (`layout.geometry`).
 - Headings by formatting (Beaux, 0.6.0; `formatheads.py`): the reader records each body

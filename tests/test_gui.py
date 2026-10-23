@@ -34,6 +34,12 @@ def _files():
     return [os.path.join(MS, f) for f in sorted(os.listdir(MS)) if f.endswith(".docx")]
 
 
+def _descendants(w):
+    for child in w.winfo_children():
+        yield child
+        yield from _descendants(child)
+
+
 def _app():
     from docx2idml import gui
     root = tk.Tk()
@@ -375,14 +381,26 @@ def test_contributors_in_order():
         # The permission: in the notice library, ticked for this book.
         names = [n["name"] for n in app.profile["notices"]]
         assert "ESV" in names and names.index("ESV") in app.notice_list.curselection()
-        # The two copyright pages side by side, then closed.
-        app.compare_copyright()
+        # The front pages previewed; the copyright page beside the manuscript's, then closed.
+        app.front_form.vars[("copyright_title",)][0].set(True)
+        app.preview_pages()
         root.update()
-        old, new = (t.get("1.0", "end") for t in app.compare_texts)
+        assert list(app.preview_canvases) == ["Half-title", "Title page", "Copyright page"]
+        for _ in range(5):
+            root.update()
+        def texts(name):
+            c = app.preview_canvases[name]
+            return [c.itemcget(i, "text") for i in c.find_withtag("text")]
+        old = app.compare_texts[0].get("1.0", "end")
+        new = "\n".join(texts("Copyright page"))
         assert "Copyright \u00a9 2026 by A Seminary" in old and "Edited by" in old
         assert "Copyright \u00a9 2026 by A Seminary" in new and "Edited by" not in new
         assert "ISBN 978-1-934952-94-8" in new
-        app.compare_window.destroy()
+        from docx2idml.frontmatter import book_info
+        title = book_info(app.report.outline, app.book.settings["front"])[0]["title"]
+        assert texts("Copyright page")[0].startswith(title)       # the box ticked above
+        assert any(t.startswith("Edited by") for t in texts("Title page"))
+        app.preview_window.destroy()
         # The rights statement too.
         assert app.front_form.vars[("rights",)][0].get().startswith("All rights reserved. No")
         app._forms_to_book()
@@ -411,11 +429,25 @@ def test_tabs_in_title_case_and_head_style():
         names = [app.tabs.tab(t, "text") for t in app.tabs.tabs()]
         assert names == ["Files", "Book Details", "Running Heads", "Layout Profile", "Style Map",
                          "Report"]
-        app.head_style_form.vars[("running_heads", "style", "case")][0].set("as_typed")
+        app.head_case_form.vars[("running_heads", "style", "case")][0].set("title")
         app.head_style_form.vars[("running_heads", "style", "italic")][0].set(True)
+        app.head_style_form.vars[("running_heads", "style", "bold")][0].set(True)
         app._forms_to_profile()
         rs = app.profile["running_heads"]["style"]
-        assert rs["case"] == "as_typed" and rs["italic"] is True
+        assert rs["case"] == "title" and rs["italic"] is True and rs["bold"] is True
+        assert rs["caps"] == "small_caps"          # the default
+        # All Caps and Small Caps: at most one of them.
+        caps = app.head_style_form.vars[("running_heads", "style", "caps")][0]
+        from tkinter import ttk
+        boxes = [w for w in _descendants(app.root) if isinstance(w, ttk.Checkbutton) and
+                 w.cget("text") in ("All Caps", "Small Caps")]
+        by = {w.cget("text"): w for w in boxes}
+        by["All Caps"].invoke()
+        assert caps.get() == "all_caps"
+        assert not app.root.getvar(by["Small Caps"].cget("variable"))
+        by["All Caps"].invoke()
+        app._forms_to_profile()
+        assert app.profile["running_heads"]["style"]["caps"] is None
     finally:
         app.quit(force=True)
 

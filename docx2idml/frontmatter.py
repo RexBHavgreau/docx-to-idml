@@ -15,7 +15,8 @@ Zotero's Book item) plus the switches a book needs:
     year, holder (blank = the authors, else the editors), rights (statement; blank = "All
     rights reserved."), isbn_print, isbn_ebook,
     call_number (blank = no line), credits, printed_in, notices (names from the profile's
-    library), half_title (True), contents (True), contents_pages (None = estimated).
+    library), half_title (True), copyright_title (False: the title (and subtitle) as the
+    copyright page's first line, in italics), contents (True), contents_pages (None = estimated).
     (Before book version 2 a single "author" string; Book.load upgrades it.)
 
 The title page has a byline per role, in the creators' order: authors' names alone, then
@@ -109,14 +110,21 @@ def parse_copyright(lines, known=()):
     the publisher's web address; ISBNs, print or ebook by their labels; "Printed in ...";
     an edition or printing line), plus "notices": permissions (Bible versions and the like,
     and any later copyright line), and "leftover": the lines that fit nothing, so the page can
-    be replaced by a generated one without losing them unseen. known: lines already accounted
-    for (the book's title, an "Edited by" line)."""
+    be replaced by a generated one without losing them unseen. known: the book's title and
+    subtitle; a line that is the title (or title and subtitle) gives "copyright_title":
+    True."""
     out = {"notices": [], "leftover": []}
-    skip = {" ".join(k.split()).casefold() for k in known if k}
+    known = [" ".join(k.split()) for k in known if k]
+    skip = {k.casefold() for k in known}
+    if len(known) == 2:
+        skip |= {("%s%s %s" % (known[0], sep, known[1])).casefold() for sep in (":", "", ".")}
     isbns = []
     for raw in lines:
         line = " ".join((raw or "").split())
-        if not line or line.casefold() in skip:
+        if not line:
+            continue
+        if line.casefold() in skip:
+            out["copyright_title"] = True
             continue
         if _NOTICE.search(line) and not _ISBN.search(line):
             out["notices"].append(line)
@@ -235,6 +243,7 @@ def book_info(outline, front=None, lang="en"):
         return front.get(key) or found.get(key) or ""
     info = {
         "half_title": front.get("half_title", True),
+        "copyright_title": bool(front.get("copyright_title", found.get("copyright_title"))),
         "title": front.get("title") or outline.title,
         "subtitle": front.get("subtitle") or outline.subtitle,
         "creators": people,
@@ -312,6 +321,9 @@ def copyright_page(info, lang, library=()):
     lines = [t["copyright"].format(year=info["year"], holder=info["holder"]),
              info.get("rights") or t["rights"]]
     paras = [Paragraph("Copyright", [Run(line)]) for line in lines]
+    if info.get("copyright_title"):
+        title = info["title"] + (": " + info["subtitle"] if info.get("subtitle") else "")
+        paras.insert(0, Paragraph("Copyright Title", [Run(title)]))
     by_name = {n.get("name"): n.get("text", "") for n in library or ()}
     for name in info["notices"]:
         if name in by_name:

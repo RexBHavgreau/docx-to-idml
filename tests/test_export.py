@@ -424,16 +424,60 @@ def test_running_head_style_from_profile():
         assert attrs["Capitalization"] == "SmallCaps" and attrs["Tracking"] == 20
     finally:
         ex.cleanup()
-    prof["running_heads"]["style"].update({"case": "as_typed", "italic": True, "size": 8,
-                                           "tracking": 0, "font": "Arno Pro"})
+    prof["running_heads"]["style"].update({"caps": None, "italic": True, "size": 8,
+                                           "tracking": 0, "font": "Arno Pro", "bold": True,
+                                           "underline": True})
     ex = Exporter(_files(), prof)
     try:
         st = ex.build().style("Running Head")
-        assert "Capitalization" not in st.attrs and st.attrs["FontStyle"] == "Italic"
+        assert "Capitalization" not in st.attrs and st.attrs["FontStyle"] == "Bold Italic"
         assert st.attrs["PointSize"] == 8 and st.attrs["Tracking"] == 0
-        assert st.font == "Arno Pro"
+        assert st.font == "Arno Pro" and st.attrs["Underline"] is True
     finally:
         ex.cleanup()
+    # Title and sentence case change the heads' text, not the style (small caps still on).
+    long = [para("Then God spoke to Ezekiel by the river, and the word went on at length. " * 3)]
+    path = make_docx(os.path.join(TMP, "case.docx"),
+                     [para("THE BOOK OF THE PROPHET", "Title"),
+                      para("the vision of the throne", "Heading1")] + long * 6 +
+                     [para("Ezekiel Sees the Glory of God", "Heading1")] + long * 6)
+    for case, want in (("title", ["The Vision of the Throne", "Ezekiel Sees the Glory of God"]),
+                       ("sentence", ["The vision of the throne", "Ezekiel sees the glory of God"]),
+                       ("as_typed", ["the vision of the throne", "Ezekiel Sees the Glory of God"])):
+        prof = default_profile()
+        prof["running_heads"]["style"]["case"] = case
+        ex = Exporter([path], prof)
+        try:
+            doc = ex.build()
+            assert [s.marker for s in doc.sections if s.marker in want or s.marker.lower() in
+                    [w.lower() for w in want]] == want, case
+            assert doc.style("Running Head").attrs["Capitalization"] == "SmallCaps"
+            verso = [f for f in doc.masters[0].frames if f.key == "vhead"][0]
+            title = "".join(r.text for r in verso.paragraphs[0].runs)
+            assert title == {"title": "The Book of the Prophet", "sentence": "The book of the "
+                             "prophet", "as_typed": "THE BOOK OF THE PROPHET"}[case], title
+        finally:
+            ex.cleanup()
+
+
+def test_title_and_sentence_case():
+    from docx2idml import textcase as t
+    assert t.title_case("the objectives of soul care: a look into the church") == \
+        "The Objectives of Soul Care: A Look into the Church"
+    assert t.title_case("SOUL CARE AND WORLDVIEWS") == "Soul Care and Worldviews"
+    assert t.title_case("what is it for") == "What Is It For"        # last word
+    assert t.title_case("a well-known man-of-the-hour") == "A Well-Known Man-of-the-Hour"
+    assert t.title_case("McDonald and the NT") == "McDonald and the NT"
+    assert t.title_case("la visión de la gloria", "es") == "La Visión de la Gloria"
+    proper = t.proper_nouns(["Later God spoke to Ezekiel. The Lord said so. Then the man "
+                             "left, and God was there."])
+    assert {"God", "Ezekiel", "Lord"} <= proper and "Then" not in proper
+    assert t.sentence_case("Ezekiel Sees the Glory of God: The River", proper) == \
+        "Ezekiel sees the glory of God: The river"
+    assert t.sentence_case("Foreword by Lance Quinn", {"Lance", "Quinn"}) == \
+        "Foreword by Lance Quinn"
+    assert t.sentence_case("What I Saw in the NT") == "What I saw in the NT"
+    assert t.apply("Keep As Typed", "as_typed") == "Keep As Typed"
 
 
 def test_hebrew_running_head_master():
@@ -569,6 +613,11 @@ def test_bylines_and_book_record():
         ("".join(r.text for r in p.runs), p.style) for p in fm.half_title(info)]
     cp = "\n".join("".join(r.text for r in p.runs) for p in fm.copyright_page(info, "en")[0])
     assert "Call number: BV4012.2 .T44 2026" in cp
+    assert fm.copyright_page(info, "en")[0][0].style == "Copyright"    # no title (the default)
+    info, _ = fm.book_info(Outline(), dict(front, copyright_title=True, title="A Book",
+                                            subtitle="Its Subtitle"))
+    first = fm.copyright_page(info, "en")[0][0]
+    assert (first.style, first.runs[0].text) == ("Copyright Title", "A Book: Its Subtitle")
     del front["call_number"]
     info, _ = fm.book_info(Outline(), front)
     assert "Call number" not in "".join(

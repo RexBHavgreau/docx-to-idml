@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0 (not yet released)
+
+- Running Head Style is in two parts. Case: As typed, Title Case (Chicago: articles,
+  prepositions and "and, but, for, or, nor" lower case unless first or last) or Sentence case
+  (names the manuscript capitalizes in its running text, such as God or Ezekiel, keep their
+  capital). Font: Italic, Boldface, Underlined, All Caps or Small Caps (one or the other, or
+  neither), size, letter-spacing and font. Title and sentence case change the heads' letters;
+  the capitals set the type, so title case in small caps works. Profile version 8: saved
+  profiles keep their capitals setting.
+- Book Details: "Title on the copyright page" puts the title (and subtitle) at the top of the
+  copyright page, in italics. Ticked by "Fill from the manuscript" when the manuscript's
+  copyright page starts with the title.
+- Preview pages (Book Details, was "Compare copyright pages"): the half-title, title page and
+  copyright page as the export will set them, drawn at the book's trim and margins; the
+  copyright page beside the manuscript's.
+- Fixed: the window opened too short on Windows, hiding the export folder and the Export
+  button until it was made taller. It now opens tall enough (within the screen), and the
+  export row stays visible however small the window is made.
+
 ## 0.6.0 (October 23, 2026)
 
 - Book Details is now a bibliographic record for the book (modelled on Zotero's Book item):
