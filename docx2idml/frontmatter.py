@@ -345,6 +345,12 @@ def copyright_page(info, lang, library=()):
     return paras, notes
 
 
+def copyright_text(info, lang, library=()):
+    """The generated copyright page as plain lines (for showing beside the manuscript's)."""
+    paras, _notes = copyright_page(info, lang, library)
+    return [line for p in paras for line in "".join(r.text for r in p.runs).split("\n")]
+
+
 def contents_page(lang):
     return [Paragraph("Contents Title", [Run(texts(lang)["contents"])])]
 

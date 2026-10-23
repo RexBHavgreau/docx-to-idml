@@ -158,7 +158,8 @@ class Outline:
     author: str = None
     author_source: str = None
     creators: list = field(default_factory=list)
-    details: dict = field(default_factory=dict)    # read from a copyright page (frontmatter fields)   # [{"role", "name"}] when the role is known
+    details: dict = field(default_factory=dict)
+    copyright_lines: list = field(default_factory=list)   # the manuscript's, as written    # read from a copyright page (frontmatter fields)   # [{"role", "name"}] when the role is known
     file_creator: str = None        # docProps creator: usually whoever made the file
     copyright_found: bool = False
     toc_field: bool = False         # a Word contents field (it will be replaced)
@@ -500,6 +501,7 @@ def _read_copyright(out, lines):
     """Book details from copyright lines (frontmatter.parse_copyright), keeping what was found
     first; the notices and lines that fit nothing are collected."""
     from .frontmatter import parse_copyright
+    out.copyright_lines += [" ".join(x.split()) for x in lines if x and x.strip()]
     got = parse_copyright(lines, known=(out.title, out.subtitle))
     for key in ("notices", "leftover"):
         out.details.setdefault(key, []).extend(x for x in got.pop(key)

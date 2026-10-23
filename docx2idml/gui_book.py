@@ -53,6 +53,8 @@ class BookTabMixin:
         row = ttk.Frame(tab)
         row.pack(fill="x", pady=(0, 4))
         ttk.Button(row, text="Fill from the manuscript", command=self.fill_front).pack(side="left")
+        ttk.Button(row, text="Compare copyright pages...",
+                   command=self.compare_copyright).pack(side="left", padx=(6, 0))
         ttk.Label(row, text="Blank fields are filled from the manuscript at export; anything "
                             "still missing appears in brackets, e.g. [ISBN].").pack(
             side="left", padx=8)
@@ -177,6 +179,56 @@ class BookTabMixin:
             self.creators[i], self.creators[j] = self.creators[j], self.creators[i]
             self._show_creators(j)
             self.dirty = True
+
+    # ---- copyright pages compared ----
+
+    def compare_copyright(self):
+        """The manuscript's copyright page beside the one the export will make from Book
+        Details (plain text), in a window of its own."""
+        self._need_report(self._show_copyright_compare)
+
+    def _show_copyright_compare(self):
+        from .frontmatter import book_info, copyright_text
+        self._forms_to_book()
+        lang = self.profile["front_matter"].get("language", "en")
+        info, _notes = book_info(self.report.outline, self.book.settings.get("front"), lang)
+        new = copyright_text(info, lang, self.profile.get("notices"))
+        old = list(self.report.outline.copyright_lines) or \
+            ["(No copyright page was found in the manuscript.)"]
+        left = (self.report.outline.details or {}).get("leftover") or []
+        old_win = getattr(self, "compare_window", None)
+        if old_win is not None and old_win.winfo_exists():
+            old_win.destroy()
+        win = self.compare_window = tk.Toplevel(self.root)
+        win.title("Copyright page: the manuscript's and the new one")
+        win.geometry("960x560")
+        win.transient(self.root)
+        panes = ttk.Frame(win, padding=8)
+        panes.pack(fill="both", expand=True)
+        self.compare_texts = []
+        for col, (title, lines) in enumerate((
+                ("In the manuscript (replaced at export)", old),
+                ("Made from Book Details (in the export)", new))):
+            ttk.Label(panes, text=title, font=("TkDefaultFont", 9, "bold")).grid(
+                row=0, column=2 * col, sticky="w", padx=4)
+            text = tk.Text(panes, wrap="word", width=56, height=24)
+            text.insert("1.0", "\n\n".join(lines))
+            text.configure(state="disabled")
+            text.grid(row=1, column=2 * col, sticky="nsew", padx=(4, 0), pady=4)
+            sb = ttk.Scrollbar(panes, orient="vertical", command=text.yview)
+            sb.grid(row=1, column=2 * col + 1, sticky="ns", pady=4)
+            text.configure(yscrollcommand=sb.set)
+            panes.columnconfigure(2 * col, weight=1)
+            self.compare_texts.append(text)
+        panes.rowconfigure(1, weight=1)
+        bottom = ttk.Frame(win, padding=(8, 0, 8, 8))
+        bottom.pack(fill="x")
+        if left:
+            ttk.Label(bottom, wraplength=760, justify="left", text=(
+                "Lines of the manuscript's page that fit no field (left out): %s. Add any "
+                "that belong in Credits or as a notice." % "; ".join(
+                    "\u201c%s\u201d" % x for x in left))).pack(side="left")
+        ttk.Button(bottom, text="Close", command=win.destroy).pack(side="right")
 
     # ---- notices ----
 

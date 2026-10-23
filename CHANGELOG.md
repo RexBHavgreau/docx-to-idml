@@ -39,6 +39,8 @@
   the book. The export then replaces the manuscript's copyright page with one made from Book
   Details, so nothing is duplicated; lines that fit no field are listed in the report.
   Copyright lines on a manuscript's title page are read and replaced the same way.
+  "Compare copyright pages..." (Book Details) shows the manuscript's page beside the new one
+  as plain text, with the lines that fit no field.
   The book's title, when it opens several files, is taken as the title and left out where it
   repeats at the top of a file. A file whose first line isn't a title (an abbreviations
   list) is titled from its file name ("00.5 Abbreviations" -> Abbreviations). "Foreword by

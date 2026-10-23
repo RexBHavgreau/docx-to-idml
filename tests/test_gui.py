@@ -375,6 +375,14 @@ def test_contributors_in_order():
         # The permission: in the notice library, ticked for this book.
         names = [n["name"] for n in app.profile["notices"]]
         assert "ESV" in names and names.index("ESV") in app.notice_list.curselection()
+        # The two copyright pages side by side, then closed.
+        app.compare_copyright()
+        root.update()
+        old, new = (t.get("1.0", "end") for t in app.compare_texts)
+        assert "Copyright \u00a9 2026 by A Seminary" in old and "Edited by" in old
+        assert "Copyright \u00a9 2026 by A Seminary" in new and "Edited by" not in new
+        assert "ISBN 978-1-934952-94-8" in new
+        app.compare_window.destroy()
         # The rights statement too.
         assert app.front_form.vars[("rights",)][0].get().startswith("All rights reserved. No")
         app._forms_to_book()
