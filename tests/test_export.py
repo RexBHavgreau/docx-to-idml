@@ -523,6 +523,25 @@ def test_headings_by_formatting_exported():
         ex.cleanup()
 
 
+def test_manuscript_copyright_page_not_duplicated():
+    """A copyright file in the manuscript is the book's copyright page; none is generated."""
+    from test_outline import front_matter_book
+    docs = front_matter_book()
+    ex = Exporter([d.path for d in docs], default_profile())
+    try:
+        doc = ex.build()
+        lines = ["".join(r.text for r in p.runs) for st in doc.stories for p in st.paragraphs
+                 if p.style == "Copyright"]
+        assert sum("Copyright \u00a9" in t for t in lines) == 1, lines
+        assert "Edited by Nicolas Ellen and Josh Stephens" in lines
+        assert not any("All rights reserved." == t for t in lines)   # not the generated one
+        texts = ["".join(r.text for r in p.runs) for st in doc.stories for p in st.paragraphs]
+        fw = texts.index("Foreword by Lance Quinn")
+        assert texts[fw - 1] != "A Theology of Soul Care: Essays in Biblical Counseling"
+    finally:
+        ex.cleanup()
+
+
 def test_regular_face_by_its_own_name():
     """InDesign wants a face's own name: the Culmus Hebrew fonts' upright face is "Medium"."""
     from docx2idml import fonts

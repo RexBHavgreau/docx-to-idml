@@ -216,10 +216,10 @@ def unstyled_book(name="unstyled.docx"):
 
 
 def test_headings_found_by_formatting():
-    from docx2idml.formatheads import find_groups
     doc = read_docx(unstyled_book())
     sm = StyleMap()
     groups, by_para = sm.format_groups(doc)
+    # A single file: the first heading is just the first chapter (no file title line).
     assert [(g.name, g.role, g.level, len(g.paragraphs)) for g in groups] == [
         ("[16 pt bold centered]", "chapter", 0, 3), ("[bold]", "heading", 1, 3)]
     texts = {doc.paragraphs[i].text for i in by_para}
@@ -236,6 +236,80 @@ def test_headings_found_by_formatting():
     p = [p for p in doc.paragraphs if p.text == "Another Section"][0]
     m = sm.paragraph_mapping(doc, p)
     assert (m.idml, m.level, m.source) == ("Heading B", 2, "book")
+
+
+LONG = ("Over fifty years have now elapsed since the movement began, and the work has grown "
+        "in many churches and schools across the country. ")
+
+
+def front_matter_book():
+    """Like a real edited volume sent as files: endorsements, a copyright file, a foreword
+    whose first line repeats the book title, a preface with bold subheads, an abbreviations
+    list without a title line, and a chapter titled 16 pt bold centered with an author line,
+    bold sections and italic subsections. No heading styles anywhere."""
+    def bold(t, center=False):
+        return para(run(t, "<w:b/>"), ppr='<w:jc w:val="center"/>' if center else "")
+
+    def italic(t):
+        return para(run(t, "<w:i/>"))
+    title = "A Theology of Soul Care: Essays in Biblical Counseling"
+    files = [
+        ("00.0 Endorsements - BH.docx", [bold("Endorsements"), para("\u201c" + LONG),
+                                          para("\u2014A. Reader, Pastor")]),
+        ("00.1 Copyright Information_rk.docx", [
+            italic(title), para("Copyright \u00a9 2026 by A Seminary"),
+            para("Edited by Nicolas Ellen and Josh Stephens"),
+            para("All rights reserved. No part of this publication may be reproduced, stored "
+                 "in a retrieval system, or transmitted in any form or by any means."),
+            para("ISBN: 978-1-934952-94-8")]),
+        ("00.2 Foreword by Lance Quinn - BH.docx", [bold(title, True),
+                                                    bold("Foreword by Lance Quinn", True),
+                                                    para(LONG), para(LONG)]),
+        ("00.3 Preface - BH.docx", [bold("PREFACE"), para(LONG), bold("Objectives of This Book"),
+                                    para(LONG), bold("Our Prayer"), para(LONG)]),
+        ("00.5 Abbreviations.docx", [para("BDAG\tWalter Bauer, A Greek-English Lexicon of the "
+                                          "New Testament and Other Early Christian Literature, "
+                                          "third edition, Chicago, 2000, and so on."),
+                                     para("JETS\tJournal of the Evangelical Theological Society")]),
+        ("01 A Biblical Philosophy of Soul Care.docx", [
+            para(run("A Biblical Philosophy of Soul Care", '<w:b/><w:sz w:val="32"/>'),
+                 ppr='<w:jc w:val="center"/>'),
+            para("Nicolas Ellen and Josh Stephens", ppr='<w:jc w:val="center"/>'),
+            bold("The Definition of Soul Care"), para(LONG), italic("In the Torah"), para(LONG),
+            bold("The Objectives of Soul Care"), para(LONG), italic("In the Prophets"),
+            para(LONG)]),
+    ]
+    return [doc(name, body) for name, body in files]
+
+
+def test_front_matter_files_by_formatting():
+    from docx2idml.stylemap import StyleMap
+    docs = front_matter_book()
+    sm = StyleMap()
+    out = build_outline(docs, sm)
+    got = [(u.kind, u.type, u.title) for u in out.units]
+    assert got == [
+        ("display", "endorsements", "Endorsements"),
+        ("display", "copyright", "A Theology of Soul Care: Essays in Biblical Counseling"),
+        ("front", "foreword", "Foreword by Lance Quinn"),
+        ("front", "preface", "PREFACE"),
+        ("front", "abbreviations", "Abbreviations"),           # from the file's name
+        ("chapter", "chapter", "A Biblical Philosophy of Soul Care"),
+    ], got
+    # Levels across the book: bold is Heading A in the preface and the chapter alike.
+    assert out.units[3].subheads == ["Objectives of This Book", "Our Prayer"]
+    assert out.units[5].subheads == ["The Definition of Soul Care", "The Objectives of Soul Care"]
+    ch = docs[-1]
+    m = {p.text: sm.paragraph_mapping(ch, p) for p in ch.paragraphs if p.text.strip()}
+    assert (m["In the Torah"].idml, m["Nicolas Ellen and Josh Stephens"].role) == (
+        "Heading B", "author")
+    # The book: its title opens two files; the editors come from the copyright page; the
+    # title repeated at the top of the foreword is left out there.
+    assert out.title == "A Theology of Soul Care: Essays in Biblical Counseling"
+    assert out.author == "Nicolas Ellen and Josh Stephens"
+    fw = docs[2]
+    assert sm.paragraph_mapping(fw, fw.paragraphs[0]).role == "skip"
+    assert out.copyright_found
 
 
 def test_styled_manuscript_not_guessed():

@@ -11,6 +11,16 @@
   in the text, italic titles of works, title-page lines and a typed contents' title are not
   taken for headings. Only what the styles don't give is guessed: a manuscript with heading
   styles is read by its styles as before. Preflight says when headings were found this way.
+  Levels are ranked across the whole book, so a look means the same level in every file. In a
+  book sent as several files, each file's most prominent opening line is its title (PREFACE,
+  Contributors, Foreword by...), and a line of names under a chapter title is its author line.
+- Front matter sent as files: a file of copyright lines (a copyright notice, "All rights
+  reserved", an ISBN) is used as the book's copyright page instead of a generated one, so its
+  information isn't duplicated; its "Edited by ..." line gives the author when none is set.
+  The book's title, when it opens several files, is taken as the title and left out where it
+  repeats at the top of a file. A file whose first line isn't a title (an abbreviations
+  list) is titled from its file name ("00.5 Abbreviations" -> Abbreviations). "Foreword by
+  ..." and "Contributors" are recognized as front matter.
 - Fixed: Hebrew inside italic text was set upright: the Hebrew style fixed the face. It now
   takes the face of the text around it (italic in italic text, bold in a bold heading), by the
   Hebrew font's own name for that face (the Culmus fonts call theirs "Medium" and "Medium

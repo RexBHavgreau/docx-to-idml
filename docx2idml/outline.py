@@ -32,6 +32,8 @@ _FRONT = {
     "contenido": ("front", "contents"), "contenidos": ("front", "contents"),
     "índice general": ("front", "contents"), "tabla de contenido": ("front", "contents"),
     "foreword": ("front", "foreword"), "prólogo": ("front", "foreword"),
+    "contributors": ("front", "contributors"), "list of contributors": ("front", "contributors"),
+    "colaboradores": ("front", "contributors"),
     "presentación": ("front", "foreword"),
     "preface": ("front", "preface"), "prefacio": ("front", "preface"),
     "acknowledgments": ("front", "acknowledgments"), "acknowledgements": ("front", "acknowledgments"),
@@ -62,7 +64,19 @@ _PART_WORDS = {"one", "two", "three", "four", "five", "six", "seven", "eight", "
                "iv", "v", "vi", "vii", "viii", "ix", "x"}
 ENDORSEMENT_MIN_WORDS = 25    # less than this above the title is part of the title page
 
+MAX_TITLE_WORDS = 15
 _BY = re.compile(r"^(by|por)\s+(.+)$", re.I)
+_EDITED = re.compile(r"^(edited by|editors?:|eds?\.?:?|editado por|editores:?)\s+(.+)$", re.I)
+_COPYRIGHT = re.compile(r"\u00a9|all rights reserved|derechos reservados|\bisbn\b", re.I)
+
+
+def file_title(name):
+    """A unit title from a file's name: "00.5 Abbreviations.docx" -> "Abbreviations";
+    "00.2 Foreword by Lance Quinn - BH.docx" -> "Foreword by Lance Quinn"."""
+    base = re.sub(r"\.docx$", "", name, flags=re.I)
+    base = re.sub(r"^[\d.\s_-]+", "", base)                      # leading numbers
+    base = re.sub(r"(\s+-\s+[A-Z]{1,4}|_[a-z]{1,4})$", "", base)  # initials: " - BH", "_rk"
+    return base.strip() or name
 
 
 def title_key(text):
@@ -75,6 +89,10 @@ def title_key(text):
 def classify(title, chapter_seen):
     """(kind, type) for a chapter-level heading."""
     key = title_key(title)
+    # "Foreword by Lance Quinn", "Preface: Why This Book": the word that names the part.
+    lead = re.split(r"\s+(?:by|por)\s+|:\s*|\s+[\u2013\u2014-]\s+", key, maxsplit=1)[0]
+    if lead in _FRONT and lead != key and not chapter_seen and _FRONT[lead][0] == "front":
+        key = lead
     if key in _FRONT and not chapter_seen:
         return _FRONT[key]
     if not chapter_seen and _PRAISE.match(key):
@@ -175,7 +193,7 @@ class _FileOutline:
         self.paras = [p for p in doc.paragraphs]
 
     def mapping(self, p):
-        if p.index in self.sm.format_groups(self.doc)[1]:
+        if p.index in self.sm.format_groups(self.doc)[1] or self.sm.repeated_title(self.doc, p):
             return self.sm.paragraph_mapping(self.doc, p)
         sid = self.doc.para_style(p)
         if sid not in self.maps:
@@ -242,11 +260,13 @@ class _FileOutline:
 
 def build_outline(docs, stylemap=None):
     sm = stylemap or StyleMap()
+    sm.prepare(docs)
     out = Outline()
     chapter_seen = False
     for doc in docs:
         fo = _FileOutline(doc, sm)
         heads = fo.heads()
+        units_before, seen_before = len(out.units), chapter_seen
         if any(f.code == "TOC" for f in doc.fields):
             out.toc_field = True
         if heads:
@@ -258,8 +278,8 @@ def build_outline(docs, stylemap=None):
         for p in fo.paras:
             m = fo.mapping(p)
             text = " ".join(p.text.split())
-            if not text:
-                continue
+            if not text or m.source in ("formatting", "book"):
+                continue          # a chapter's own author line, found by its look
             if m.role == "book_title" and not out.title:
                 out.title, out.title_source = text, "style %s in %s" % (m.word, doc.name)
             elif m.role == "subtitle" and not out.subtitle:
@@ -335,6 +355,11 @@ def build_outline(docs, stylemap=None):
             continue
         for i, (idx, role, by) in enumerate(heads):
             title = " ".join(fo.paras[idx].text.split())
+            if by == "whole file" and (len(title.split()) > MAX_TITLE_WORDS or
+                                       "\t" in fo.paras[idx].text):
+                # The first line isn't a title (an abbreviations list's first entry, say):
+                # the file's name is.
+                title, by = file_title(doc.name), "whole file (title from the file name)"
             if role == "part":
                 kind, typ = "part", "part"
             else:
@@ -348,6 +373,10 @@ def build_outline(docs, stylemap=None):
             if kind == "display" or (kind == "front" and not out.units):
                 _scan_opening(out, body)
             out.units.append(unit)
+        if _copyright_file(out, fo, out.units[units_before:]):
+            chapter_seen = seen_before      # it was no chapter after all
+    if not out.title and sm.book_title_line:
+        out.title, out.title_source = sm.book_title_line, "the first line of several files"
     _before_title_page(out)
     if not out.title:
         for doc in docs:
@@ -357,6 +386,29 @@ def build_outline(docs, stylemap=None):
                 break
     _check_outline(out)
     return out
+
+
+def _copyright_file(out, fo, units):
+    """A file that is a copyright page (short, with a copyright line, "All rights reserved"
+    or an ISBN) is the book's copyright page: the export uses it instead of making one. Its
+    "Edited by ..." line gives the author when none was found."""
+    paras = [p for p in fo.paras if p.text.strip()]
+    text = "\n".join(p.text for p in paras)
+    if len(units) != 1 or len(text.split()) > 800 or len(_COPYRIGHT.findall(text)) < 2:
+        return False
+    u = units[0]
+    if u.kind == "display" and u.type == "copyright":
+        return True
+    u.kind, u.type = "display", "copyright"
+    u.detected_by += " (copyright lines: the book's copyright page)"
+    out.copyright_found = True
+    for p in paras:
+        line = " ".join(p.text.split())
+        m = _EDITED.match(line)
+        if m and not out.author and len(line) < 160:
+            out.author, out.author_source = m.group(2).strip(), \
+                'the copyright page ("%s")' % line[:40]
+    return True
 
 
 def _before_title_page(out):

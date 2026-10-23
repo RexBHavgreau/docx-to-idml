@@ -81,7 +81,7 @@ def test_headings_by_formatting_reported():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from test_outline import unstyled_book
     rep = preflight([unstyled_book("unstyled-preflight.docx")])
-    assert any("headings set by formatting" in w and "[16 pt bold centered]" in w
+    assert any("Headings set by formatting" in w and "[16 pt bold centered]" in w
                for w in rep.warnings)
     rows = {s.word: s for s in rep.paragraph_styles}
     assert rows["[bold]"].idml == "Heading A" and rows["[bold]"].source == "formatting"

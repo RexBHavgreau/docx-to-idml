@@ -238,6 +238,17 @@ keep it up to date when decisions change.
   the group's bold/italic/caps are dropped from its runs. Group names ("[16 pt bold
   centered]") are keys of book settings `format_map` (not the profile), edited in the Style Map
   tab. Tried on Beaux's Ezekiel paper with its heading styles stripped: same outline as styled.
+  Book-wide (`formatheads.plan(docs)`, `StyleMap.prepare` from `build_outline`): looks ranked
+  over all files; in a book of several files each file's most prominent line before its first
+  text is its title ("[title line of a file]"), lines of names under it "[author line under a
+  file title]" (Chapter Author), else "[subtitle ...]"; a first line opening 2+ files is the
+  book title (`StyleMap.book_title_line`), left out (role skip) where a file title follows it.
+  Not in single-file books (there the first heading is the first chapter).
+- Front matter files (0.6.0, Beaux's edited volume): `outline._copyright_file` makes a short
+  file with 2+ copyright marks (©, all rights reserved, ISBN) a display/copyright unit, used
+  instead of the generated page; "Edited by ..." gives the author. A whole-file unit whose
+  first line isn't a title gets `outline.file_title(name)`. classify reads "Foreword by X" as a
+  foreword; "contributors" is front matter.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 

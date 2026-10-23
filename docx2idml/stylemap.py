@@ -132,7 +132,6 @@ class StyleMap:
         self.paragraph = {norm(k): v for k, v in (paragraph or {}).items()}
         self.character = {norm(k): v for k, v in (character or {}).items()}
         self.formats = dict(formats or {})
-        self._groups = {}         # id(doc) -> (doc, groups, {paragraph index: group})
 
     @classmethod
     def from_profile(cls, profile, settings=None):
@@ -140,29 +139,54 @@ class StyleMap:
         return cls(sm.get("paragraph"), sm.get("character"),
                    (settings or {}).get("format_map"))
 
+    def prepare(self, docs):
+        """Find the headings set by formatting across the book's files (formatheads.plan),
+        once for this set of files."""
+        from .formatheads import plan
+        self._plan = plan(docs, lambda d, p: self.paragraph_style(d, d.para_style(p)).role)
+        self._planned = {id(d) for d in docs}
+        self._docs = list(docs)
+
+    def _plan_for(self, doc):
+        if id(doc) not in getattr(self, "_planned", ()) or doc not in self._docs:
+            self.prepare([doc])
+        return self._plan
+
+    @property
+    def book_title_line(self):
+        """A first line that opens several files: the book's title (or None)."""
+        return getattr(self, "_plan", None) and self._plan.book_title
+
     def format_groups(self, doc):
-        """Headings found by direct formatting in doc (formatheads), cached per file."""
-        entry = self._groups.get(id(doc))
-        if entry is None or entry[0] is not doc:
-            from .formatheads import find_groups
-            groups, by_para = find_groups(
-                doc, lambda p: self.paragraph_style(doc, doc.para_style(p)).role)
-            entry = self._groups[id(doc)] = (doc, groups, by_para)
-        return entry[1], entry[2]
+        """Headings found by formatting in doc: (the groups with members there, {paragraph
+        index: group})."""
+        pl = self._plan_for(doc)
+        by_para = pl.by_doc.get(id(doc), {})
+        groups = [g for g in pl.groups if g.members(doc)]
+        return groups, by_para
+
+    def repeated_title(self, doc, p):
+        """The book's title repeated at the top of a file, before the file's own title."""
+        return p.index in self._plan_for(doc).repeats.get(id(doc), ())
 
     def paragraph_mapping(self, doc, p):
         """Mapping for one paragraph: its style's, unless it is a heading found by formatting
         (then the group's, or what the book's map says for the group)."""
         if getattr(p, "where", "body") == "body":
+            from .formatheads import feats_of
+            if self.repeated_title(doc, p):
+                return Mapping("[book title repeated in a file]", None, "skip", 0,
+                               "formatting", False)
             g = self.format_groups(doc)[1].get(p.index)
             if g is not None:
+                feats = feats_of(p) if p.look else ()
                 if g.name in self.formats:
                     idml, role, level = _entry(self.formats[g.name])
                     role = role or g.role
                     if role == "heading" and not level:
                         level = g.level
-                    return Mapping(g.name, idml, role, level, "book", False, g.feats)
-                return Mapping(g.name, g.idml, g.role, g.level, "formatting", True, g.feats)
+                    return Mapping(g.name, idml, role, level, "book", False, feats)
+                return Mapping(g.name, g.idml, g.role, g.level, "formatting", True, feats)
         return self.paragraph_style(doc, doc.para_style(p))
 
     def paragraph_style(self, doc, style_id):

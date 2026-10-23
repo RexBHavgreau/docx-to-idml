@@ -38,21 +38,13 @@ class Group:
 
     @property
     def idml(self):
-        return LEVEL_STYLES[min(self.level, 3)] if self.role == "heading" else \
-            LEVEL_STYLES[0]
+        if self.role == "heading":
+            return LEVEL_STYLES[min(self.level, 3)]
+        return {"author": "Chapter Author", "subtitle": "Chapter Subtitle"}.get(self.role,
+                                                                              LEVEL_STYLES[0])
 
-    @property
-    def feats(self):
-        """Run features that make up the look (dropped from the runs: the style gives them)."""
-        size, bold, italic, caps, _c = self.look
-        out = []
-        if bold:
-            out.append("bold")
-        if italic:
-            out.append("italic")
-        if caps:
-            out.append(caps)
-        return tuple(out)
+    def members(self, doc):
+        return [i for key, i in self.paragraphs if key == id(doc)]
 
 
 def describe(look, body_size=None):
@@ -84,72 +76,165 @@ def _stands_out(look, body):
         (centered and not body[4]) or (italic and not body[2])
 
 
-def find_groups(doc, role_of):
-    """Heading groups found by formatting in one DocxFile: (groups, {paragraph index: group}).
-    role_of(p): the role a paragraph's style maps to (body, heading, chapter...)."""
-    paras = [p for p in doc.paragraphs if p.where == "body" and not p.in_table and
-             not p.in_toc_field and p.text.strip() and p.look]
-    roles = {p.index: role_of(p) for p in paras}
-    styled = set(roles.values())
+TITLE = "[title line of a file]"
+UNDER = {"author": "[author line under a file title]",
+         "subtitle": "[subtitle under a file title]"}
+
+
+@dataclass
+class Plan:
+    groups: list = field(default_factory=list)       # ranked look groups, then the title group
+    by_doc: dict = field(default_factory=dict)       # id(doc) -> {paragraph index: Group}
+    book_title: str = None                           # a first line that opens several files
+    repeats: dict = field(default_factory=dict)      # id(doc) -> {index} of that line, left out
+
+
+def plan(docs, role_of):
+    """Headings found by formatting across the whole book (so a look means the same level in
+    every file). role_of(doc, p): the role a paragraph's style maps to.
+
+    In a book of several files, each file whose chapter title isn't styled may open with a
+    title line: the most prominent line before its first text (PREFACE, Contributors, Foreword
+    by...). It is the unit's title, whatever its look, and the lines between it and the first
+    heading are its author line or subtitle. (In a single file the first heading is just the
+    first chapter.) A first line that opens two or
+    more files is the book's title, left out where a file title follows it. The other
+    candidates are grouped by look over all the files and ranked."""
+    out = Plan()
+    files = []
+    weight = Counter()
+    styled = set()
+    for doc in docs:
+        paras = [p for p in doc.paragraphs if p.where == "body" and not p.in_table and
+                 not p.in_toc_field and p.text.strip() and p.look]
+        roles = {p.index: role_of(doc, p) for p in paras}
+        files.append((doc, paras, roles))
+        styled |= set(roles.values())
+        for p in paras:
+            if roles[p.index] == "body" and len(p.text.split()) >= TEXT_WORDS:
+                weight[_look(p)] += len(p.text)
+    if not weight:
+        for doc, paras, roles in files:
+            for p in paras:
+                weight[_look(p)] += len(p.text)
+    if not weight:
+        return out
+    body = weight.most_common(1)[0][0]
     want_chapters = not ({"chapter", "part"} & styled)
     want_headings = "heading" not in styled
-    if not (want_chapters or want_headings):
-        return [], {}
-    looks = {p.index: p.look + (p.align == "center",) for p in paras}
-    # The body: the look of most of the text in long paragraphs.
-    weight = Counter()
-    for p in paras:
-        if roles[p.index] == "body" and len(p.text.split()) >= 20:
-            weight[looks[p.index]] += len(p.text)
-    if not weight:
-        for p in paras:
-            weight[looks[p.index]] += len(p.text)
-    if not weight:
-        return [], {}
-    body = weight.most_common(1)[0][0]
-    groups, page_starts = {}, set()
-    for n, p in enumerate(paras):
-        text = " ".join(p.text.split())
-        look = looks[p.index]
-        if roles[p.index] != "body" or look == body or not _stands_out(look, body):
+    firsts = Counter(" ".join(paras[0].text.split()) for _d, paras, _r in files if paras)
+    repeated = {t for t, n in firsts.items() if n >= 2 and len(t.split()) <= 25}
+    if repeated:
+        out.book_title = sorted(repeated, key=lambda t: -firsts[t])[0]
+    groups, titles, unders = {}, [], {}
+    for doc, paras, roles in files:
+        if {"chapter", "part"} & set(roles.values()) and not want_headings:
             continue
-        if len(text.split()) > MAX_WORDS or n == len(paras) - 1:
-            continue
-        if text.endswith(".") and not _NUMBERED.match(text):
-            continue
-        g = groups.setdefault(look, Group(look, describe(look, body[0])))
-        g.paragraphs.append(p.index)
-        first_in_section = p.index == 0 or doc.paragraphs[p.index - 1].ends_section
-        if p.page_break_before or first_in_section:
-            page_starts.add(p.index)
-    # A heading has text under it before the next heading of its look: a title page's lines
-    # (a school, "by", a date, all centered capitals) and a typed contents' title don't.
-    pos = {p.index: n for n, p in enumerate(paras)}
-    texty = [roles[p.index] == "body" and len(p.text.split()) >= TEXT_WORDS and
-             (p.align != "center" or body[4]) for p in paras]
-    for g in groups.values():
-        members = g.paragraphs
-        ends = [pos[i] for i in members[1:]] + [len(paras)]
-        g.paragraphs = [i for i, end in zip(members, ends) if any(texty[pos[i] + 1:end])]
-        g.starts_page = sum(1 for i in g.paragraphs if i in page_starts)
-    kept = [g for g in groups.values() if g.paragraphs and
-            (len(g.paragraphs) >= 2 or g.look[0] >= body[0] + 2 or g.starts_page)]
-    # An italic-only look is weak (titles of works, foreign words set apart): keep it only
-    # as a level below a stronger group.
+        texty = [roles[p.index] == "body" and len(p.text.split()) >= TEXT_WORDS and
+                 (p.align != "center" or body[4]) for p in paras]
+        cands = []
+        for n, p in enumerate(paras):
+            text = " ".join(p.text.split())
+            look = _look(p)
+            if roles[p.index] != "body" or look == body or not _stands_out(look, body):
+                continue
+            if len(text.split()) > MAX_WORDS or n == len(paras) - 1:
+                continue
+            if text.endswith(".") and not _NUMBERED.match(text):
+                continue
+            cands.append(n)
+        # A heading has text under it before the next heading of its look (title-page lines
+        # and a typed contents' title don't); a file title before the next candidate of any.
+        nexts = {}
+        for k, n in enumerate(cands):
+            same = [m for m in cands[k + 1:] if _look(paras[m]) == _look(paras[n])]
+            nexts[n] = (same[0] if same else len(paras), cands[k + 1] if k + 1 < len(cands)
+                        else len(paras))
+        # The file's title: the most prominent of the lines before its first text (ties: the
+        # last, nearest the text), not counting the book's title repeated at the top.
+        title, under = None, []
+        first_text = next((n for n, t in enumerate(texty) if t), len(paras))
+        leading = [n for n in cands if n < first_text and
+                   not (n == 0 and " ".join(paras[0].text.split()) in repeated)]
+        if leading and len(files) > 1 and not ({"chapter", "part"} & set(roles.values())):
+            best = max(_prominence_of(_look(paras[n]), body) for n in leading)
+            top = [n for n in leading if _prominence_of(_look(paras[n]), body) == best]
+            title = top[0] if len(top) == 1 else top[-1]
+            # Lines between the title and the first heading or text: an author line (names)
+            # or a subtitle, set as Chapter Author or Chapter Subtitle.
+            for n in leading:
+                if n <= title:
+                    continue
+                if any(texty[n + 1:nexts[n][1]]):
+                    break                      # a heading with text under it
+                under.append(n)
+        if title is not None:
+            titles.append((doc, paras[title].index))
+            if " ".join(paras[0].text.split()) in repeated and title > 0:
+                out.repeats.setdefault(id(doc), set()).add(paras[0].index)
+        for n in under:
+            role = "author" if _names(paras[n].text) else "subtitle"
+            unders.setdefault(role, []).append((id(doc), paras[n].index))
+        for n in cands:
+            if n == title or n in under or not any(texty[n + 1:nexts[n][0]]):
+                continue
+            p = paras[n]
+            g = groups.setdefault(_look(p), Group(_look(p), describe(_look(p), body[0])))
+            g.paragraphs.append((id(doc), p.index))
+            first_in_section = p.index == 0 or doc.paragraphs[p.index - 1].ends_section
+            if p.page_break_before or first_in_section:
+                g.starts_page += 1
+    kept = [g for g in groups.values()
+            if len(g.paragraphs) >= 2 or g.look[0] >= body[0] + 2 or g.starts_page]
+    # An italic-only look is weak (titles of works, foreign words set apart): keep it only as
+    # a level below a stronger group.
     if all(_only_italic(g.look, body) for g in kept):
         kept = []
     kept.sort(key=lambda g: -_prominence(g, body))
-    level = 0 if want_chapters else 1
     if not want_headings:
-        kept = kept[:1]
+        kept = kept[:1] if want_chapters else []
+    level = 1
+    if want_chapters and kept and (not titles or 2 * kept[0].starts_page >= len(
+            kept[0].paragraphs) or kept[0].look[0] >= body[0] + 2):
+        level = 0
     for g in kept:
-        if level == 0:
-            g.role, g.level = "chapter", 0
-        else:
-            g.role, g.level = "heading", min(level, 3)
+        g.role, g.level = ("chapter", 0) if level == 0 else ("heading", min(level, 3))
         level += 1
-    by_para = {i: g for g in kept for i in g.paragraphs}
-    return kept, by_para
+    if titles:
+        kept.append(Group(None, TITLE, [(id(d), i) for d, i in titles], role="chapter",
+                          level=0))
+    for role, members in sorted(unders.items()):
+        kept.append(Group(None, UNDER[role], members, role=role, level=0))
+    out.groups = kept
+    for g in kept:
+        for key, i in g.paragraphs:
+            out.by_doc.setdefault(key, {})[i] = g
+    return out
+
+
+def _names(text):
+    """A line of names ("Nicolas Ellen and Josh Stephens", "John Smith, PhD")."""
+    words = text.split()
+    if not words or len(words) > 14 or text.rstrip().endswith((".", ":", "?")) or ":" in text:
+        return False
+    caps = sum(1 for w in words if w[:1].isupper())
+    small = sum(1 for w in words if w.lower() in ("and", "y", "&", "with", "con"))
+    return caps + small == len(words) and (small or "," in text or len(words) <= 4)
+
+
+def _prominence_of(look, body):
+    return _prominence(Group(look, ""), body)
+
+
+def _look(p):
+    return p.look + (p.align == "center",)
+
+
+def feats_of(p):
+    """Run features of a paragraph's look (dropped from a heading's runs: its style gives them)."""
+    size, bold, italic, caps = p.look
+    return tuple(f for f, on in (("bold", bold), ("italic", italic)) if on) + \
+        ((caps,) if caps else ())
 
 
 def _only_italic(look, body):

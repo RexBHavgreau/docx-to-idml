@@ -159,7 +159,7 @@ def _direct(rep, docs, sm):
     for doc in docs:
         heads = sm.format_groups(doc)[1]      # headings found by formatting: expected
         for p in doc.paragraphs + doc.note_paragraphs:
-            if p.where == "body" and p.index in heads:
+            if p.where == "body" and (p.index in heads or sm.repeated_title(doc, p)):
                 continue
             emphasis += p.direct_emphasis
             style = display_name(doc.style_name(doc.para_style(p)) or "Normal")
@@ -325,10 +325,13 @@ def _warnings(rep, docs):
         n = sum(d.endnote_count for d in docs)
         w.append("%s. Endnotes are not supported; they will be converted to footnotes."
                  % plural(n, "endnote"))
-    for name, groups in rep.guessed_heads.items():
-        w.append("%s has headings set by formatting rather than styles. They were found by "
-                 "their look (%s) and mapped as headings; check them in the Style Map tab."
-                 % (name, ", ".join(groups)))
+    if rep.guessed_heads:
+        names = sorted({g for groups in rep.guessed_heads.values() for g in groups})
+        files = list(rep.guessed_heads)
+        w.append("Headings set by formatting rather than styles were found by their look in "
+                 "%s (%s): %s. Check them in the Style Map tab." % (
+                     plural(len(files), "file"), ", ".join(files) if len(files) <= 3 else
+                     ", ".join(files[:3]) + "..." , ", ".join(names)))
     unmapped = [u for u in rep.paragraph_styles if u.warning and u.source != "formatting"]
     for u in unmapped:
         if u.source == "fallback":

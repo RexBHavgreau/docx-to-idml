@@ -1001,7 +1001,8 @@ class Exporter(PaginationMixin):
         """The mapping for a paragraph of style style_id; index (a body paragraph's) lets a
         heading found by formatting map by its look."""
         sid = style_id if style_id in docx.styles else docx.default_style.get("paragraph")
-        if index is not None and index in self.sm.format_groups(docx)[1]:
+        if index is not None and (index in self.sm.format_groups(docx)[1] or
+                                  self.sm.repeated_title(docx, docx.paragraphs[index])):
             return self.sm.paragraph_mapping(docx, docx.paragraphs[index])
         m = self.sm.paragraph_style(docx, sid)
         if m.idml and m.idml not in self.builtin and m.role not in ("skip", "toc", "toc_title"):
@@ -1249,10 +1250,13 @@ class Exporter(PaginationMixin):
         blocks.append(Block(g("display", "Title page", "title page"), frontmatter.title_page(info),
                             sink=_half(self.text_height / 5)))
         if ms_copyright:
+            # The manuscript's own copyright page, used as it is: no generated one beside it.
             paras = ms_copyright
             for p in paras:
-                if p.style.startswith("Body"):
+                if p.style.startswith(("Body", "Heading", "Chapter")):
                     p.style = "Copyright"
+            self.report.append("The manuscript's own copyright page is used (no copyright page "
+                               "was generated): check it against Book Details.")
         else:
             paras, cnotes = frontmatter.copyright_page(info, lang, self.profile.get("notices"))
             self.report += cnotes
