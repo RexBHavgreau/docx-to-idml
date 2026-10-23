@@ -44,6 +44,7 @@ from .template import TemplateError, apply_template, read_template
 BLEED = 9                   # 0.125 in, KDP's bleed
 TRIMS = {"5x8": (5, 8), "5.25x8": (5.25, 8), "5.5x8.5": (5.5, 8.5), "6x9": (6, 9),
          "7x10": (7, 10), "8.5x11": (8.5, 11), "A5": (5.83, 8.27)}
+SLACK = 0.03         # of the text estimated per page, for lines lost at page feet
 LANGUAGES = {"en": "$ID/English: USA", "es": "$ID/Spanish: Castilian"}
 FONT_STYLES = {(False, False): "Regular", (False, True): "Italic", (True, False): "Bold",
                (True, True): "Bold Italic"}
@@ -1195,6 +1196,7 @@ class Exporter(PaginationMixin):
             n = max(1, math.ceil(len(text) / cpl))
             return n * lead + attrs.get("SpaceBefore", 0) + attrs.get("SpaceAfter", 0)
         height = sink
+        notes = 0
         for p in paras:
             for r in p.runs:
                 if r.table is not None:
@@ -1208,9 +1210,18 @@ class Exporter(PaginationMixin):
                     height += r.image.width * h / w + 12
                 for n in r.footnote or ():
                     height += lines(n, self.measure) + 3
+                notes += bool(r.footnote)
             if not any(r.table is not None or r.image is not None for r in p.runs):
                 height += lines(p, self.measure)
-        return max(1, math.ceil(height / self.text_height))
+        # Each page with notes also gives up the space above them (and the rule).
+        fn = self.profile.get("footnotes") or {}
+        per_page = (fn.get("space_above") or 0) + \
+            ((fn.get("space_below_rule") or 0) + 0.5 if fn.get("rule") else 0)
+        height += min(notes, math.ceil(height / self.text_height)) * per_page
+        # Lines lost at page feet (keeps, widows, notes that can't split) grow with the
+        # length: SLACK of each page. A story whose text runs past its pages makes InDesign's
+        # Smart Text Reflow add a page, out of place among the chapters' spreads.
+        return max(1, math.ceil(height * (1 + SLACK) / self.text_height))
 
     # ---- front matter (step 6) ----
 

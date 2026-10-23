@@ -15,6 +15,11 @@
 - Preview pages (Book Details, was "Compare copyright pages"): the half-title, title page and
   copyright page as the export will set them, drawn at the book's trim and margins; the
   copyright page beside the manuscript's.
+- Fixed: in InDesign, a chapter with many footnotes could run past its last page, and Smart
+  Text Reflow then added a page out of place (an unthreaded page before the chapter's last
+  one; Beaux's Ezekiel paper, 40 notes in one chapter). Affinity fitted the same text. The
+  page estimate now counts the space above the notes on each page (and the rule) and leaves
+  3% for lines lost at page feet, so such a chapter gets one more page instead.
 - Fixed: the window opened too short on Windows, hiding the export folder and the Export
   button until it was made taller. It now opens tall enough (within the screen), and the
   export row stays visible however small the window is made.
