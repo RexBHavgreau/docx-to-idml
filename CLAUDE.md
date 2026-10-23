@@ -291,9 +291,9 @@ writes one.
   v0.5.0 (October 23),
   each built by the tag's workflow from main. The updater's real run worked (Beaux, October
   22): 0.2.0 found 0.3.0 by Help > Check for updates (the startup check didn't, fixed in
-  0.4.0), downloaded it, opened it, and 0.3.0 offered to delete 0.2.0. From 0.4.0 shortcuts
-  and taskbar pins are retargeted too (Indicat's code: pywin32's WScript.Shell; tested with
-  a fake shell; not yet on a real Windows update).
+  0.4.0), downloaded it, opened it, and 0.3.0 offered to delete 0.2.0. 0.4.0 -> 0.5.0
+  (Beaux, October 23): the startup check found it, and the Start pin was retargeted to the new
+  version. Desktop shortcuts and taskbar pins use the same code but weren't there to test.
 - Keeps and runts in e01: does Affinity keep KeepLinesTogether/KeepFirstLines/KeepLastLines,
   the No Break style and the local NoBreak attribute?
 - 0.2.0 additions not yet opened: StartParagraph NextOddPage on Chapter Title (does Affinity
