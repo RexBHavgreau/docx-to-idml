@@ -4,10 +4,17 @@ PaginationMixin is part of export.Exporter: it places the book's blocks on pages
 gives each unit its story and section (recto rules, roman/arabic numbering, section markers for
 the running heads) and builds the masters: A-Body, B-Opener, C-Front with their primary text
 frames and folios, D-Display, E-Blank, and a copy of A-Body per part when the verso head is the
-part's title.
+part's title. A running head from the section marker can carry only one font, so a unit whose
+head has Hebrew or Greek gets a copy of its master (R1-Body, R2-Front...) with the head as
+text, which takes the Hebrew and Greek styles.
 """
 
+
+def _has_script(text):
+    return any(is_hebrew(c) or is_greek(c) for c in text or "")
+
 from . import frontmatter, layout
+from .docx_reader import is_greek, is_hebrew
 from .layout import _half
 from .idml.model import Frame, Master, Paragraph, Run, Section, Story, TOCStyle
 
@@ -52,6 +59,7 @@ class PaginationMixin:
         rh = self.profile["running_heads"]
         part = None
         part_masters = []
+        script_heads = []           # (marker, part title or None, pages) for R masters
         long_heads = []
         for n, (b, pl) in enumerate(zip(blocks, placed)):
             pages = list(range(pl.start, pl.start + pl.pages))
@@ -75,11 +83,14 @@ class PaginationMixin:
                 for i in pages:
                     if masters.get(i) == "A-Body":
                         masters[i] = name
+            if _has_script(marker) and b.kind != "part":
+                script_heads.append((marker, part if body else None, pages))
         doc.page_count = max(count, 1)
         doc.page_masters = masters
         if not doc.sections:
             doc.sections = [Section(0, start=1)]
         self._masters(part_masters)
+        self._script_head_masters(script_heads, masters)
         if long_heads:
             self.report.append("Running heads too long for the page: %s. Give these a short "
                                "title in the book settings." % "; ".join(
@@ -135,10 +146,9 @@ class PaginationMixin:
         verso head the book title, author, chapter, part or custom text; C-Front shows the
         unit's title on both sides. Parts with part verso heads get a master each (P1-Body...),
         a copy of A-Body with the part's title."""
-        doc, m = self.doc, self.doc.margins
+        doc = self.doc
         rh = self.profile["running_heads"]
         info = self.info
-        top, bottom = m["top"], doc.height - m["bottom"]
         marker = [Run(special="section_marker")]
         verso_kind = rh.get("verso", "book_title")
         verso = {"book_title": [Run(info.get("short_title") or info["title"])],
@@ -146,18 +156,7 @@ class PaginationMixin:
                  "custom": [Run(rh.get("verso_custom") or "")]}.get(verso_kind)
         recto = [Run(rh.get("recto_custom") or "")] if rh.get("recto") == "custom" else marker
 
-        def frames(heads=True, verso_runs=None, recto_runs=None):
-            out = []
-            for side in ("verso", "recto"):
-                left = m["outside"] if side == "verso" else m["inside"]
-                right = doc.width - (m["inside"] if side == "verso" else m["outside"])
-                out.append(Frame(side, (top, left, bottom, right), [], primary=True))
-                out.append(Frame(side, (bottom + 14, left, bottom + 28, right),
-                                 [Paragraph("Folio", [Run(special="page_number")])],
-                                 key="folio"))
-            if heads:
-                out += self._head_frames(verso_runs, recto_runs)
-            return out
+        frames = self._master_frames
         doc.masters = [
             Master("A", "Body", frames=frames(True, verso or marker, recto)),
             Master("B", "Opener", frames=frames(not rh.get("suppress_on_openers", True),
@@ -171,3 +170,59 @@ class PaginationMixin:
             for k, title in enumerate(parts, 1):
                 doc.masters.append(Master("P%d" % k, "Body",
                                           frames=frames(True, [Run(title)], recto)))
+
+    def _master_frames(self, heads=True, verso_runs=None, recto_runs=None):
+        """A text master's frames: primary text frames and folios on both sides, and the
+        running heads if wanted."""
+        doc, m = self.doc, self.doc.margins
+        top, bottom = m["top"], doc.height - m["bottom"]
+        out = []
+        for side in ("verso", "recto"):
+            left = m["outside"] if side == "verso" else m["inside"]
+            right = doc.width - (m["inside"] if side == "verso" else m["outside"])
+            out.append(Frame(side, (top, left, bottom, right), [], primary=True))
+            out.append(Frame(side, (bottom + 14, left, bottom + 28, right),
+                             [Paragraph("Folio", [Run(special="page_number")])],
+                             key="folio"))
+        if heads:
+            out += self._head_frames(verso_runs, recto_runs)
+        return out
+
+    def _script_head_masters(self, units, masters):
+        """Units whose running head has Hebrew or Greek: a copy of their A-Body (or part's
+        P-Body) or C-Front master with the head written as text instead of the section
+        marker, so _generated_scripts can give the Hebrew its style."""
+        if not units:
+            return
+        doc, rh, info = self.doc, self.profile["running_heads"], self.info
+        verso_kind = rh.get("verso", "book_title")
+        custom_recto = rh.get("recto") == "custom"
+        names = []
+        for k, (marker, part, pages) in enumerate(units, 1):
+            head = [Run(marker)]
+            recto = [Run(rh.get("recto_custom") or "")] if custom_recto else head
+            verso = {"book_title": [Run(info.get("short_title") or info["title"])],
+                     "author": [Run(info["author"])], "chapter": head,
+                     "part": [Run(part)] if part else head,
+                     "custom": [Run(rh.get("verso_custom") or "")]}.get(verso_kind, head)
+            made = {}
+            for i in pages:
+                base = masters.get(i)
+                if base in ("A-Body",) or (base or "").startswith("P"):
+                    kind, frames = "Body", (verso, recto)
+                elif base == "C-Front":
+                    kind, frames = "Front", (head, head)
+                else:
+                    continue                  # openers, display and blank pages: no heads
+                if kind not in made:
+                    made[kind] = Master("R%d" % k, kind,
+                                        frames=self._master_frames(True, *frames))
+                    doc.masters.append(made[kind])
+                    if made[kind].name not in names:
+                        names.append(made[kind].name)
+                masters[i] = made[kind].name
+        if names:
+            self.report.append(
+                "Running heads with Hebrew or Greek are written as text on masters of their "
+                "own (%s), so the Hebrew and Greek get their fonts. To change such a head, "
+                "edit it on that master." % ", ".join(names))

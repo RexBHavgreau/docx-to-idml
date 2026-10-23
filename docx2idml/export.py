@@ -271,6 +271,13 @@ class Exporter(PaginationMixin):
                 break
             pages = new
         self._generated_scripts()
+        missing = sorted(getattr(self, "hebrew_faces_missing", ()))
+        if missing:
+            self.report.append(
+                "The Hebrew font (%s) has no %s face, so Hebrew in %s text is set upright. "
+                "Choose a Hebrew font with that face in Layout Profile > Type if it should "
+                "match." % (self.fonts["hebrew"], " or ".join(m.lower() for m in missing),
+                            " or ".join(m.lower() for m in missing)))
         self.report += self.geo.notes + layout.page_count_notes(self.doc.page_count)
         self._finish_styles()
         return self.doc
@@ -631,9 +638,10 @@ class Exporter(PaginationMixin):
         if name in CHAR_STYLES:
             st = Style(name, attrs=dict(CHAR_STYLES[name]))
         elif name == "Hebrew":
+            # No face: Hebrew takes the face of the text around it (italic in italic text);
+            # _script_runs gives the Hebrew font's own name for that face where it differs.
             st = Style(name, font=self.fonts["hebrew"],
-                       attrs={"FontStyle": fonts.regular_face(self.fonts["hebrew"]),
-                              "AppliedLanguage": "$ID/Hebrew",
+                       attrs={"AppliedLanguage": "$ID/Hebrew",
                               "CharacterDirection": "RightToLeftDirection"})
         elif name == "Greek":
             st = Style(name, font=self.fonts["greek"], attrs={"AppliedLanguage": "$ID/Greek"})
@@ -839,12 +847,13 @@ class Exporter(PaginationMixin):
             if cr.image is not None or not cr.text:
                 continue
             style, local = self._run_attrs(cr, para_style, docx, note)
-            out += self._script_runs(cr.text, style, local)
+            out += self._script_runs(cr.text, style, local, para_style)
         return _merge_runs(out)
 
-    def _script_runs(self, text, style, local):
-        """A run's text split into runs: Hebrew and Greek in their character styles (keeping
-        the run's own style's settings as local ones, except a face for Hebrew)."""
+    def _script_runs(self, text, style, local, para_style=None):
+        """A run's text split into runs: Hebrew and Greek in their character styles, keeping
+        the run's own style's settings (italic...) as local ones. Hebrew takes the face of
+        the text around it, by the Hebrew font's own name for that face."""
         out = []
         for script, part in segments(text):
             if script:
@@ -855,12 +864,27 @@ class Exporter(PaginationMixin):
                     for k, v in self.used_char[style].attrs.items():
                         want.setdefault(k, v)
                 if script == "hebrew":
-                    want.pop("FontStyle", None)
+                    self._hebrew_face(want, para_style)
                 out.append(Run(part, name, {k: v for k, v in want.items()
                                             if sattrs.get(k) != v}))
             else:
                 out.append(Run(part, style, dict(local)))
         return out
+
+    def _hebrew_face(self, want, para_style):
+        """Set want["FontStyle"] to the Hebrew font's name for the face the Hebrew sits in (the
+        run's, else the paragraph's) when that name differs; note a face the font lacks."""
+        face = want.get("FontStyle") or \
+            (self._resolved_attrs(para_style).get("FontStyle") if para_style else None) or \
+            "Regular"
+        heb = self.fonts["hebrew"]
+        name, exact = fonts.matching_face(heb, face)
+        if name and name != face:
+            want["FontStyle"] = name
+        if not exact:
+            missing = getattr(self, "hebrew_faces_missing", set())
+            missing.add(face)
+            self.hebrew_faces_missing = missing
 
     def _generated_scripts(self):
         """Hebrew and Greek in text the program wrote itself (half-title, title and copyright
@@ -876,7 +900,7 @@ class Exporter(PaginationMixin):
             runs = []
             for r in p.runs:
                 if r.text and r.style not in ("Hebrew", "Greek") and r.footnote is None:
-                    runs += self._script_runs(r.text, r.style, r.attrs)
+                    runs += self._script_runs(r.text, r.style, r.attrs, p.style)
                 else:
                     runs.append(r)
             p.runs = _merge_runs(runs)
@@ -886,15 +910,6 @@ class Exporter(PaginationMixin):
                 p.attrs["Composer"] = "HL Composer Optyca"
                 if heb > sum(1 for c in text if c.isalpha() and not is_hebrew(c)):
                     p.attrs["ParagraphDirection"] = "RightToLeftDirection"
-        heads = [s.marker for s in self.doc.sections
-                 if s.marker and any(is_hebrew(c) or is_greek(c) for c in s.marker)]
-        if heads:
-            self.report.append(
-                "Running heads with Hebrew or Greek (%s) are set in the running-head font: "
-                "a running head comes from the section marker, which can't change font. Give "
-                "these chapters a short title in the Running Heads tab, or set the running "
-                "head's font in InDesign." % "; ".join("\u201c%s\u201d" % h for h in heads))
-
 
     def _runt_style(self, name):
         """Paragraphs of running text (Body, notes, quotations...), not headings or display."""

@@ -356,8 +356,8 @@ def test_front_matter_and_heads():
 
 def test_hebrew_in_generated_text():
     """Hebrew in the book's title gets the Hebrew style on the half-title and title pages and
-    in a running head, as in the manuscript's own headings; a section marker can't, so it's
-    reported."""
+    in a running head, as in the manuscript's own headings (a chapter's own head: see
+    test_hebrew_running_head_master)."""
     from idml_check import check
     from docx2idml.idml.writer import write_idml
     path = make_docx(os.path.join(TMP, "heb-title.docx"), [
@@ -377,7 +377,6 @@ def test_hebrew_in_generated_text():
         vhead = [f for f in a.frames if f.key == "vhead"][0].paragraphs[0]
         assert [(r.text, r.style) for r in vhead.runs] == [
             ("The ", None), (HEB, "Hebrew"), (" Covenant", None)]
-        assert any("section marker" in line and HEB in line for line in ex.report)
         assert not check(write_idml(doc, os.path.join(TMP, "heb-title.idml")))
     finally:
         ex.cleanup()
@@ -433,6 +432,59 @@ def test_running_head_style_from_profile():
         assert "Capitalization" not in st.attrs and st.attrs["FontStyle"] == "Italic"
         assert st.attrs["PointSize"] == 8 and st.attrs["Tracking"] == 0
         assert st.font == "Arno Pro"
+    finally:
+        ex.cleanup()
+
+
+def test_hebrew_running_head_master():
+    """A chapter whose running head has Hebrew gets R1-Body (A-Body's frames, the head as
+    text in the Hebrew style); other chapters keep A-Body and the section marker."""
+    from idml_check import check
+    from docx2idml.idml.writer import write_idml
+    long = [para("Text of the chapter goes on for a while. " * 30)] * 8
+    path = make_docx(os.path.join(TMP, "heb-head.docx"),
+                     [para("Book", "Title"), para("One: " + HEB, "Heading1")] + long +
+                     [para("Two", "Heading1")] + long)
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        r = [m for m in doc.masters if m.name == "R1-Body"][0]
+        rhead = [f for f in r.frames if f.key == "rhead"][0].paragraphs[0]
+        assert [(x.text, x.style) for x in rhead.runs] == [("One: ", None), (HEB, "Hebrew")]
+        assert any(f.primary for f in r.frames)
+        used = set(doc.page_masters.values())
+        assert "R1-Body" in used and "A-Body" in used        # chapter two keeps A-Body
+        a = [m for m in doc.masters if m.name == "A-Body"][0]
+        assert [f for f in a.frames if f.key == "rhead"][0].paragraphs[0].runs[0].special == \
+            "section_marker"
+        assert not check(write_idml(doc, os.path.join(TMP, "heb-head.idml")))
+    finally:
+        ex.cleanup()
+
+
+def test_hebrew_takes_the_face_around_it():
+    """The Hebrew style sets no face: Hebrew in italic text is italic, in roman text roman,
+    by the Hebrew font's own face names (Culmus: "Medium", "Medium Oblique")."""
+    from docx2idml import fonts
+    index = {"taamey david clm": {"medium": 1, "medium oblique": 2, "bold": 3},
+             "noitalic hebrew": {"regular": 1}}
+    assert fonts.matching_face("Taamey David CLM", "Italic", index) == ("Medium Oblique", True)
+    assert fonts.matching_face("Taamey David CLM", "Regular", index) == ("Medium", True)
+    assert fonts.matching_face("Taamey David CLM", "Bold Italic", index) == ("Bold", False)
+    assert fonts.matching_face("NoItalic Hebrew", "Italic", index) == ("Regular", False)
+    assert fonts.matching_face("Not Installed", "Italic", index) == (None, True)
+    path = make_docx(os.path.join(TMP, "heb-italic.docx"), [
+        para("Chapter", "Heading1"),
+        para(run("roman " + HEB + " and ") + run("italic " + HEB, "<w:i/>"))])
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        assert "FontStyle" not in doc.style("Hebrew", "character").attrs
+        p = [p for st in doc.stories for p in st.paragraphs
+             if any(r.text == "italic " for r in p.runs)][0]
+        heb = [r for r in p.runs if r.style == "Hebrew"]
+        assert "FontStyle" not in heb[0].attrs                 # roman: the paragraph's face
+        assert heb[1].attrs.get("FontStyle") == "Italic"       # (font not installed here)
     finally:
         ex.cleanup()
 

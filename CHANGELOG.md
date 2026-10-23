@@ -2,6 +2,15 @@
 
 ## 0.5.1 (not yet released)
 
+- Fixed: Hebrew inside italic text was set upright: the Hebrew style fixed the face. It now
+  takes the face of the text around it (italic in italic text, bold in a bold heading), by the
+  Hebrew font's own name for that face (the Culmus fonts call theirs "Medium" and "Medium
+  Oblique"). If the Hebrew font has no such face, the Hebrew is set upright and the report
+  says so.
+- Fixed: Hebrew in a chapter's running head stayed in the running-head font (a running head
+  taken from the chapter title can carry only one font). Such a chapter now gets a master of
+  its own (R1-Body...) with the head written as text, so the Hebrew gets the Hebrew font; the
+  report names these masters. Greek likewise.
 - Page Margins: the line length field says it's a multiple of the type size, and shows what
   that comes to in inches and picas (30 at 11 pt: 4.58 in, 27.5 picas); the note under the
   margins gives it too, with the characters per line.
