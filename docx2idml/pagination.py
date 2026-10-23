@@ -4,16 +4,17 @@ PaginationMixin is part of export.Exporter: it places the book's blocks on pages
 gives each unit its story and section (recto rules, roman/arabic numbering, section markers for
 the running heads) and builds the masters: A-Body, B-Opener, C-Front with their primary text
 frames and folios, D-Display, E-Blank, and a copy of A-Body per part when the verso head is the
-part's title. A running head from the section marker can carry only one font, so a unit whose
-head has Hebrew or Greek gets a copy of its master (R1-Body, R2-Front...) with the head as
-text, which takes the Hebrew and Greek styles.
+part's title. A running head from the section marker can carry only one font: when a head has
+Hebrew or Greek the running-head font lacks, the report says so; with the profile's
+running_heads.script_masters on, such a unit gets a copy of its master (R1-Body, R2-Front...)
+with the head as text, which takes the Hebrew and Greek styles.
 """
 
 
 def _has_script(text):
     return any(is_hebrew(c) or is_greek(c) for c in text or "")
 
-from . import frontmatter, layout
+from . import fonts, frontmatter, layout
 from .docx_reader import is_greek, is_hebrew
 from .layout import _half
 from .idml.model import Frame, Master, Paragraph, Run, Section, Story, TOCStyle
@@ -188,6 +189,28 @@ class PaginationMixin:
             out += self._head_frames(verso_runs, recto_runs)
         return out
 
+    def _script_heads_note(self, heads):
+        """Running heads with Hebrew or Greek, set from the section marker in the running-head
+        font: say so when that font lacks the letters (or can't be checked here)."""
+        font = self.doc.style("Running Head").font or self.fonts["body"]
+        found = fonts.find_font(font)
+        chars = {c for h in heads for c in h if is_hebrew(c) or is_greek(c)}
+        missing = [c for c in chars if not (found and fonts.has_char(found, ord(c)))]
+        if found and not missing:
+            return                            # the font has the letters: nothing to say
+        scripts = " and ".join(n for n, test in (("Hebrew", is_hebrew), ("Greek", is_greek))
+                               if any(test(c) for c in (missing or chars)))
+        listed = "; ".join("\u201c%s\u201d" % h for h in heads)
+        lack = ("doesn't have the %s letters" % scripts) if found else \
+            ("isn't installed on this computer, so whether it has the %s letters couldn't be "
+             "checked" % scripts)
+        self.report.append(
+            "Running heads with %s: %s. A running head can use only one font, and the "
+            "running-head font (%s) %s. Choose a running-head font that has them (Running "
+            "Heads > Running Head Style), or turn on \u201cSeparate masters for heads with "
+            "Hebrew or Greek\u201d there, which gives each such chapter a master of its own "
+            "with the head in the %s font." % (scripts, listed, font, lack, scripts))
+
     def _script_head_masters(self, units, masters):
         """Units whose running head has Hebrew or Greek: a copy of their A-Body (or part's
         P-Body) or C-Front master with the head written as text instead of the section
@@ -195,6 +218,9 @@ class PaginationMixin:
         if not units:
             return
         doc, rh, info = self.doc, self.profile["running_heads"], self.info
+        if not rh.get("script_masters"):
+            self._script_heads_note([u[0] for u in units])
+            return
         verso_kind = rh.get("verso", "book_title")
         custom_recto = rh.get("recto") == "custom"
         names = []

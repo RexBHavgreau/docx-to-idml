@@ -10,8 +10,9 @@ Download the program (`docx-to-idml-X.Y.Z.exe`) from
 [Releases](https://github.com/RexBHavgreau/docx-to-idml/releases); once installed, it offers
 new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md).
 
-- **0.5.1** (in progress): Hebrew follows italic and bold text; Hebrew in chapter running
-  heads gets the Hebrew font; the line length setting says what it measures (inches, picas).
+- **0.6.0** (in progress): Hebrew follows italic and bold text; running heads with Hebrew
+  are flagged when their font lacks it, with separate masters as an option; the line length
+  setting says what it measures (inches, picas).
 - **0.5.0** (October 23, 2026, latest release): the Style Map tab shows every style in one
   view; narrower default margins (line length about 30 times the type size, outside never
   wider than inside); running-head style settings; Page Layout in three sections. Fixes: Hebrew in the title

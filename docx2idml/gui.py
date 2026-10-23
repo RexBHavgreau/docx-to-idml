@@ -114,6 +114,8 @@ HEAD_STYLE_FIELDS = [
     (("running_heads", "style", "tracking"), "Letter-spacing (thousandths of an em)", "int",
      None),
     (("running_heads", "style", "font"), "Font (blank = the body font)", "font", None),
+    (("running_heads", "script_masters"),
+     "Separate masters for heads with Hebrew or Greek (each gets its own font)", "bool", None),
 ]
 # Book settings (book.settings["front"]).
 FRONT_FIELDS = [

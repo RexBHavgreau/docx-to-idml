@@ -47,7 +47,7 @@ keep it up to date when decisions change.
 | `docx2idml/book.py` | Input files: drop/folder collection, natural order, saved order |
 | `docx2idml/content.py` | The text of a .docx for the exporter: runs with formatting features, notes, tables, images, list numbers; paragraph indexes match `docx_reader`'s |
 | `docx2idml/export.py` | Step 4, the exporter core: book styles, Word styles kept by name, runs to character styles, Hebrew/Greek, one story and section per outline unit, page estimate; `export()` writes the export folder |
-| `docx2idml/pagination.py` | `PaginationMixin` of the Exporter (moved out of export.py, 0.5.1): pages, stories, sections and markers, masters and running-head frames |
+| `docx2idml/pagination.py` | `PaginationMixin` of the Exporter (moved out of export.py, 0.6.0): pages, stories, sections and markers, masters and running-head frames |
 | `docx2idml/layout.py` | Step 5: margins and measure (30 times the type size within 45-80 characters, floors, KDP gutter by page count), pagination (roman front matter, recto rules, masters per page) |
 | `docx2idml/frontmatter.py` | Step 6: book details (settings, then detected, else bracketed placeholders), half-title, title, copyright (English/Spanish, notices from the profile's library), contents entries and reserved pages |
 | `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
@@ -203,11 +203,13 @@ keep it up to date when decisions change.
 - Hebrew/Greek in generated text (0.5.0): `Exporter._generated_scripts` runs after the
   build over every story and master frame, splitting runs not yet in the Hebrew/Greek styles
   (`_script_runs`, the same split as the manuscript's runs). Section markers can't carry a
-  character style, so a unit whose head has Hebrew/Greek gets a copy of its master (R1-Body,
-  R1-Front...) with the head as text (`pagination._script_head_masters`, 0.5.1).
+  character style. By default (Beaux, 0.6.0) the report warns when the running-head font
+  lacks a head's Hebrew/Greek (`pagination._script_heads_note`); with profile
+  `running_heads.script_masters` on, such a unit gets a copy of its master (R1-Body,
+  R1-Front...) with the head as text (`_script_head_masters`). Profile version 7.
 - Faces (0.5.0): FontStyle for the body and notes styles is `fonts.regular_face()`, the
   installed face's own name (Culmus fonts: "Medium"); "Regular" when not installed here. The
-  Hebrew style sets no face (0.5.1, Beaux): Hebrew takes the face around it, and
+  Hebrew style sets no face (0.6.0, Beaux): Hebrew takes the face around it, and
   `Exporter._hebrew_face` puts the Hebrew font's own name for it on the run
   (`fonts.matching_face`); a face the font lacks falls back to upright and is reported.
 - Title page (0.5.0): text above the Title line is endorsements only when

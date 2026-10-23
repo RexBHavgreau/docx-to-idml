@@ -437,15 +437,30 @@ def test_running_head_style_from_profile():
 
 
 def test_hebrew_running_head_master():
-    """A chapter whose running head has Hebrew gets R1-Body (A-Body's frames, the head as
-    text in the Hebrew style); other chapters keep A-Body and the section marker."""
+    """A running head with Hebrew: by default only a note; with script_masters on, the
+    chapter gets R1-Body (A-Body's frames, the head as text in the Hebrew style) and other
+    chapters keep A-Body and the section marker."""
     from idml_check import check
     from docx2idml.idml.writer import write_idml
     long = [para("Text of the chapter goes on for a while. " * 30)] * 8
     path = make_docx(os.path.join(TMP, "heb-head.docx"),
                      [para("Book", "Title"), para("One: " + HEB, "Heading1")] + long +
                      [para("Two", "Heading1")] + long)
-    ex = Exporter([path], default_profile())
+    # Off (the default): no extra master; the report says the head's font may lack Hebrew
+    # (a font not installed anywhere, so it couldn't be checked: the same on every machine).
+    prof = default_profile()
+    prof["running_heads"]["style"]["font"] = "No Such Font"
+    ex = Exporter([path], prof)
+    try:
+        doc = ex.build()
+        assert not [m for m in doc.masters if m.name.startswith("R")]
+        assert any("A running head can use only one font" in line and HEB in line and
+                   "couldn't be checked" in line for line in ex.report)
+    finally:
+        ex.cleanup()
+    prof = default_profile()
+    prof["running_heads"]["script_masters"] = True
+    ex = Exporter([path], prof)
     try:
         doc = ex.build()
         r = [m for m in doc.masters if m.name == "R1-Body"][0]
