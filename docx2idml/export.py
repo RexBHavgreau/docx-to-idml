@@ -1241,7 +1241,14 @@ class Exporter:
         blocks.append(Block(g("display", "Copyright", "copyright"), paras, opens="next",
                             valign="BottomAlign"))
         if extras:
-            blocks.append(Block(g("display", "(opening)", "opening"), extras))
+            # Other lines of the manuscript's title page (a school, a place, a date) are left
+            # out (Beaux): the generated pages hold what a book needs. Listed, so nothing is
+            # lost unseen.
+            lines = ["".join(r.text for r in p.runs).strip() for p in extras]
+            self.report.append(
+                "Left out from the manuscript's title page: %s. If any belongs in the book "
+                "(the publisher, say), enter it in Book details."
+                % "; ".join("\u201c%s\u201d" % t for t in lines if t))
         blocks += display
         if info["contents"]:
             depth = self.profile["front_matter"].get("contents_depth", "chapters")
@@ -1262,7 +1269,7 @@ class Exporter:
     def _split_opening(self, paras):
         """The manuscript's own title page: title, subtitle and author lines are replaced by
         the generated title page; from a copyright line on, the text goes on the copyright
-        page; anything else is kept on a display page of its own."""
+        page; anything else is left out (and reported)."""
         copyright_, extras = [], []
         author = (self.outline.author or "").casefold()
         for p in paras:

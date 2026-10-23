@@ -134,7 +134,8 @@ keep it up to date when decisions change.
   (i), title (recto), copyright (the verso after it, set at the foot), the manuscript's display
   pages, reserved contents (recto; its page count estimated or set), then front matter, text,
   back matter. The manuscript's title page is replaced (copyright lines from it go on the
-  copyright page; other lines on a display page of their own); its typed contents is dropped.
+  copyright page; other lines left out and listed in the report, Beaux 0.4.1); its typed
+  contents is dropped.
   Running heads: recto = section marker (short title from `settings["short_titles"]`), verso =
   book title / author / chapter / custom on A-Body; C-Front shows the marker both sides; B, D, E
   none unless the profile's suppress toggles are off. Verso "part": one copy of A-Body per part

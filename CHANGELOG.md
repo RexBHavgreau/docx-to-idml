@@ -15,7 +15,9 @@
   school's name, is now part of the title page rather than a page of endorsements (text above
   the title still counts as endorsements when it runs to sentences or is a quotation); a Word
   style named "Author" (or "Autor") gives the author; a bare "by" line and the title of a
-  typed contents are left out with the contents.
+  typed contents are left out with the contents. Other lines of the manuscript's title page
+  (a school, a place, a date) are left out too, and listed in the report; anything that
+  belongs in the book goes in Book details.
 
 ## 0.4.0 (October 22, 2026)
 

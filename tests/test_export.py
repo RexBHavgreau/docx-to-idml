@@ -411,7 +411,8 @@ def test_paper_cover_page():
         texts = ["".join(r.text for r in p.runs) for st in doc.stories for p in st.paragraphs]
         assert "Beaux Hargrove" in texts and "[Author]" not in " ".join(texts)
         assert "by" not in texts and "CONTENTS" not in texts
-        assert "The Master\u2019s Seminary" in texts and "July 2026" in texts   # kept
+        assert "The Master\u2019s Seminary" not in texts and "July 2026" not in texts
+        assert any("Left out" in line and "July 2026" in line for line in ex.report)
     finally:
         ex.cleanup()
 
