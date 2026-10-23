@@ -34,8 +34,9 @@ LOOKS = {"book": "the book style's", "word": "Word's, in book terms"}
 
 # Profile fields: (path in the profile, label, kind, choices). Kinds: bool, text, number
 # (blank allowed = automatic), int, choice, int_choice (a choice saved as a number), file (an
-# IDML file, with Browse), points (a measure in points shown with its inches, 72 pt (1"),
-# with arrows; inches may be typed: 1"), font (a dropdown of installed fonts that can also
+# IDML file, with Browse), points (a measure shown as points with its inches, 72 pt (1"),
+# with arrows; inches may be typed: 1"; choices: (arrow step in points, unit saved: "pt" or
+# "in")), font (a dropdown of installed fonts that can also
 # be typed in; its choices name a script, "hebrew" or "greek", to list only fonts that have it).
 PROFILE_FIELDS = {
     # The Page Layout tab in three sections.
@@ -52,15 +53,15 @@ PROFILE_FIELDS = {
             (("page", "spare_pages"), "Spare pages after each chapter", "int_choice",
              ["0", "1", "2"]),
             (("page", "opener_drop"), "Chapter titles lowered by (blank = 6 body lines)",
-             "points", None),
+             "points", (6, "pt")),
         ],
         "Page Margins": [
             (("page", "measure"), "Line length (a multiple of the type size; 30 usual, "
              "20\u201340)", "number", None),
-            (("page", "margins", "top"), "Top margin (in)", "number", None),
-            (("page", "margins", "bottom"), "Bottom margin (in)", "number", None),
-            (("page", "margins", "inside"), "Inside margin (in)", "number", None),
-            (("page", "margins", "outside"), "Outside margin (in)", "number", None),
+            (("page", "margins", "top"), "Top margin", "points", (9, "in")),
+            (("page", "margins", "bottom"), "Bottom margin", "points", (9, "in")),
+            (("page", "margins", "inside"), "Inside margin", "points", (9, "in")),
+            (("page", "margins", "outside"), "Outside margin", "points", (9, "in")),
         ],
     },
     "Type": [
@@ -93,10 +94,10 @@ PROFILE_FIELDS = {
         (("footnotes", "numbering"), "Footnote numbering", "choice", ["per_chapter", "continuous"]),
         (("footnotes", "rule"), "Rule above the notes", "bool", None),
         (("footnotes", "continuation_rule"), "Rule above continued notes", "bool", None),
-        (("footnotes", "space_above"), "Space above the notes (pt)", "number", None),
-        (("footnotes", "space_below_rule"), "Space below a rule (pt)", "number", None),
-        (("footnotes", "space_between"), "Space between notes (pt)", "number", None),
-        (("footnotes", "rule_length"), "Rule length (pt)", "number", None),
+        (("footnotes", "space_above"), "Space above the notes", "points", (1, "pt")),
+        (("footnotes", "space_below_rule"), "Space below a rule", "points", (1, "pt")),
+        (("footnotes", "space_between"), "Space between notes", "points", (1, "pt")),
+        (("footnotes", "rule_length"), "Rule length", "points", (9, "pt")),
         (("front_matter", "contents_depth"), "Contents lists", "choice", ["chapters", "sections"]),
     ],
 }
@@ -142,9 +143,6 @@ def _set(d, path, value):
     d[path[-1]] = value
 
 
-POINTS_STEP = 6                  # the arrows of a points field: 1/12 inch
-
-
 def parse_points(text):
     """Points from what was typed: "72", "72 pt", "72 pt (1\")", or inches: "1\"", "1 in".
     None when blank or not a measure."""
@@ -182,7 +180,7 @@ class Form:
         """by_column: fill each column top to bottom (fields listed in reading order down the
         first column, then the second), instead of row by row."""
         self.fields, self.vars, self.font_boxes, self.labels = fields, {}, [], {}
-        self.points_start = None    # a points field's arrows start here when it's blank
+        self.points_start = {}      # path -> function: a blank points field's arrows start there
         for n, (path, label, kind, choices) in enumerate(fields):
             rows = -(-len(fields) // columns)
             if by_column:
@@ -241,12 +239,13 @@ class Form:
                 elif kind == "points":
                     w = ttk.Spinbox(parent, textvariable=var, width=24)
 
-                    def step(direction, var=var):
+                    def step(direction, var=var, path=path, size=choices[0]):
                         value = parse_points(var.get())
                         if value is None:
-                            value = self.points_start() if self.points_start else 72
+                            start = self.points_start.get(path)
+                            value = start() if start else 72
                         else:
-                            value = max(0, value + direction * POINTS_STEP)
+                            value = max(0, value + direction * size)
                         var.set(format_points(value))
                         return "break"
 
@@ -266,6 +265,13 @@ class Form:
                 w.grid(row=row, column=col + 1, sticky="we", padx=6, pady=2)
             self.vars[path] = (var, kind)
 
+    def _unit(self, path):
+        """The unit a points field is saved in ("pt" or "in")."""
+        for p, _label, kind, choices in self.fields:
+            if p == path and kind == "points":
+                return (choices or (6, "pt"))[1]
+        return "pt"
+
     def set_fonts(self, lists):
         """Fill the font dropdowns: lists = {None: all families, "hebrew": [...], ...}."""
         for box, script in self.font_boxes:
@@ -277,7 +283,8 @@ class Form:
             if kind == "bool":
                 var.set(bool(v))
             elif kind == "points":
-                var.set(format_points(v))
+                scale = 72 if self._unit(path) == "in" else 1
+                var.set(format_points(None if v is None else v * scale))
             else:
                 var.set("" if v is None else (("%g" % v) if isinstance(v, float) else str(v)))
 
@@ -293,6 +300,8 @@ class Form:
                 value = var.get() or None
             elif kind == "points":
                 value = parse_points(var.get())
+                if value is not None and self._unit(path) == "in":
+                    value = round(value / 72, 4)
             elif kind in ("number", "int"):
                 value = _num(var.get(), kind)
                 if value is None and kind == "int":
@@ -693,7 +702,9 @@ class App(BookTabMixin):
                 if name == "Type":
                     typetab, ntype = f, len(fields)
         for form in self.profile_forms:
-            form.points_start = self._auto_drop
+            form.points_start = {("page", "opener_drop"): self._auto_drop}
+            form.points_start.update({("page", "margins", side): (
+                lambda side=side: self.calculated()[0].margins[side]) for side in self.MARGINS})
         # The suggested leading for the size and font, under the Type fields.
         self.leading_note = tk.StringVar()
         ttk.Label(typetab, textvariable=self.leading_note, wraplength=820, justify="left").grid(
@@ -819,23 +830,25 @@ class App(BookTabMixin):
         form = self._form_of(("page", "margins", "top"))
         for side in self.MARGINS:
             lab, text = form.labels[("page", "margins", side)]
-            lab.configure(text="%s, calculated %.2f" % (text, g.margins[side] / 72))
+            lab.configure(text="%s (calculated %s)" % (text, format_points(g.margins[side])))
         # What the multiple comes to: 30 x 11 pt = 330 pt = 27.5 picas = 4.58 in.
         lab, text = form.labels[("page", "measure")]
-        lab.configure(text="%s: %.2f in (%.1f picas)" % (text, g.measure / 72, g.measure / 12))
+        lab.configure(text="%s: %s, %g picas" % (text, format_points(g.measure),
+                                                   round(g.measure / 12, 1)))
         from . import fonts
         font = (self.pvar(("fonts", "body")).get() or "").strip() or \
             fonts.book_font()
         basis = ("%s, measured" % font) if found else \
             "%s isn't installed: an average book font" % font
         self.margin_note.set(
-            "Calculated margins (in): top %.2f, bottom %.2f, inside %.2f, outside %.2f, for "
-            "about %d pages (%s). Line length %.2f in (%.1f picas), %d characters per line at "
+            "Calculated margins: top %s, bottom %s, inside %s, outside %s, for "
+            "about %d pages (%s). Line length %s, %g picas, %d characters per line at "
             "%g pt. Blank margin fields use "
             "the calculated values, which follow the page count (KDP's inside minimum grows "
             "with it); a value typed in is used as it is."
-            % (g.margins["top"] / 72, g.margins["bottom"] / 72, g.margins["inside"] / 72,
-               g.margins["outside"] / 72, pages, basis, g.measure / 72, g.measure / 12,
+            % (format_points(g.margins["top"]), format_points(g.margins["bottom"]),
+               format_points(g.margins["inside"]), format_points(g.margins["outside"]),
+               pages, basis, format_points(g.measure), round(g.measure / 12, 1),
                round(g.cpl),
                _num(self.pvar(("body_size",)).get(), "number") or 11))
 
@@ -867,7 +880,7 @@ class App(BookTabMixin):
         for side in self.MARGINS:
             var = self.pvar(("page", "margins", side))
             if not var.get().strip():
-                var.set("%.3g" % (g.margins[side] / 72))
+                var.set(format_points(g.margins[side]))
         self.status.set("Calculated margins filled in; they are now fixed for this profile "
                         "(clear a field to let it follow the page count again).")
 

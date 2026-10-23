@@ -206,23 +206,34 @@ def test_calculated_margins_shown_and_filled():
         lab, _text = form.labels[("page", "margins", "inside")]
         assert "calculated" in str(lab.cget("text"))
         note = app.margin_note.get()
-        assert note.startswith("Calculated margins (in): top ") and "about 200 pages" in note
+        assert note.startswith("Calculated margins: top ") and "about 200 pages" in note
+        assert ' pt (' in note and '")' in note                     # points with inches
         assert "picas" in note
         mlab, _t = app._form_of(("page", "measure")).labels[("page", "measure")]
-        assert "picas)" in str(mlab.cget("text"))
+        assert " picas" in str(mlab.cget("text")) and "pt (" in str(mlab.cget("text"))
         g, _pages, _found = app.calculated()
         # By default the outside margin is never wider than the inside.
         assert g.margins["outside"] <= g.margins["inside"]
         app.pvar(("page", "trim")).set("5x8")
         g2, _p, _f = app.calculated()
         assert g2.measure != g.measure or g2.margins != g.margins
-        form.vars[("page", "margins", "top")][0].set("1")
+        form.vars[("page", "margins", "top")][0].set('1"')
         app.fill_margins()
-        assert form.vars[("page", "margins", "top")][0].get() == "1"       # kept as typed
-        inside = float(form.vars[("page", "margins", "inside")][0].get())
-        assert abs(inside - g2.margins["inside"] / 72) < 0.01
+        assert form.vars[("page", "margins", "top")][0].get() == '1"'      # kept as typed
+        from docx2idml.gui import format_points
+        assert form.vars[("page", "margins", "inside")][0].get() == \
+            format_points(g2.margins["inside"])
         app._forms_to_profile()
-        assert app.profile["page"]["margins"]["top"] == 1
+        assert app.profile["page"]["margins"]["top"] == 1                  # saved in inches
+        assert abs(app.profile["page"]["margins"]["inside"] - g2.margins["inside"] / 72) < 0.01
+        # A margin's arrows step 9 pt (1/8 in); typed points are saved as inches.
+        form.vars[("page", "margins", "top")][0].set("54")
+        app._forms_to_profile()
+        assert app.profile["page"]["margins"]["top"] == 0.75
+        # The footnote spacing: points, arrows step 1 pt.
+        nform = app._form_of(("footnotes", "space_above"))
+        assert nform.vars[("footnotes", "space_above")][0].get() == '12 pt (0.17")'
+
     finally:
         app.quit(force=True)
 
