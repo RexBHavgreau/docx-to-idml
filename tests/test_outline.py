@@ -261,7 +261,9 @@ def front_matter_book():
             para("Edited by Nicolas Ellen and Josh Stephens"),
             para("All rights reserved. No part of this publication may be reproduced, stored "
                  "in a retrieval system, or transmitted in any form or by any means."),
-            para("ISBN: 978-1-934952-94-8")]),
+            para("ISBN: 978-1-934952-94-8"),
+            para("Scripture quotations marked ESV are from the ESV\u00ae Bible, \u00a9 2001 by "
+                 "Crossway. Used by permission.")]),
         ("00.2 Foreword by Lance Quinn - BH.docx", [bold(title, True),
                                                     bold("Foreword by Lance Quinn", True),
                                                     para(LONG), para(LONG)]),
@@ -314,8 +316,13 @@ def test_front_matter_files_by_formatting():
     assert sm.paragraph_mapping(fw, fw.paragraphs[0]).role == "skip"
     assert out.copyright_found
     # The copyright page's details, for Book Details (notices for Bible versions passed over).
-    assert out.details == {"year": "2026", "holder": "A Seminary",
-                           "isbn_print": "978-1-934952-94-8"}
+    assert out.details == {"year": "2026", "holder": "A Seminary", "notices": [
+        "Scripture quotations marked ESV are from the ESV\u00ae Bible, \u00a9 2001 by Crossway. "
+        "Used by permission."],
+                           "leftover": [], "isbn_print": "978-1-934952-94-8",
+                           "rights": "All rights reserved. No part of this publication may be "
+                                     "reproduced, stored in a retrieval system, or transmitted "
+                                     "in any form or by any means."}
 
 
 def test_copyright_lines_read():
@@ -328,13 +335,18 @@ def test_copyright_lines_read():
         "Scripture quotations marked NKJV are taken from the New King James Version\u00ae. "
         "Copyright \u00a9 1982 by Thomas Nelson. Used by permission.",
         "Printed in the United States of America", "First edition"])
+    notices = got.pop("notices")
+    assert len(notices) == 1 and notices[0].startswith("Scripture quotations marked NKJV")
     assert got == {"year": "2026", "holder": "Central Baptist Seminary",
                    "publisher": "Kress Biblical Resources",
                    "publisher_address": "www.kressbiblical.com",
                    "isbn_print": "978-1-934952-94-8", "isbn_ebook": "978-1-934952-95-5",
-                   "printed_in": "the United States of America", "edition": "First edition"}
+                   "printed_in": "the United States of America", "edition": "First edition",
+                   "leftover": ["A Theology of Soul Care"]}       # the title (outline drops it)
     assert parse_copyright(["\u00a9 2019 Jane Smith. All rights reserved."]) == {
-        "year": "2019", "holder": "Jane Smith"}
+        "year": "2019", "holder": "Jane Smith", "notices": [], "leftover": []}
+    from docx2idml.frontmatter import notice_name
+    assert notice_name(notices[0]) == "NKJV"
 
 
 def test_styled_manuscript_not_guessed():

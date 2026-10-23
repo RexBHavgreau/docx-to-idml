@@ -380,6 +380,10 @@ def build_outline(docs, stylemap=None):
     _by_lines(out)
     if not out.title and sm.book_title_line:
         out.title, out.title_source = sm.book_title_line, "the first line of several files"
+    if out.details.get("leftover"):
+        known = {" ".join((t or "").split()).casefold() for t in (out.title, out.subtitle)}
+        out.details["leftover"] = [x for x in out.details["leftover"]
+                                   if x.casefold() not in known]
     _before_title_page(out)
     if not out.title:
         for doc in docs:
@@ -493,9 +497,14 @@ def _fill(unit, fo, paras):
 
 
 def _read_copyright(out, lines):
-    """Book details from copyright lines, keeping what was found first."""
+    """Book details from copyright lines (frontmatter.parse_copyright), keeping what was found
+    first; the notices and lines that fit nothing are collected."""
     from .frontmatter import parse_copyright
-    for key, value in parse_copyright(lines).items():
+    got = parse_copyright(lines, known=(out.title, out.subtitle))
+    for key in ("notices", "leftover"):
+        out.details.setdefault(key, []).extend(x for x in got.pop(key)
+                                               if x not in out.details[key])
+    for key, value in got.items():
         out.details.setdefault(key, value)
 
 

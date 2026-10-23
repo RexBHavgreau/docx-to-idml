@@ -4,7 +4,7 @@ for the title and copyright pages, filled from the manuscript, and the notice li
 from tkinter import simpledialog, ttk
 import tkinter as tk
 
-from .frontmatter import ROLE_LABELS, ROLES, creators
+from .frontmatter import COPYRIGHT_FIELDS, ROLE_LABELS, ROLES, creators, notice_name
 
 # Book settings (book.settings["front"]), in the tab's sections. The contributors (creators)
 # are a list of their own, edited beside the title.
@@ -17,6 +17,7 @@ PUBLICATION_FIELDS = [
     ("publisher_address", "Place (city or address)", "text"),
     ("year", "Copyright year", "text"),
     ("holder", "Copyright holder (blank: authors)", "text"),
+    ("rights", "Rights (blank: All rights reserved.)", "text"),
     ("isbn_print", "ISBN (print)", "text"), ("isbn_ebook", "ISBN (ebook)", "text"),
     ("call_number", "Call number (blank: none)", "text"),
     ("credits", "Credits", "text"), ("printed_in", "Printed in (country)", "text"),
@@ -179,6 +180,29 @@ class BookTabMixin:
 
     # ---- notices ----
 
+    def _take_notices(self, texts):
+        """Permissions found on the manuscript's copyright page: into the profile's notice
+        library (by a short name: ESV, NKJV...) unless there already, and ticked for this
+        book. Returns their names."""
+        library = self.profile.setdefault("notices", [])
+        names = []
+        for text in texts:
+            same = next((n for n in library if " ".join(n.get("text", "").split()) ==
+                         " ".join(text.split())), None)
+            if same is None:
+                name, k = notice_name(text), 2
+                taken = {n.get("name") for n in library}
+                base = name
+                while name in taken:
+                    name, k = "%s (%d)" % (base, k), k + 1
+                same = {"name": name, "text": text}
+                library.append(same)
+                self.notice_list.insert("end", name)
+            i = library.index(same)
+            self.notice_list.selection_set(i)
+            names.append(same["name"])
+        return names
+
     def add_notice(self):
         from .gui import TITLE
         name = simpledialog.askstring(TITLE, "Short name of the notice (e.g. ESV):",
@@ -231,11 +255,13 @@ class BookTabMixin:
             if value and not front.get(key):
                 front[key] = value
                 filled.append(key)
-        details = getattr(o, "details", {}) or {}
+        details = {k: v for k, v in (getattr(o, "details", {}) or {}).items()
+                   if k in COPYRIGHT_FIELDS}
         for key, value in details.items():
             if value and not front.get(key):
                 front[key] = value
                 filled.append(key)
+        added = self._take_notices((getattr(o, "details", {}) or {}).get("notices") or [])
         found_people = creators({}, o)
         if found_people and not self.creators:
             self.creators = found_people
@@ -261,4 +287,6 @@ class BookTabMixin:
                 "%s %s" % (labels.get(k, k).split(" (")[0].lower(),
                            "filled in" if k in filled else "already set, kept")
                 for k in details))
+        if added:
+            found.append("notices ticked below: %s" % ", ".join(added))
         self.front_sources.set("Found in the manuscript \u2014 " + "; ".join(found) + ".")

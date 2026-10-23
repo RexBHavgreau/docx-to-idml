@@ -524,7 +524,8 @@ def test_headings_by_formatting_exported():
 
 
 def test_manuscript_copyright_page_not_duplicated():
-    """A copyright file in the manuscript is the book's copyright page; none is generated."""
+    """A copyright file in the manuscript is read into Book Details and replaced by the page
+    made from them: one copyright line, its rights statement and notices kept."""
     from test_outline import front_matter_book
     docs = front_matter_book()
     ex = Exporter([d.path for d in docs], default_profile())
@@ -533,8 +534,11 @@ def test_manuscript_copyright_page_not_duplicated():
         lines = ["".join(r.text for r in p.runs) for st in doc.stories for p in st.paragraphs
                  if p.style == "Copyright"]
         assert sum("Copyright \u00a9" in t for t in lines) == 1, lines
-        assert "Edited by Nicolas Ellen and Josh Stephens" in lines
-        assert not any("All rights reserved." == t for t in lines)   # not the generated one
+        assert lines[0] == "Copyright \u00a9 2026 by A Seminary"
+        assert lines[1].startswith("All rights reserved. No part of this publication")
+        assert any("ISBN 978-1-934952-94-8" in t for t in lines)
+        assert any(t.startswith("Scripture quotations marked ESV") for t in lines)
+        assert any("replaced by one made from Book Details" in r for r in ex.report)
         texts = ["".join(r.text for r in p.runs) for st in doc.stories for p in st.paragraphs]
         fw = texts.index("Foreword by Lance Quinn")
         assert texts[fw - 1] != "A Theology of Soul Care: Essays in Biblical Counseling"

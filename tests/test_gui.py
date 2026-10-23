@@ -372,6 +372,11 @@ def test_contributors_in_order():
         assert app.front_form.vars[("holder",)][0].get() == "A Seminary"
         assert app.front_form.vars[("isbn_print",)][0].get() == "978-1-934952-94-8"
         assert "from the copyright page: copyright year filled in" in app.front_sources.get()
+        # The permission: in the notice library, ticked for this book.
+        names = [n["name"] for n in app.profile["notices"]]
+        assert "ESV" in names and names.index("ESV") in app.notice_list.curselection()
+        # The rights statement too.
+        assert app.front_form.vars[("rights",)][0].get().startswith("All rights reserved. No")
         app._forms_to_book()
         assert app.book.settings["front"]["creators"][1] == {"role": "translator",
                                                              "name": "Ana Traductora"}

@@ -405,8 +405,11 @@ def render_text(rep):
         names = {"year": "year", "holder": "holder", "publisher": "publisher",
                  "publisher_address": "place", "isbn_print": "ISBN (print)",
                  "isbn_ebook": "ISBN (ebook)", "printed_in": "printed in", "edition": "edition"}
-        add("  Copyright page (the manuscript's, used as it is): %s" % "; ".join(
-            "%s %s" % (names.get(k, k), v) for k, v in out.details.items()))
+        found = ["%s %s" % (names.get(k, k), v) for k, v in out.details.items() if k in names]
+        if out.details.get("notices"):
+            found.append(plural(len(out.details["notices"]), "notice"))
+        add("  Copyright page (found; replaced by one made from Book Details): %s"
+            % "; ".join(found))
     add("  Words:    %d in the text" % out.words)
     if rep.page:
         pg = rep.page

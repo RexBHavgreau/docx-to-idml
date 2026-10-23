@@ -12,7 +12,8 @@ Zotero's Book item) plus the switches a book needs:
     {"role": author/editor/translator/foreword/afterword/preface/introduction/contributor/
     series_editor, "name": "First Last"}),
     series, series_number, volume, volumes, edition, publisher, publisher_address (place),
-    year, holder (rights; blank = the authors, else the editors), isbn_print, isbn_ebook,
+    year, holder (blank = the authors, else the editors), rights (statement; blank = "All
+    rights reserved."), isbn_print, isbn_ebook,
     call_number (blank = no line), credits, printed_in, notices (names from the profile's
     library), half_title (True), contents (True), contents_pages (None = estimated).
     (Before book version 2 a single "author" string; Book.load upgrades it.)
@@ -93,35 +94,65 @@ _WEB = re.compile(r"^(?:https?://|www\.)\S+$", re.I)
 _EBOOK = re.compile(r"e-?book|epub|kindle|digital|electr[oó]nico|pdf", re.I)
 
 
-def parse_copyright(lines):
-    """Book details read from a copyright page's lines: year and holder ("Copyright \u00a9 2026
-    by X"; notices for Bible versions are passed over), publisher ("Published by X"), the
-    publisher's web address, ISBNs (print, ebook by their labels), "Printed in ...", an edition
-    or printing line. Returns {field: value} with the fields of Book Details."""
-    out = {}
+_RIGHTS = re.compile(r"^(all rights reserved|todos los derechos reservados)\b", re.I)
+_EDITED_BY = re.compile(r"^(edited by|editors?:|eds?\.?:?|editado por|translated by|"
+                        r"traducido por)\s+", re.I)
+# The fields parse_copyright fills (besides the lists "notices" and "leftover").
+COPYRIGHT_FIELDS = ("year", "holder", "rights", "publisher", "publisher_address", "isbn_print",
+                    "isbn_ebook", "printed_in", "edition")
+
+
+def parse_copyright(lines, known=()):
+    """Read a copyright page's lines into the book's details. Returns {field: value} for the
+    fields of Book Details (COPYRIGHT_FIELDS: the first "Copyright \u00a9 2026 by X" line's year
+    and holder; a rights statement longer than "All rights reserved."; "Published by X" and
+    the publisher's web address; ISBNs, print or ebook by their labels; "Printed in ...";
+    an edition or printing line), plus "notices": permissions (Bible versions and the like,
+    and any later copyright line), and "leftover": the lines that fit nothing, so the page can
+    be replaced by a generated one without losing them unseen. known: lines already accounted
+    for (the book's title, an "Edited by" line)."""
+    out = {"notices": [], "leftover": []}
+    skip = {" ".join(k.split()).casefold() for k in known if k}
     isbns = []
     for raw in lines:
         line = " ".join((raw or "").split())
-        if not line:
+        if not line or line.casefold() in skip:
+            continue
+        if _NOTICE.search(line) and not _ISBN.search(line):
+            out["notices"].append(line)
             continue
         m = _HOLDER.match(line)
-        if m and "year" not in out and not _NOTICE.search(line):
+        if m:
+            if "year" in out:
+                out["notices"].append(line)     # another work's copyright: a permission
+                continue
             out["year"] = m.group(1).strip(" ,\u2013-")
-            holder = re.split(r"\.\s+all rights|\.\s+todos los", m.group(2), flags=re.I)[0]
-            out["holder"] = holder.strip(" .")
+            parts = re.split(r"\.\s+(?=all rights|todos los)", m.group(2), flags=re.I)
+            out["holder"] = parts[0].strip(" .")
+            if len(parts) > 1 and len(parts[1]) > len("All rights reserved."):
+                out["rights"] = parts[1].strip()
             continue
-        for m in _ISBN.finditer(line):
-            isbns.append((re.sub(r"\s", "", m.group(1)), m.group(3) or ""))
-        m = _PUBLISHED.match(line)
-        if m and "publisher" not in out:
-            out["publisher"] = m.group(1).strip()
-        m = _PRINTED.match(line)
-        if m and "printed_in" not in out:
-            out["printed_in"] = m.group(1).strip()
-        if _EDITION.match(line) and "edition" not in out:
-            out["edition"] = line
-        if _WEB.match(line) and "publisher_address" not in out:
-            out["publisher_address"] = line
+        if _RIGHTS.match(line):
+            if len(line) > len("All rights reserved.") + 2:
+                out["rights"] = line
+            continue
+        found = list(_ISBN.finditer(line))
+        if found:
+            isbns += [(re.sub(r"\s", "", m.group(1)), m.group(3) or "") for m in found]
+            continue
+        used = False
+        for key, rx in (("publisher", _PUBLISHED), ("printed_in", _PRINTED)):
+            m = rx.match(line)
+            if m and key not in out:
+                out[key], used = m.group(1).strip(), True
+        if not used and _EDITION.match(line) and "edition" not in out:
+            out["edition"], used = line, True
+        if not used and _WEB.match(line) and "publisher_address" not in out:
+            out["publisher_address"], used = line, True
+        if not used and _EDITED_BY.match(line):
+            used = True                         # read as contributors by the outline
+        if not used:
+            out["leftover"].append(line)
     for number, label in isbns:
         key = "isbn_ebook" if _EBOOK.search(label) else "isbn_print"
         if key in out:
@@ -129,6 +160,16 @@ def parse_copyright(lines):
         if key and key not in out:
             out[key] = number
     return out
+
+
+def notice_name(text):
+    """A short name for a permission notice: the version it is for ("Scripture quotations
+    marked ESV..." -> "ESV"), else its first words."""
+    m = re.search(r"\bmarked\s+\(?([A-Z][A-Z0-9]{1,7})\b", text) or \
+        re.search(r"\(([A-Z][A-Z0-9]{1,7})\)", text)
+    if m:
+        return m.group(1)
+    return " ".join(text.split()[:4]).rstrip(".,;:")
 
 
 def join_names(names, lang="en"):
@@ -215,6 +256,10 @@ def book_info(outline, front=None, lang="en"):
         "credits": front.get("credits") or "",
         "printed_in": got("printed_in"),
         "notices": list(front.get("notices") or []),
+        "rights": got("rights"),
+        # Notices found on the manuscript's copyright page, used when the book has none
+        # chosen from the library (texts, not library names).
+        "notice_texts": [] if front.get("notices") else list(found.get("notices") or []),
         "contents": front.get("contents", True),
         "contents_pages": front.get("contents_pages"),
     }
@@ -264,7 +309,8 @@ def copyright_page(info, lang, library=()):
     """The generated copyright page. Returns (paragraphs, notes)."""
     t = texts(lang)
     notes = []
-    lines = [t["copyright"].format(year=info["year"], holder=info["holder"]), t["rights"]]
+    lines = [t["copyright"].format(year=info["year"], holder=info["holder"]),
+             info.get("rights") or t["rights"]]
     paras = [Paragraph("Copyright", [Run(line)]) for line in lines]
     by_name = {n.get("name"): n.get("text", "") for n in library or ()}
     for name in info["notices"]:
@@ -273,6 +319,8 @@ def copyright_page(info, lang, library=()):
         else:
             notes.append('The notice "%s" is not in the profile\'s notice library; it was left '
                          "out." % name)
+    for text in info.get("notice_texts") or ():
+        paras.append(Paragraph("Copyright", [Run(text)]))
     if info["credits"]:
         paras.append(Paragraph("Copyright", [Run(info["credits"])]))
     pub = [x for x in (info["publisher"], info["publisher_address"]) if x]

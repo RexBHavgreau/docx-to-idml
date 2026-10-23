@@ -250,7 +250,10 @@ keep it up to date when decisions change.
   instead of the generated page; "Edited by ..." gives the editors; `frontmatter.
   parse_copyright` reads year/holder, publisher, web address, ISBNs, printed in, edition into
   `outline.details` (also from title-page copyright lines), used by `book_info` for empty
-  fields and by "Fill from the manuscript". A whole-file unit whose
+  fields and by "Fill from the manuscript"; permissions in details["notices"] (into the
+  profile's notice library via `gui_book._take_notices`, or printed directly when the book
+  has none ticked), unmatched lines in details["leftover"] (reported). Beaux: the
+  manuscript's copyright page is always replaced by the generated one (export._front_matter). A whole-file unit whose
   first line isn't a title gets `outline.file_title(name)`. classify reads "Foreword by X" as a
   foreword; "contributors" is front matter.
 - Book details (Beaux, 0.6.0): `front` is a bibliographic record (Zotero's Book fields, our

@@ -32,10 +32,13 @@
 - Front matter sent as files: a file of copyright lines (a copyright notice, "All rights
   reserved", an ISBN) is used as the book's copyright page instead of a generated one, so its
   information isn't duplicated; its "Edited by ..." line gives the editors, and its other
-  lines fill the empty Book Details fields: copyright year and holder, publisher, web
-  address, ISBNs (print and ebook by their labels), "Printed in ...", the edition line.
-  Copyright lines on a manuscript's title page are read the same way. Permissions for Bible
-  versions ("Copyright \u00a9 1982 by Thomas Nelson") are passed over.
+  lines fill the empty Book Details fields: copyright year and holder, a rights statement
+  (new field, blank: "All rights reserved."), publisher, web address, ISBNs (print and ebook
+  by their labels), "Printed in ...", the edition line. Permissions (for Bible versions and
+  the like) go into the notice library under a short name (ESV, NKJV...) and are ticked for
+  the book. The export then replaces the manuscript's copyright page with one made from Book
+  Details, so nothing is duplicated; lines that fit no field are listed in the report.
+  Copyright lines on a manuscript's title page are read and replaced the same way.
   The book's title, when it opens several files, is taken as the title and left out where it
   repeats at the top of a file. A file whose first line isn't a title (an abbreviations
   list) is titled from its file name ("00.5 Abbreviations" -> Abbreviations). "Foreword by

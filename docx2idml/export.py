@@ -1231,7 +1231,9 @@ class Exporter(PaginationMixin):
                 ms_copyright += cp
                 extras += ex
             elif kind == "display" and unit.type == "copyright":
-                ms_copyright += [p for p in paras if p.style != "Chapter Title"]
+                # Replaced by the page made from Book Details (its details were read into
+                # them: outline.details).
+                ms_copyright.append(unit.title)
             elif kind == "display" and unit.type == "endorsements":
                 praise.append(Block(unit, paras))
             elif kind == "display":
@@ -1252,17 +1254,16 @@ class Exporter(PaginationMixin):
                                 frontmatter.half_title(info, lang), sink=_half(self.text_height / 4)))
         blocks.append(Block(g("display", "Title page", "title page"), frontmatter.title_page(info, lang),
                             sink=_half(self.text_height / 5)))
+        paras, cnotes = frontmatter.copyright_page(info, lang, self.profile.get("notices"))
+        self.report += cnotes
         if ms_copyright:
-            # The manuscript's own copyright page, used as it is: no generated one beside it.
-            paras = ms_copyright
-            for p in paras:
-                if p.style.startswith(("Body", "Heading", "Chapter")):
-                    p.style = "Copyright"
-            self.report.append("The manuscript's own copyright page is used (no copyright page "
-                               "was generated): check it against Book Details.")
-        else:
-            paras, cnotes = frontmatter.copyright_page(info, lang, self.profile.get("notices"))
-            self.report += cnotes
+            left = (self.outline.details or {}).get("leftover") or []
+            self.report.append(
+                "The manuscript's copyright page was replaced by one made from Book Details "
+                "(its details and notices were read into them)." + (
+                    " Lines that fit no field, left out: %s. Add any that belong in Credits "
+                    "or as a notice." % "; ".join("\u201c%s\u201d" % x for x in left)
+                    if left else ""))
         blocks.append(Block(g("display", "Copyright", "copyright"), paras, opens="next",
                             valign="BottomAlign"))
         if extras:
