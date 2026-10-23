@@ -354,3 +354,11 @@ A **page-layout engine** that can build and edit IDML itself, assembled from exi
 - Affinity Publisher 2 Help, "Importing InDesign documents": https://affinity.help/publisher2/en-US.lproj/pages/GetStarted/importInDesign.html
 - KDP, "Set Trim Size, Bleed, and Margins" (gutter minimums by page count): https://kdp.amazon.com/help/topic/G201857950
 - DesignCraft (open-source page layout with IDML import/export and a CLI): https://sourceforge.net/projects/designcraft.mirror/
+
+## Scribus (tried October 23)
+
+Scribus 1.6.1 opens the exports with their pages, masters, running heads, folios, sections,
+images and tables, but its IDML import applies no fonts (everything in its default font, so
+italic and bold are lost) and drops footnotes entirely. It does the same with InDesign's own
+reference files, so the losses are Scribus's import, not the exports. Not a target for now.
+

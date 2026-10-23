@@ -307,3 +307,8 @@ writes one.
   keep it, and does InDesign leave a title already at the top of a recto where it is?); a
   style template's styles in InDesign and Affinity.
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).
+- Scribus 1.6.1 (tried here October 23, headless, `apt install scribus`): opens our IDML with
+  pages, masters, running heads, folios, sections, images, tables and justification; but every
+  font becomes its default (so italic and bold go too), and footnotes are dropped entirely.
+  InDesign's own reference files (01, 12) lose fonts and footnotes the same way, so it's
+  Scribus's IDML import, not our files. Not a target (Beaux to decide).
