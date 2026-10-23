@@ -124,6 +124,9 @@ def test_preflight_export_and_book_file():
         app.export()
         _wait(app, root)
         assert app.last_export and os.path.exists(app.last_export)
+        # The Open button appears in the export row, which the tabs can't crowd out.
+        assert app.open_btn.winfo_manager() == "pack"
+        assert app.open_btn.master is app.export_btn.master
         report = app.text.get("1.0", "end")
         assert "Wrote" in report and "[ISBN]" not in report
         assert app.profile["page"]["trim"] == "5.5x8.5"

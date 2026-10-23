@@ -10,6 +10,7 @@ Download the program (`docx-to-idml-X.Y.Z.exe`) from
 [Releases](https://github.com/RexBHavgreau/docx-to-idml/releases); once installed, it offers
 new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md).
 
+- **0.7.1** (in progress): the "Open the export folder" button is back after an export.
 - **0.7.0** (October 23, 2026, latest release): chapter openings lowered by their style
   (the drop moves with the title; adjustable), full-height text frames; running heads in
   title or sentence case, with boldface and underline; the title on the copyright page; a

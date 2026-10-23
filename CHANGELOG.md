@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 (not yet released)
+
+- Fixed: the "Open the export folder" button didn't appear after an export (0.7.0 gave the
+  tabs all the room it was placed in). It now appears in the export row, beside Export IDML.
+
 ## 0.7.0 (October 23, 2026)
 
 - Running Head Style is in two parts. Case: As typed, Title Case (Chicago: articles,
