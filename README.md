@@ -10,11 +10,13 @@ Download the program (`docx-to-idml-X.Y.Z.exe`) from
 [Releases](https://github.com/RexBHavgreau/docx-to-idml/releases); once installed, it offers
 new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md).
 
-- **0.6.0** (in progress): headings found by their formatting in manuscripts without heading
-  styles; Hebrew follows italic and bold text; running heads with Hebrew are flagged when
-  their font lacks it, with separate masters as an option; the line length setting says what
-  it measures (inches, picas).
-- **0.5.0** (October 23, 2026, latest release): the Style Map tab shows every style in one
+- **0.6.0** (October 23, 2026, latest release): Book Details as a bibliographic record
+  (contributors in title-page order with bylines, series, volume, call number); the
+  manuscript's copyright page read into Book Details and replaced by the generated one, with a
+  window to compare them; headings found by their formatting in manuscripts without heading
+  styles; front-matter files (copyright, foreword, contributors) recognized; Hebrew follows
+  italic and bold text; running heads with Hebrew flagged when their font lacks it.
+- **0.5.0** (October 23, 2026): the Style Map tab shows every style in one
   view; narrower default margins (line length about 30 times the type size, outside never
   wider than inside); running-head style settings; Page Layout in three sections. Fixes: Hebrew in the title
   pages and running heads, chapter openers kept on right-hand pages when InDesign adds pages,

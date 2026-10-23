@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0 (not yet released)
+## 0.6.0 (October 23, 2026)
 
 - Book Details is now a bibliographic record for the book (modelled on Zotero's Book item):
   title, subtitle, short title; contributors; series and number in the series, volume and
