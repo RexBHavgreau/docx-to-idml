@@ -233,6 +233,13 @@ keep it up to date when decisions change.
   pages as lines with sizes (its STYLES table follows the exporter's styles; keep them in
   step), drawn on canvases by `gui_book._draw_page`; the copyright tab shows the manuscript's
   page beside it. Book setting `front.copyright_title` (Copyright Title style, italic).
+- Opener drop (0.7.0, Beaux's tests o01): `PaginationMixin._sinks` puts each block's sink
+  into its first paragraph's style (SINK_STYLES: Chapter Title, Contents Title, Book Title,
+  Half Title; styles based on them reset RuleAbove and SpaceBefore), else locally: Space
+  Before (Affinity honours it at the frame top only with "Only at column top", set by hand)
+  plus RuleAbove weight 0, tint 0, offset sink + 0.75 x size, KeepRuleAboveInFrame (InDesign
+  ignores Space Before at the top of a frame; Affinity ignores the rule). Text frames are full
+  height; `Story.sink` (a shorter first frame) is left for the reference-file generator only.
 - The main window packs the status line and export row first (side bottom) and sizes itself
   to its requested height within the screen (`App._fit_window`).
 - Margins (0.5.0): measure = `page.measure` (30) x type size within 45-80 characters;

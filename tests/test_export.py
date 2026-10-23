@@ -15,6 +15,7 @@ from docx_builder import (NUMBERING, endnote_ref, footnote_ref, image, make_docx
 from docx2idml.content import Numbering, read_content
 from docx2idml.docx_reader import read_docx
 from docx2idml import layout
+from docx2idml.layout import _half
 from docx2idml.export import ExportError, Exporter, export, segments
 from docx2idml.profile import default_profile
 
@@ -412,6 +413,42 @@ def test_paper_cover_page():
         assert "by" not in texts and "CONTENTS" not in texts
         assert "The Master\u2019s Seminary" not in texts and "July 2026" not in texts
         assert any("Left out" in line and "July 2026" in line for line in ex.report)
+    finally:
+        ex.cleanup()
+
+
+def test_openers_lowered_by_style():
+    """Chapter openings are lowered by the title's style (Space Before for Affinity, an
+    invisible rule kept in the frame for InDesign), not by a shorter frame, so the drop moves
+    with the title. Styles based on Chapter Title don't inherit it."""
+    from idml_check import check
+    from docx2idml.idml.writer import write_idml
+    long = [para("Text of the chapter goes on for a while. " * 30)] * 3
+    path = make_docx(os.path.join(TMP, "openers.docx"),
+                     [para("The Book", "Title"), para("A Subtitle", "Subtitle"),
+                      para("Part One: The Start", "Heading1")] + long +
+                     [para("A Chapter", "Heading1"), para("Its Subtitle", "Subtitle")] + long)
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        assert all(st.sink == 0 for st in doc.stories)
+        sink = _half(ex.body_lead * 6)
+        ct = doc.resolved("Chapter Title")[0]
+        assert ct["SpaceBefore"] == sink and ct["RuleAbove"] is True
+        assert ct["KeepRuleAboveInFrame"] is True and ct["RuleAboveLineWeight"] == 0
+        assert ct["RuleAboveOffset"] > sink
+        checked = [n for n in ("Part Title", "Chapter Subtitle", "Book Subtitle")
+                   if doc.style(n)]
+        assert len(checked) >= 2, checked
+        for name in checked:
+            a = doc.resolved(name)[0]
+            assert a.get("RuleAbove") is False and a.get("SpaceBefore") == 0, name
+        assert doc.resolved("Half Title")[0]["SpaceBefore"] == _half(ex.text_height / 4)
+        assert doc.resolved("Book Title")[0]["SpaceBefore"] == _half(ex.text_height / 5)
+        assert any("Only at column top" in line for line in ex.report)
+        out = os.path.join(TMP, "openers.idml")
+        write_idml(doc, out)
+        assert check(out) == []
     finally:
         ex.cleanup()
 

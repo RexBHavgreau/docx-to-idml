@@ -20,6 +20,10 @@ from .layout import _half
 from .idml.model import Frame, Master, Paragraph, Run, Section, Story, TOCStyle
 
 
+# Styles that carry an opener's drop (`_sinks`).
+SINK_STYLES = ("Chapter Title", "Contents Title", "Book Title", "Half Title")
+
+
 class PaginationMixin:
     # ---- pagination and running heads ----
 
@@ -86,9 +90,10 @@ class PaginationMixin:
         part_masters = []
         script_heads = []           # (marker, part title or None, pages) for R masters
         long_heads = []
+        self._sinks(blocks)
         for n, (b, pl) in enumerate(zip(blocks, placed)):
             pages = list(range(pl.start, pl.start + pl.pages))
-            doc.stories.append(Story(b.paras, pages, sink=b.sink, linked=True,
+            doc.stories.append(Story(b.paras, pages, linked=True,
                                      optical_margins=optical, valign=b.valign))
             title = b.title if not b.title.startswith("(") and b.kind != "display" else ""
             marker = self._short(title)
@@ -163,6 +168,53 @@ class PaginationMixin:
         attrs = self._resolved_attrs("Running Head")
         size = attrs.get("PointSize", self.body_size)
         return len(text) * size * self.avg_width * 1.1 > self.measure * 0.8
+
+    def _sinks(self, blocks):
+        """Lower each opener's first paragraph by its block's sink, in the paragraph style
+        (Chapter Title, Contents Title, Book Title, Half Title), so the
+        drop moves with the title if pages are added or removed, and every text frame is full
+        height. InDesign ignores Space Before at the top of a frame, so the style also has an
+        invisible rule above, kept in the frame, which pushes the text down (InDesign);
+        Affinity ignores the rule and uses the Space Before when the style is set to apply it
+        at the column top. A first paragraph in another style gets the same settings locally."""
+        doc = self.doc
+        claimed = {}
+        for b in blocks:
+            if not b.sink or not b.paras:
+                continue
+            p = b.paras[0]
+            attrs, _f, _l = doc.resolved(p.style)
+            if attrs.get("RuleAbove") and abs(attrs.get("SpaceBefore", 0) - b.sink) < 0.5:
+                continue                       # its style carries this sink already
+            drop = self._sink_attrs(b.sink, attrs.get("PointSize", self.body_size))
+            st = doc.style(p.style)
+            if st is not None and p.style in SINK_STYLES and p.style not in claimed:
+                st.attrs.update(drop)
+                claimed[p.style] = b.sink
+                for child in doc.paragraph_styles:
+                    if child.based_on == p.style and child.name not in SINK_STYLES:
+                        child.attrs.setdefault("SpaceBefore", 0)
+                        child.attrs["RuleAbove"] = False
+            else:
+                p.attrs.update(drop)
+        if claimed:
+            self.report.append(
+                "Chapter openings are lowered by their paragraph style (%s), not by a shorter "
+                "text frame, so the drop moves with the title. InDesign shows it as it is. In "
+                "Affinity, set Space Before in those styles to apply \u201cOnly at column "
+                "top\u201d, or the titles start at the top of the page. If pages are added or "
+                "removed, apply B-Opener to the page a chapter now starts on (and A-Body to "
+                "the page it left): a page keeps its master when the text moves."
+                % ", ".join(sorted(claimed)))
+
+    @staticmethod
+    def _sink_attrs(sink, size):
+        """Space Before (Affinity) and an invisible rule above kept in the frame (InDesign),
+        both lowering the first baseline by sink (the rule's offset counts from the
+        baseline, so it adds the type's ascent)."""
+        return {"SpaceBefore": sink, "RuleAbove": True, "RuleAboveLineWeight": 0,
+                "RuleAboveTint": 0, "RuleAboveOffset": _half(sink + size * 0.75),
+                "KeepRuleAboveInFrame": True}
 
     def _masters(self, parts):
         """A-Body, B-Opener and C-Front carry text (each its own primary text frames, so a

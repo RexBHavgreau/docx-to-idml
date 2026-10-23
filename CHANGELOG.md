@@ -15,6 +15,13 @@
 - Preview pages (Book Details, was "Compare copyright pages"): the half-title, title page and
   copyright page as the export will set them, drawn at the book's trim and margins; the
   copyright page beside the manuscript's.
+- Chapter openings (and the half-title, title page and contents) are lowered by their
+  paragraph style instead of a shorter text frame, so the drop moves with the title when
+  pages are added or removed, and every text frame is full height (Beaux, tested in both
+  programs). The style has Space Before (Affinity: set it to apply "Only at column top") and
+  an invisible rule above kept in the frame, which is how InDesign lowers a paragraph at the
+  top of a frame. The report says what to set in Affinity, and to re-apply B-Opener if a
+  chapter moves to another page.
 - Fixed: in InDesign, a chapter with many footnotes could run past its last page, and Smart
   Text Reflow then added a page out of place (an unthreaded page before the chapter's last
   one; Beaux's Ezekiel paper, 40 notes in one chapter). Affinity fitted the same text. The
