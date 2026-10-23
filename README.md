@@ -30,6 +30,17 @@ new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md)
 footnotes, Hebrew and Greek, tables and images, layout and pagination, front matter and
 running heads, the window, the .exe and the updater). Being tried on real manuscripts.
 
+## Which programs open the files
+
+What has been tried with the exported IDML, so you can decide whether it fits your program.
+
+| Program | Result | What to know |
+|---|---|---|
+| **Adobe InDesign** (2026) | **Works** (tested) | The recommended program, and the only one for books with Hebrew. Text, styles, footnotes, masters, running heads, page numbers, images and tables come through. The contents is placed by hand from the Contents style. When a chapter runs long, InDesign adds pages itself. |
+| **Affinity** | **Works**, with limits (tested) | Hebrew is reversed (Affinity can't set it right to left), so use InDesign for Hebrew. Tables don't break across pages. Affinity doesn't add pages when a chapter runs long; add them by hand. The contents is placed by hand from the Contents style. |
+| **DesignCraft** | Not yet tested | |
+| **Scribus** (1.6.1) | **Not recommended** (tested) | The pages, masters, running heads, page numbers, images and tables come through, but every font is replaced by Scribus's default (so italic and bold are lost too) and the **footnotes are dropped entirely**. Scribus does the same with files InDesign itself writes, so this is a limit of Scribus's IDML import. |
+
 ## The window
 
 ```

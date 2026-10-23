@@ -241,7 +241,9 @@ keep it up to date when decisions change.
   - Label work on the branch with the version it will ship as (in CHANGELOG's "not yet
     released" heading); change the label if the batch grows from fixes into features.
 - **README:** the top of README.md lists the latest release and the few before it (one or
-  two lines each, the version in progress first). Update it with every release.
+  two lines each, the version in progress first). Update it with every release. Its "Which
+  programs open the files" table says what each program does with the IDML (tested or not);
+  keep it current when a program is tried or a limit changes.
 - Version in `docx2idml/__init__.py` (`EXE_BASE` and `REPO` there too); a dated entry at the
   top of `CHANGELOG.md`. Pushing a tag `vX.Y.Z` (matching `__version__`) runs
   `.github/workflows/build.yml` on Windows: tests, the .exe, a check that it carries the IDML
