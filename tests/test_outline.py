@@ -343,6 +343,11 @@ def test_copyright_lines_read():
                    "isbn_print": "978-1-934952-94-8", "isbn_ebook": "978-1-934952-95-5",
                    "printed_in": "the United States of America", "edition": "First edition",
                    "leftover": ["A Theology of Soul Care"]}       # the title (outline drops it)
+    # Given the book's title, a line with the title (and subtitle) ticks the copyright title.
+    got = parse_copyright(["A Theology of Soul Care: Essays in Biblical Counseling",
+                           "\u00a9 2026 A Seminary"],
+                          known=("A Theology of Soul Care", "Essays in Biblical Counseling"))
+    assert got["copyright_title"] is True and got["leftover"] == []
     assert parse_copyright(["\u00a9 2019 Jane Smith. All rights reserved."]) == {
         "year": "2019", "holder": "Jane Smith", "notices": [], "leftover": []}
     from docx2idml.frontmatter import notice_name

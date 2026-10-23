@@ -51,6 +51,7 @@ keep it up to date when decisions change.
 | `docx2idml/pagination.py` | `PaginationMixin` of the Exporter (moved out of export.py, 0.6.0): pages, stories, sections and markers, masters and running-head frames |
 | `docx2idml/layout.py` | Step 5: margins and measure (30 times the type size within 45-80 characters, floors, KDP gutter by page count), pagination (roman front matter, recto rules, masters per page) |
 | `docx2idml/frontmatter.py` | Step 6: book details (settings, then detected, else bracketed placeholders), half-title, title, copyright (English/Spanish, notices from the profile's library), contents entries and reserved pages |
+| `docx2idml/textcase.py`, `preview.py` | Title and sentence case for running heads (Chicago); the generated front pages as lines with sizes, for the window's preview (0.7.0) |
 | `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile`; no arguments opens the window |
 | `docx2idml/gui.py` | Step 7, the window (ttk): Files, Book Details, Running Heads, Layout Profile, Style Map, Report tabs; forms declared as field tables bound to the profile and book settings; work in threads, results through a queue polled by the window |
@@ -221,9 +222,31 @@ keep it up to date when decisions change.
   per-style dialog); `refresh()` after each preflight, `save()` (changed rows into the
   profile, also from `_forms_to_profile`), `apply()` (save and read again), `reset()`. TOC
   and TOC Heading styles aren't listed. Profile fields are found with `App.pvar(path)` /
-  `_form_of(path)` (the Page Layout tab has three forms in LabelFrames). Running-head style:
-  profile `running_heads.style` (case, italic, size, tracking, font) ->
-  `Exporter._running_head_style`, form `head_style_form`.
+  `_form_of(path)` (the Page Layout tab has three forms in LabelFrames). Running-head style
+  (0.7.0, profile version 8): `running_heads.style` case (as_typed/title/sentence: the
+  letters, `textcase.py`, applied to every head's text by `PaginationMixin._head_text`;
+  sentence case keeps `textcase.proper_nouns` of the running text) and caps (None,
+  small_caps, all_caps: the type), italic, bold, underline, size, tracking, font ->
+  `Exporter._running_head_style`; forms `head_case_form` and `head_style_form` (Form kinds
+  "radio" and "one_of": at most one of its check boxes).
+- Front-page preview (0.7.0): `preview.front_pages` gives the half-title, title and copyright
+  pages as lines with sizes (its STYLES table follows the exporter's styles; keep them in
+  step), drawn on canvases by `gui_book._draw_page`; the copyright tab shows the manuscript's
+  page beside it. Book setting `front.copyright_title` (Copyright Title style, italic).
+- Opener drop (0.7.0, Beaux's tests o01): `PaginationMixin._sinks` puts each block's sink
+  into its first paragraph's style (SINK_STYLES: Chapter Title, Contents Title, Book Title,
+  Half Title; styles based on them reset RuleAbove and SpaceBefore), else locally: Space
+  Before (Affinity honours it at the frame top only with "Only at column top", set by hand)
+  plus RuleAbove weight 0, tint 0, offset sink + 0.75 x size, KeepRuleAboveInFrame (InDesign
+  ignores Space Before at the top of a frame; Affinity ignores the rule). Text frames are full
+  height; `Story.sink` (a shorter first frame) is left for the reference-file generator only.
+  The chapter drop is profile `page.opener_drop` (points; None = six body lines,
+  `_opener_drop`; profile version 9), a Form "points" field (`gui.parse_points` /
+  `format_points`: 72 pt (1"); choices (arrow step, unit saved "pt"/"in"); blank arrows
+  start at `Form.points_start[path]`, `App._auto_drop` or the calculated margin). Margins
+  (saved in inches) and the footnote spacing use it too.
+- The main window packs the status line and export row first (side bottom) and sizes itself
+  to its requested height within the screen (`App._fit_window`).
 - Margins (0.5.0): measure = `page.measure` (30) x type size within 45-80 characters;
   outside 42% of the rest, inside never less than the outside (`layout.geometry`).
 - Headings by formatting (Beaux, 0.6.0; `formatheads.py`): the reader records each body
@@ -351,6 +374,10 @@ writes one.
 - 0.2.0 additions not yet opened: StartParagraph NextOddPage on Chapter Title (does Affinity
   keep it, and does InDesign leave a title already at the top of a recto where it is?); a
   style template's styles in InDesign and Affinity.
+- 0.7.0: the opener drop tested in both programs by o01 (rule in InDesign; Space Before in
+  Affinity with "Only at column top"); not yet a full export opened in either, nor the
+  rule's offset matching the old position. Title/sentence case heads, the front-page
+  preview, the points fields and the window height not yet seen on Windows.
 - Preflight on a real manuscript from Word (only generated files and a LibreOffice re-save so far).
 - Scribus 1.6.1 (tried here October 23, headless, `apt install scribus`): opens our IDML with
   pages, masters, running heads, folios, sections, images, tables and justification; but every

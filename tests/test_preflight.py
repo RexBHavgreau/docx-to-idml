@@ -171,8 +171,19 @@ def test_profiles():
     assert up1["page"]["spare_pages"] == 0 and up1["styles_template"] is None
     assert up1["body_size"] == 11 and up1["leading"]["feel"] == "standard"
     assert up1["page"]["measure"] == 30
-    assert up1["running_heads"]["style"]["case"] == "small_caps"
+    assert up1["running_heads"]["style"]["case"] == "as_typed"
+    assert up1["running_heads"]["style"]["caps"] == "small_caps"
+    assert up1["running_heads"]["style"]["bold"] is False
     assert up1["running_heads"]["script_masters"] is False
+    assert up1["page"]["opener_drop"] is None
+    # Version 7: "case" was the type (all_caps); now the letters, with caps the type.
+    v7 = os.path.join(TMP, "v7.json")
+    with open(v7, "w") as f:
+        json.dump({"profile_version": 7, "name": "V7",
+                   "running_heads": {"style": {"case": "all_caps", "italic": True}}}, f)
+    rs = profiles.load(v7)["running_heads"]["style"]
+    assert (rs["case"], rs["caps"], rs["italic"], rs["underline"]) == \
+        ("as_typed", "all_caps", True, False)
     newer = os.path.join(TMP, "newer.json")
     with open(newer, "w") as f:
         json.dump({"profile_version": 999}, f)

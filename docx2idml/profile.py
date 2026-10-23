@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import APP_NAME
 
-PROFILE_VERSION = 7
+PROFILE_VERSION = 9
 
 DEFAULT_PROFILE = {
     "profile_version": PROFILE_VERSION,
@@ -31,6 +31,7 @@ DEFAULT_PROFILE = {
         "margins": {},                 # user overrides, inches: top, bottom, inside, outside
         "measure": 30,                 # line length in times the type size (Bringhurst: 20-40)
         "spare_pages": 0,              # spare pages after each chapter: 0, 1 or 2 (a pair)
+        "opener_drop": None,           # points the chapter titles are lowered; None = 6 lines
     },
     "styles_template": None,           # an IDML whose styles replace the tool's of the same name
     "fonts": {"body": None, "headings": None, "notes": None, "display": None,
@@ -52,8 +53,11 @@ DEFAULT_PROFILE = {
         "script_masters": False,
         # The Running Head paragraph style.
         "style": {
-            "case": "small_caps",      # small_caps, all_caps, as_typed
+            "case": "as_typed",        # as_typed, title, sentence (the letters of the text)
+            "caps": "small_caps",      # None, small_caps or all_caps (the type)
             "italic": False,
+            "bold": False,
+            "underline": False,
             "size": None,              # points; None = 2 pt below the body size
             "tracking": 20,            # letter-spacing, thousandths of an em
             "font": None,              # None = the body font
@@ -181,8 +185,26 @@ def _from_6(data):
     return data
 
 
+def _from_7(data):
+    """Version 7: the running-head style's "case" was small_caps, all_caps or as_typed (the
+    type); now case is the letters (as_typed, title, sentence) and caps the type."""
+    style = data.setdefault("running_heads", {}).setdefault("style", {})
+    old = style.get("case", "small_caps")
+    if old in ("small_caps", "all_caps", "as_typed"):
+        style["caps"] = None if old == "as_typed" else old
+        style["case"] = "as_typed"
+    return data
+
+
+def _from_8(data):
+    """Version 8: chapter openings always dropped six body lines (0.7.0 adds
+    page.opener_drop, None = that)."""
+    data.setdefault("page", {}).setdefault("opener_drop", None)
+    return data
+
+
 MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2, 3: _from_3, 4: _from_4, 5: _from_5,
-              6: _from_6}   # version n -> function that upgrades it to n + 1
+              6: _from_6, 7: _from_7, 8: _from_8}   # version n -> function that upgrades it to n + 1
 
 
 def migrate(data):

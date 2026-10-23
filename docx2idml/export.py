@@ -44,6 +44,7 @@ from .template import TemplateError, apply_template, read_template
 BLEED = 9                   # 0.125 in, KDP's bleed
 TRIMS = {"5x8": (5, 8), "5.25x8": (5.25, 8), "5.5x8.5": (5.5, 8.5), "6x9": (6, 9),
          "7x10": (7, 10), "8.5x11": (8.5, 11), "A5": (5.83, 8.27)}
+SLACK = 0.03         # of the text estimated per page, for lines lost at page feet
 LANGUAGES = {"en": "$ID/English: USA", "es": "$ID/Spanish: Castilian"}
 FONT_STYLES = {(False, False): "Regular", (False, True): "Italic", (True, False): "Bold",
                (True, True): "Bold Italic"}
@@ -510,6 +511,7 @@ class Exporter(PaginationMixin):
             S("Copyright", "Body", {"PointSize": size - 2, "FirstLineIndent": 0,
                                     "Justification": "LeftAlign", "Hyphenation": False,
                                     "SpaceAfter": _half(lead / 2)}, leading=note_lead),
+            S("Copyright Title", "Copyright", {"FontStyle": "Italic"}),
             S("Contents Title", "Chapter Title", next_style="Contents 1"),
             S("Contents 1", "Body", {"FirstLineIndent": 0, "Justification": "LeftAlign",
                                      "SpaceBefore": 6, "Hyphenation": False},
@@ -1194,6 +1196,7 @@ class Exporter(PaginationMixin):
             n = max(1, math.ceil(len(text) / cpl))
             return n * lead + attrs.get("SpaceBefore", 0) + attrs.get("SpaceAfter", 0)
         height = sink
+        notes = 0
         for p in paras:
             for r in p.runs:
                 if r.table is not None:
@@ -1207,9 +1210,18 @@ class Exporter(PaginationMixin):
                     height += r.image.width * h / w + 12
                 for n in r.footnote or ():
                     height += lines(n, self.measure) + 3
+                notes += bool(r.footnote)
             if not any(r.table is not None or r.image is not None for r in p.runs):
                 height += lines(p, self.measure)
-        return max(1, math.ceil(height / self.text_height))
+        # Each page with notes also gives up the space above them (and the rule).
+        fn = self.profile.get("footnotes") or {}
+        per_page = (fn.get("space_above") or 0) + \
+            ((fn.get("space_below_rule") or 0) + 0.5 if fn.get("rule") else 0)
+        height += min(notes, math.ceil(height / self.text_height)) * per_page
+        # Lines lost at page feet (keeps, widows, notes that can't split) grow with the
+        # length: SLACK of each page. A story whose text runs past its pages makes InDesign's
+        # Smart Text Reflow add a page, out of place among the chapters' spreads.
+        return max(1, math.ceil(height * (1 + SLACK) / self.text_height))
 
     # ---- front matter (step 6) ----
 
@@ -1279,7 +1291,7 @@ class Exporter(PaginationMixin):
         if info["contents"]:
             depth = self.profile["front_matter"].get("contents_depth", "chapters")
             entries = frontmatter.contents_entries(self.outline, depth)
-            sink = _half(self.body_lead * 6)
+            sink = self._opener_drop()
             pages = info["contents_pages"] or frontmatter.contents_pages(
                 entries, self.geo.cpl, self.body_lead, self.text_height, sink)
             blocks.append(Block(g("front", frontmatter.texts(lang)["contents"], "contents"),
@@ -1330,17 +1342,21 @@ class Exporter(PaginationMixin):
                     sug["open"][0], sug["open"][1], (" (%s)" % why) if why else ""))
 
     def _running_head_style(self, size, lead):
-        """The Running Head style as the profile sets it (case, italic, size, letter-spacing,
-        font)."""
+        """The Running Head style as the profile sets it (capitals, italic, bold, underline,
+        size, letter-spacing, font). Title and sentence case change the text instead
+        (`_head_text`)."""
         rs = (self.profile.get("running_heads") or {}).get("style") or {}
         attrs = {"PointSize": rs.get("size") or size - 2, "Justification": "CenterAlign",
                  "Tracking": rs.get("tracking") if rs.get("tracking") is not None else 20,
                  "Hyphenation": False}
-        case = rs.get("case", "small_caps")
-        if case in ("small_caps", "all_caps"):
-            attrs["Capitalization"] = "SmallCaps" if case == "small_caps" else "AllCaps"
-        if rs.get("italic"):
-            attrs["FontStyle"] = "Italic"
+        caps = rs.get("caps")
+        if caps in ("small_caps", "all_caps"):
+            attrs["Capitalization"] = "SmallCaps" if caps == "small_caps" else "AllCaps"
+        face = FONT_STYLES[(bool(rs.get("bold")), bool(rs.get("italic")))]
+        if face != "Regular":
+            attrs["FontStyle"] = face
+        if rs.get("underline"):
+            attrs["Underline"] = True
         return Style("Running Head", font=rs.get("font") or self.fonts["body"], leading=lead,
                      attrs=attrs)
 

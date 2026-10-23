@@ -22,7 +22,9 @@ PUBLICATION_FIELDS = [
     ("call_number", "Call number (blank: none)", "text"),
     ("credits", "Credits", "text"), ("printed_in", "Printed in (country)", "text"),
 ]
-PAGE_FIELDS = [("half_title", "Half-title page", "bool"), ("contents", "Contents pages", "bool"),
+PAGE_FIELDS = [("half_title", "Half-title page", "bool"),
+               ("copyright_title", "Title on the copyright page", "bool"),
+               ("contents", "Contents pages", "bool"),
                ("contents_pages", "Contents pages (blank = estimated)", "text")]
 FRONT_FIELDS = TITLE_FIELDS + PUBLICATION_FIELDS + PAGE_FIELDS
 LABEL_ROLES = {v: k for k, v in ROLE_LABELS.items()}
@@ -53,8 +55,8 @@ class BookTabMixin:
         row = ttk.Frame(tab)
         row.pack(fill="x", pady=(0, 4))
         ttk.Button(row, text="Fill from the manuscript", command=self.fill_front).pack(side="left")
-        ttk.Button(row, text="Compare copyright pages...",
-                   command=self.compare_copyright).pack(side="left", padx=(6, 0))
+        ttk.Button(row, text="Preview pages...",
+                   command=self.preview_pages).pack(side="left", padx=(6, 0))
         ttk.Label(row, text="Blank fields are filled from the manuscript at export; anything "
                             "still missing appears in brackets, e.g. [ISBN].").pack(
             side="left", padx=8)
@@ -180,55 +182,103 @@ class BookTabMixin:
             self._show_creators(j)
             self.dirty = True
 
-    # ---- copyright pages compared ----
+    # ---- the generated front pages previewed ----
 
-    def compare_copyright(self):
-        """The manuscript's copyright page beside the one the export will make from Book
-        Details (plain text), in a window of its own."""
-        self._need_report(self._show_copyright_compare)
+    def preview_pages(self):
+        """The half-title, title page and copyright page the export will make from Book
+        Details, drawn at the book's trim and margins, in a window of its own; the copyright
+        page beside the manuscript's (which the export replaces)."""
+        self._need_report(self._show_preview)
 
-    def _show_copyright_compare(self):
-        from .frontmatter import book_info, copyright_text
+    def _show_preview(self):
+        from .frontmatter import book_info
+        from .preview import front_pages
         self._forms_to_book()
+        self._forms_to_profile()
         lang = self.profile["front_matter"].get("language", "en")
         info, _notes = book_info(self.report.outline, self.book.settings.get("front"), lang)
-        new = copyright_text(info, lang, self.profile.get("notices"))
-        old = list(self.report.outline.copyright_lines) or \
-            ["(No copyright page was found in the manuscript.)"]
+        pages = front_pages(info, self.profile, lang)
+        old = list(self.report.outline.copyright_lines)
         left = (self.report.outline.details or {}).get("leftover") or []
-        old_win = getattr(self, "compare_window", None)
+        old_win = getattr(self, "preview_window", None)
         if old_win is not None and old_win.winfo_exists():
             old_win.destroy()
-        win = self.compare_window = tk.Toplevel(self.root)
-        win.title("Copyright page: the manuscript's and the new one")
-        win.geometry("960x560")
+        win = self.preview_window = tk.Toplevel(self.root)
+        win.title("Front pages made from Book Details")
+        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        win.geometry("%dx%d" % (min(1000, sw - 40), min(760, sh - 80)))
         win.transient(self.root)
-        panes = ttk.Frame(win, padding=8)
-        panes.pack(fill="both", expand=True)
-        self.compare_texts = []
-        for col, (title, lines) in enumerate((
-                ("In the manuscript (replaced at export)", old),
-                ("Made from Book Details (in the export)", new))):
-            ttk.Label(panes, text=title, font=("TkDefaultFont", 9, "bold")).grid(
-                row=0, column=2 * col, sticky="w", padx=4)
-            text = tk.Text(panes, wrap="word", width=56, height=24)
-            text.insert("1.0", "\n\n".join(lines))
-            text.configure(state="disabled")
-            text.grid(row=1, column=2 * col, sticky="nsew", padx=(4, 0), pady=4)
-            sb = ttk.Scrollbar(panes, orient="vertical", command=text.yview)
-            sb.grid(row=1, column=2 * col + 1, sticky="ns", pady=4)
-            text.configure(yscrollcommand=sb.set)
-            panes.columnconfigure(2 * col, weight=1)
-            self.compare_texts.append(text)
-        panes.rowconfigure(1, weight=1)
         bottom = ttk.Frame(win, padding=(8, 0, 8, 8))
-        bottom.pack(fill="x")
-        if left:
-            ttk.Label(bottom, wraplength=760, justify="left", text=(
-                "Lines of the manuscript's page that fit no field (left out): %s. Add any "
-                "that belong in Credits or as a notice." % "; ".join(
-                    "\u201c%s\u201d" % x for x in left))).pack(side="left")
+        bottom.pack(side="bottom", fill="x")            # first, so it is never cut off
         ttk.Button(bottom, text="Close", command=win.destroy).pack(side="right")
+        tabs = ttk.Notebook(win)
+        tabs.pack(fill="both", expand=True, padx=8, pady=8)
+        self.preview_canvases, self.compare_texts = {}, []
+        for page in pages:
+            tab = ttk.Frame(tabs, padding=8)
+            tabs.add(tab, text=page.name)
+            canvas = tk.Canvas(tab, background="#d9d9d9", highlightthickness=0, width=440,
+                               height=600)
+            canvas.grid(row=1, column=0, sticky="nsew")
+            ttk.Label(tab, text="In the export (fonts as installed here; a style template's "
+                                "styles aren't shown)").grid(row=0, column=0, sticky="w")
+            canvas.bind("<Configure>", lambda e, c=canvas, p=page: self._draw_page(c, p))
+            self._draw_page(canvas, page)
+            self.preview_canvases[page.name] = canvas
+            tab.rowconfigure(1, weight=1)
+            tab.columnconfigure(0, weight=1)
+            if page.bottom:
+                ttk.Label(tab, text="In the manuscript (replaced at export)").grid(
+                    row=0, column=1, sticky="w", padx=(12, 0))
+                text = tk.Text(tab, wrap="word", width=50, height=24)
+                text.insert("1.0", "\n\n".join(old) if old else
+                            "(No copyright page was found in the manuscript.)")
+                text.configure(state="disabled")
+                text.grid(row=1, column=1, sticky="nsew", padx=(12, 0))
+                tab.columnconfigure(1, weight=1)
+                self.compare_texts.append(text)
+                if left:
+                    ttk.Label(tab, wraplength=420, justify="left", text=(
+                        "Lines of the manuscript's page that fit no field (left out): %s. Add "
+                        "any that belong in Credits or as a notice." % "; ".join(
+                            "\u201c%s\u201d" % x for x in left))).grid(
+                        row=2, column=1, sticky="w", padx=(12, 0), pady=(6, 0))
+
+    def _draw_page(self, canvas, page):
+        """One page on the canvas, scaled to fit: the trim, the text area (dotted) and the
+        lines in their sizes."""
+        from . import fonts
+        canvas.delete("all")
+        cw, ch = canvas.winfo_width(), canvas.winfo_height()
+        if cw < 100 or ch < 100:              # not shown yet: its requested size
+            cw, ch = int(canvas["width"]), int(canvas["height"])
+        scale = min((cw - 24) / page.width, (ch - 24) / page.height)
+        x0, y0 = (cw - page.width * scale) / 2, (ch - page.height * scale) / 2
+        canvas.create_rectangle(x0, y0, x0 + page.width * scale, y0 + page.height * scale,
+                                fill="white", outline="#888")
+        m = page.margins
+        left = m["inside"] if page.recto else m["outside"]
+        right = page.width - (m["outside"] if page.recto else m["inside"])
+        top, foot = m["top"], page.height - m["bottom"]
+        canvas.create_rectangle(x0 + left * scale, y0 + top * scale, x0 + right * scale,
+                                y0 + foot * scale, outline="#c8c8e8", dash=(2, 3))
+        family = (self.profile.get("fonts") or {}).get("body") or fonts.book_font() or "Times"
+        y = top + page.sink
+        for line in page.lines:
+            y += line.space_before
+            font = (family, -max(1, round(line.size * scale)),
+                    "italic" if line.italic else "roman")
+            x = (left + right) / 2 if line.centered else left
+            item = canvas.create_text(
+                x0 + x * scale, y0 + y * scale, text=line.text or " ", font=font,
+                anchor="n" if line.centered else "nw", width=(right - left) * scale,
+                justify="center" if line.centered else "left", tags=("text",))
+            # The leading as set: wrapped lines take a line each.
+            box = canvas.bbox(item)
+            rows = max(1, round((box[3] - box[1]) / max(1, line.size * scale * 1.2)))
+            y += rows * line.lead + line.space_after
+        if page.bottom:
+            canvas.move("text", 0, (foot - y) * scale)
 
     # ---- notices ----
 
@@ -313,6 +363,11 @@ class BookTabMixin:
             if value and not front.get(key):
                 front[key] = value
                 filled.append(key)
+        if (getattr(o, "details", {}) or {}).get("copyright_title") and \
+                not front.get("copyright_title"):
+            front["copyright_title"] = True          # the manuscript's page opens with it
+            details["copyright_title"] = True
+            filled.append("copyright_title")
         added = self._take_notices((getattr(o, "details", {}) or {}).get("notices") or [])
         found_people = creators({}, o)
         if found_people and not self.creators:
@@ -333,7 +388,7 @@ class BookTabMixin:
                 found.append("%s: \u201c%s\u201d, from %s (%s)" % (label, value, source, state))
             else:
                 found.append("%s: not found in the manuscript" % label)
-        labels = {key: label for key, label, _k in PUBLICATION_FIELDS}
+        labels = {key: label for key, label, _k in PUBLICATION_FIELDS + PAGE_FIELDS}
         if details:
             found.append("from the copyright page: " + ", ".join(
                 "%s %s" % (labels.get(k, k).split(" (")[0].lower(),

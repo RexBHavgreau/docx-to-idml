@@ -34,6 +34,12 @@ def _files():
     return [os.path.join(MS, f) for f in sorted(os.listdir(MS)) if f.endswith(".docx")]
 
 
+def _descendants(w):
+    for child in w.winfo_children():
+        yield child
+        yield from _descendants(child)
+
+
 def _app():
     from docx2idml import gui
     root = tk.Tk()
@@ -200,23 +206,34 @@ def test_calculated_margins_shown_and_filled():
         lab, _text = form.labels[("page", "margins", "inside")]
         assert "calculated" in str(lab.cget("text"))
         note = app.margin_note.get()
-        assert note.startswith("Calculated margins (in): top ") and "about 200 pages" in note
+        assert note.startswith("Calculated margins: top ") and "about 200 pages" in note
+        assert ' pt (' in note and '")' in note                     # points with inches
         assert "picas" in note
         mlab, _t = app._form_of(("page", "measure")).labels[("page", "measure")]
-        assert "picas)" in str(mlab.cget("text"))
+        assert " picas" in str(mlab.cget("text")) and "pt (" in str(mlab.cget("text"))
         g, _pages, _found = app.calculated()
         # By default the outside margin is never wider than the inside.
         assert g.margins["outside"] <= g.margins["inside"]
         app.pvar(("page", "trim")).set("5x8")
         g2, _p, _f = app.calculated()
         assert g2.measure != g.measure or g2.margins != g.margins
-        form.vars[("page", "margins", "top")][0].set("1")
+        form.vars[("page", "margins", "top")][0].set('1"')
         app.fill_margins()
-        assert form.vars[("page", "margins", "top")][0].get() == "1"       # kept as typed
-        inside = float(form.vars[("page", "margins", "inside")][0].get())
-        assert abs(inside - g2.margins["inside"] / 72) < 0.01
+        assert form.vars[("page", "margins", "top")][0].get() == '1"'      # kept as typed
+        from docx2idml.gui import format_points
+        assert form.vars[("page", "margins", "inside")][0].get() == \
+            format_points(g2.margins["inside"])
         app._forms_to_profile()
-        assert app.profile["page"]["margins"]["top"] == 1
+        assert app.profile["page"]["margins"]["top"] == 1                  # saved in inches
+        assert abs(app.profile["page"]["margins"]["inside"] - g2.margins["inside"] / 72) < 0.01
+        # A margin's arrows step 9 pt (1/8 in); typed points are saved as inches.
+        form.vars[("page", "margins", "top")][0].set("54")
+        app._forms_to_profile()
+        assert app.profile["page"]["margins"]["top"] == 0.75
+        # The footnote spacing: points, arrows step 1 pt.
+        nform = app._form_of(("footnotes", "space_above"))
+        assert nform.vars[("footnotes", "space_above")][0].get() == '12 pt (0.17")'
+
     finally:
         app.quit(force=True)
 
@@ -375,14 +392,26 @@ def test_contributors_in_order():
         # The permission: in the notice library, ticked for this book.
         names = [n["name"] for n in app.profile["notices"]]
         assert "ESV" in names and names.index("ESV") in app.notice_list.curselection()
-        # The two copyright pages side by side, then closed.
-        app.compare_copyright()
+        # The front pages previewed; the copyright page beside the manuscript's, then closed.
+        app.front_form.vars[("copyright_title",)][0].set(True)
+        app.preview_pages()
         root.update()
-        old, new = (t.get("1.0", "end") for t in app.compare_texts)
+        assert list(app.preview_canvases) == ["Half-title", "Title page", "Copyright page"]
+        for _ in range(5):
+            root.update()
+        def texts(name):
+            c = app.preview_canvases[name]
+            return [c.itemcget(i, "text") for i in c.find_withtag("text")]
+        old = app.compare_texts[0].get("1.0", "end")
+        new = "\n".join(texts("Copyright page"))
         assert "Copyright \u00a9 2026 by A Seminary" in old and "Edited by" in old
         assert "Copyright \u00a9 2026 by A Seminary" in new and "Edited by" not in new
         assert "ISBN 978-1-934952-94-8" in new
-        app.compare_window.destroy()
+        from docx2idml.frontmatter import book_info
+        title = book_info(app.report.outline, app.book.settings["front"])[0]["title"]
+        assert texts("Copyright page")[0].startswith(title)       # the box ticked above
+        assert any(t.startswith("Edited by") for t in texts("Title page"))
+        app.preview_window.destroy()
         # The rights statement too.
         assert app.front_form.vars[("rights",)][0].get().startswith("All rights reserved. No")
         app._forms_to_book()
@@ -411,13 +440,62 @@ def test_tabs_in_title_case_and_head_style():
         names = [app.tabs.tab(t, "text") for t in app.tabs.tabs()]
         assert names == ["Files", "Book Details", "Running Heads", "Layout Profile", "Style Map",
                          "Report"]
-        app.head_style_form.vars[("running_heads", "style", "case")][0].set("as_typed")
+        app.head_case_form.vars[("running_heads", "style", "case")][0].set("title")
         app.head_style_form.vars[("running_heads", "style", "italic")][0].set(True)
+        app.head_style_form.vars[("running_heads", "style", "bold")][0].set(True)
         app._forms_to_profile()
         rs = app.profile["running_heads"]["style"]
-        assert rs["case"] == "as_typed" and rs["italic"] is True
+        assert rs["case"] == "title" and rs["italic"] is True and rs["bold"] is True
+        assert rs["caps"] == "small_caps"          # the default
+        # All Caps and Small Caps: at most one of them.
+        caps = app.head_style_form.vars[("running_heads", "style", "caps")][0]
+        from tkinter import ttk
+        boxes = [w for w in _descendants(app.root) if isinstance(w, ttk.Checkbutton) and
+                 w.cget("text") in ("All Caps", "Small Caps")]
+        by = {w.cget("text"): w for w in boxes}
+        by["All Caps"].invoke()
+        assert caps.get() == "all_caps"
+        assert not app.root.getvar(by["Small Caps"].cget("variable"))
+        by["All Caps"].invoke()
+        app._forms_to_profile()
+        assert app.profile["running_heads"]["style"]["caps"] is None
     finally:
         app.quit(force=True)
+
+
+def test_opener_drop_field():
+    """The drop at chapter openings: points shown with inches, arrows step 6 pt, inches or
+    points typed are tidied, blank = automatic."""
+    app, root = _app()
+    try:
+        form = app._form_of(("page", "opener_drop"))
+        var = form.vars[("page", "opener_drop")][0]
+        box = next(w for w in _descendants(app.root) if w.winfo_class() == "TSpinbox" and
+                   str(w.cget("textvariable")) == str(var))
+        assert var.get() == ""                         # automatic
+        box.event_generate("<<Increment>>")
+        assert var.get() == app_auto(app)               # the arrows start from the automatic
+        var.set("72")
+        box.event_generate("<<Increment>>")
+        assert var.get() == '78 pt (1.08")'
+        box.event_generate("<<Decrement>>")
+        box.event_generate("<<Decrement>>")
+        assert var.get() == '66 pt (0.92")'
+        var.set('1.5"')
+        box.event_generate("<FocusOut>")
+        assert var.get() == '108 pt (1.5")'
+        app._forms_to_profile()
+        assert app.profile["page"]["opener_drop"] == 108
+        var.set("")
+        app._forms_to_profile()
+        assert app.profile["page"]["opener_drop"] is None
+    finally:
+        app.quit(force=True)
+
+
+def app_auto(app):
+    from docx2idml.gui import format_points
+    return format_points(app._auto_drop())
 
 
 def test_cleanup_after_update():

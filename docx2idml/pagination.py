@@ -14,17 +14,45 @@ with the head as text, which takes the Hebrew and Greek styles.
 def _has_script(text):
     return any(is_hebrew(c) or is_greek(c) for c in text or "")
 
-from . import fonts, frontmatter, layout
+from . import fonts, frontmatter, layout, textcase
 from .docx_reader import is_greek, is_hebrew
 from .layout import _half
 from .idml.model import Frame, Master, Paragraph, Run, Section, Story, TOCStyle
+
+
+# Styles that carry an opener's drop (`_sinks`).
+SINK_STYLES = ("Chapter Title", "Contents Title", "Book Title", "Half Title")
 
 
 class PaginationMixin:
     # ---- pagination and running heads ----
 
     def _short(self, title):
-        return (self.settings.get("short_titles") or {}).get(title) or title
+        """A unit's running head: its short title (or title), in the profile's case."""
+        return self._head_text((self.settings.get("short_titles") or {}).get(title) or title)
+
+    def _head_text(self, text):
+        """Running-head text in the case the profile sets (as typed, title or sentence)."""
+        case = ((self.profile["running_heads"].get("style") or {}).get("case")) or "as_typed"
+        if case not in ("title", "sentence") or not text:
+            return text
+        if case == "sentence" and getattr(self, "_proper", None) is None:
+            self._proper = textcase.proper_nouns(
+                p.text for d in self.docs for p in d.paragraphs
+                if len(p.text.split()) >= 20)
+            # The contributors' names too (a "Foreword by" head names one).
+            for c in (getattr(self, "info", None) or {}).get("creators") or ():
+                self._proper |= {w for w in c.get("name", "").split() if w[:1].isupper()}
+        return textcase.apply(text, case, self.profile["front_matter"].get("language", "en"),
+                              getattr(self, "_proper", None) or ())
+
+    def _verso_heads(self, rh, info, head, part=None):
+        """The verso head's runs for each kind of verso head (head: the chapter's)."""
+        h = self._head_text
+        return {"book_title": [Run(h(info.get("short_title") or info["title"]))],
+                "author": [Run(h(info["author"]))], "chapter": head,
+                "part": [Run(part)] if part else head,
+                "custom": [Run(h(rh.get("verso_custom") or ""))]}
 
     def _head_frames(self, verso, recto):
         """Running heads above the text area: verso and recto paragraphs' runs."""
@@ -43,7 +71,7 @@ class PaginationMixin:
     def _paginate(self, blocks):
         """Pages, masters, sections and running heads; returns the page count."""
         doc = self.doc
-        sink = _half(self.body_lead * 6)
+        sink = self._opener_drop()
         items = []
         for b in blocks:
             kind = b.kind
@@ -62,9 +90,10 @@ class PaginationMixin:
         part_masters = []
         script_heads = []           # (marker, part title or None, pages) for R masters
         long_heads = []
+        self._sinks(blocks)
         for n, (b, pl) in enumerate(zip(blocks, placed)):
             pages = list(range(pl.start, pl.start + pl.pages))
-            doc.stories.append(Story(b.paras, pages, sink=b.sink, linked=True,
+            doc.stories.append(Story(b.paras, pages, linked=True,
                                      optical_margins=optical, valign=b.valign))
             title = b.title if not b.title.startswith("(") and b.kind != "display" else ""
             marker = self._short(title)
@@ -140,6 +169,59 @@ class PaginationMixin:
         size = attrs.get("PointSize", self.body_size)
         return len(text) * size * self.avg_width * 1.1 > self.measure * 0.8
 
+    def _opener_drop(self):
+        """How far chapter titles (and the contents title) are lowered: the profile's
+        page.opener_drop in points, else six body lines."""
+        drop = (self.profile.get("page") or {}).get("opener_drop")
+        return _half(drop) if drop else _half(self.body_lead * 6)
+
+    def _sinks(self, blocks):
+        """Lower each opener's first paragraph by its block's sink, in the paragraph style
+        (Chapter Title, Contents Title, Book Title, Half Title), so the
+        drop moves with the title if pages are added or removed, and every text frame is full
+        height. InDesign ignores Space Before at the top of a frame, so the style also has an
+        invisible rule above, kept in the frame, which pushes the text down (InDesign);
+        Affinity ignores the rule and uses the Space Before when the style is set to apply it
+        at the column top. A first paragraph in another style gets the same settings locally."""
+        doc = self.doc
+        claimed = {}
+        for b in blocks:
+            if not b.sink or not b.paras:
+                continue
+            p = b.paras[0]
+            attrs, _f, _l = doc.resolved(p.style)
+            if attrs.get("RuleAbove") and abs(attrs.get("SpaceBefore", 0) - b.sink) < 0.5:
+                continue                       # its style carries this sink already
+            drop = self._sink_attrs(b.sink, attrs.get("PointSize", self.body_size))
+            st = doc.style(p.style)
+            if st is not None and p.style in SINK_STYLES and p.style not in claimed:
+                st.attrs.update(drop)
+                claimed[p.style] = b.sink
+                for child in doc.paragraph_styles:
+                    if child.based_on == p.style and child.name not in SINK_STYLES:
+                        child.attrs.setdefault("SpaceBefore", 0)
+                        child.attrs["RuleAbove"] = False
+            else:
+                p.attrs.update(drop)
+        if claimed:
+            self.report.append(
+                "Chapter openings are lowered by their paragraph style (%s), not by a shorter "
+                "text frame, so the drop moves with the title. InDesign shows it as it is. In "
+                "Affinity, set Space Before in those styles to apply \u201cOnly at column "
+                "top\u201d, or the titles start at the top of the page. If pages are added or "
+                "removed, apply B-Opener to the page a chapter now starts on (and A-Body to "
+                "the page it left): a page keeps its master when the text moves."
+                % ", ".join(sorted(claimed)))
+
+    @staticmethod
+    def _sink_attrs(sink, size):
+        """Space Before (Affinity) and an invisible rule above kept in the frame (InDesign),
+        both lowering the first baseline by sink (the rule's offset counts from the
+        baseline, so it adds the type's ascent)."""
+        return {"SpaceBefore": sink, "RuleAbove": True, "RuleAboveLineWeight": 0,
+                "RuleAboveTint": 0, "RuleAboveOffset": _half(sink + size * 0.75),
+                "KeepRuleAboveInFrame": True}
+
     def _masters(self, parts):
         """A-Body, B-Opener and C-Front carry text (each its own primary text frames, so a
         chapter threads from B into A); D-Display and E-Blank are empty. Running heads follow
@@ -152,10 +234,10 @@ class PaginationMixin:
         info = self.info
         marker = [Run(special="section_marker")]
         verso_kind = rh.get("verso", "book_title")
-        verso = {"book_title": [Run(info.get("short_title") or info["title"])],
-                 "author": [Run(info["author"])], "chapter": marker,
-                 "custom": [Run(rh.get("verso_custom") or "")]}.get(verso_kind)
-        recto = [Run(rh.get("recto_custom") or "")] if rh.get("recto") == "custom" else marker
+        verso = self._verso_heads(rh, info, marker).get(verso_kind) if verso_kind != "part" \
+            else None
+        recto = [Run(self._head_text(rh.get("recto_custom") or ""))] \
+            if rh.get("recto") == "custom" else marker
 
         frames = self._master_frames
         doc.masters = [
@@ -226,11 +308,9 @@ class PaginationMixin:
         names = []
         for k, (marker, part, pages) in enumerate(units, 1):
             head = [Run(marker)]
-            recto = [Run(rh.get("recto_custom") or "")] if custom_recto else head
-            verso = {"book_title": [Run(info.get("short_title") or info["title"])],
-                     "author": [Run(info["author"])], "chapter": head,
-                     "part": [Run(part)] if part else head,
-                     "custom": [Run(rh.get("verso_custom") or "")]}.get(verso_kind, head)
+            recto = [Run(self._head_text(rh.get("recto_custom") or ""))] if custom_recto \
+                else head
+            verso = self._verso_heads(rh, info, head, part).get(verso_kind, head)
             made = {}
             for i in pages:
                 base = masters.get(i)

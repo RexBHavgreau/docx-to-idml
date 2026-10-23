@@ -10,6 +10,7 @@ from Explorer works when tkinterdnd2 is installed (it is bundled in the .exe).
 import copy
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -33,7 +34,9 @@ LOOKS = {"book": "the book style's", "word": "Word's, in book terms"}
 
 # Profile fields: (path in the profile, label, kind, choices). Kinds: bool, text, number
 # (blank allowed = automatic), int, choice, int_choice (a choice saved as a number), file (an
-# IDML file, with Browse), font (a dropdown of installed fonts that can also
+# IDML file, with Browse), points (a measure shown as points with its inches, 72 pt (1"),
+# with arrows; inches may be typed: 1"; choices: (arrow step in points, unit saved: "pt" or
+# "in")), font (a dropdown of installed fonts that can also
 # be typed in; its choices name a script, "hebrew" or "greek", to list only fonts that have it).
 PROFILE_FIELDS = {
     # The Page Layout tab in three sections.
@@ -49,14 +52,16 @@ PROFILE_FIELDS = {
             (("chapters_open",), "Chapters open on", "choice", ["recto", "next_page"]),
             (("page", "spare_pages"), "Spare pages after each chapter", "int_choice",
              ["0", "1", "2"]),
+            (("page", "opener_drop"), "Chapter titles lowered by (blank = 6 body lines)",
+             "points", (6, "pt")),
         ],
         "Page Margins": [
             (("page", "measure"), "Line length (a multiple of the type size; 30 usual, "
              "20\u201340)", "number", None),
-            (("page", "margins", "top"), "Top margin (in)", "number", None),
-            (("page", "margins", "bottom"), "Bottom margin (in)", "number", None),
-            (("page", "margins", "inside"), "Inside margin (in)", "number", None),
-            (("page", "margins", "outside"), "Outside margin (in)", "number", None),
+            (("page", "margins", "top"), "Top margin", "points", (9, "in")),
+            (("page", "margins", "bottom"), "Bottom margin", "points", (9, "in")),
+            (("page", "margins", "inside"), "Inside margin", "points", (9, "in")),
+            (("page", "margins", "outside"), "Outside margin", "points", (9, "in")),
         ],
     },
     "Type": [
@@ -89,10 +94,10 @@ PROFILE_FIELDS = {
         (("footnotes", "numbering"), "Footnote numbering", "choice", ["per_chapter", "continuous"]),
         (("footnotes", "rule"), "Rule above the notes", "bool", None),
         (("footnotes", "continuation_rule"), "Rule above continued notes", "bool", None),
-        (("footnotes", "space_above"), "Space above the notes (pt)", "number", None),
-        (("footnotes", "space_below_rule"), "Space below a rule (pt)", "number", None),
-        (("footnotes", "space_between"), "Space between notes (pt)", "number", None),
-        (("footnotes", "rule_length"), "Rule length (pt)", "number", None),
+        (("footnotes", "space_above"), "Space above the notes", "points", (1, "pt")),
+        (("footnotes", "space_below_rule"), "Space below a rule", "points", (1, "pt")),
+        (("footnotes", "space_between"), "Space between notes", "points", (1, "pt")),
+        (("footnotes", "rule_length"), "Rule length", "points", (9, "pt")),
         (("front_matter", "contents_depth"), "Contents lists", "choice", ["chapters", "sections"]),
     ],
 }
@@ -105,18 +110,24 @@ HEAD_FIELDS = [
     (("running_heads", "suppress_on_openers"), "No heads on chapter openers", "bool", None),
     (("running_heads", "suppress_on_display"), "No heads on display pages", "bool", None),
     (("running_heads", "suppress_on_blanks"), "No heads on blank pages", "bool", None),
+    (("running_heads", "script_masters"),
+     "Separate masters for heads with Hebrew or Greek (each gets its own font)", "bool", None),
 ]
-HEAD_STYLE_FIELDS = [
-    (("running_heads", "style", "case"), "Letters", "choice",
-     ["small_caps", "all_caps", "as_typed"]),
+HEAD_CASE_FIELDS = [
+    (("running_heads", "style", "case"), "", "radio",
+     [("as_typed", "As typed"), ("title", "Title Case"), ("sentence", "Sentence case")]),
+]
+HEAD_FONT_FIELDS = [
     (("running_heads", "style", "italic"), "Italic", "bool", None),
+    (("running_heads", "style", "bold"), "Boldface", "bool", None),
+    (("running_heads", "style", "underline"), "Underlined", "bool", None),
+    (("running_heads", "style", "caps"), "", "one_of",
+     [("all_caps", "All Caps"), ("small_caps", "Small Caps")]),
     (("running_heads", "style", "size"), "Size (pt; blank = 2 pt below the body)", "number",
      None),
     (("running_heads", "style", "tracking"), "Letter-spacing (thousandths of an em)", "int",
      None),
     (("running_heads", "style", "font"), "Font (blank = the body font)", "font", None),
-    (("running_heads", "script_masters"),
-     "Separate masters for heads with Hebrew or Greek (each gets its own font)", "bool", None),
 ]
 def _get(d, path):
     for k in path:
@@ -130,6 +141,25 @@ def _set(d, path, value):
     for k in path[:-1]:
         d = d.setdefault(k, {})
     d[path[-1]] = value
+
+
+def parse_points(text):
+    """Points from what was typed: "72", "72 pt", "72 pt (1\")", or inches: "1\"", "1 in".
+    None when blank or not a measure."""
+    text = (text or "").strip().lower().replace("\u2033", '"')
+    m = re.match(r'^(\d+(?:\.\d*)?|\.\d+)\s*(pt|p|"|in|inch|inches)?', text)
+    if not m:
+        return None
+    value = float(m.group(1))
+    return value * 72 if m.group(2) in ('"', "in", "inch", "inches") else value
+
+
+def format_points(value):
+    """72 -> '72 pt (1")'; 84 -> '84 pt (1.17")'."""
+    if value is None:
+        return ""
+    inches = ("%.2f" % (value / 72)).rstrip("0").rstrip(".")
+    return '%g pt (%s")' % (round(value * 2) / 2, inches)
 
 
 def _num(text, kind):
@@ -150,6 +180,7 @@ class Form:
         """by_column: fill each column top to bottom (fields listed in reading order down the
         first column, then the second), instead of row by row."""
         self.fields, self.vars, self.font_boxes, self.labels = fields, {}, [], {}
+        self.points_start = {}      # path -> function: a blank points field's arrows start there
         for n, (path, label, kind, choices) in enumerate(fields):
             rows = -(-len(fields) // columns)
             if by_column:
@@ -160,6 +191,29 @@ class Form:
                 var = tk.BooleanVar()
                 ttk.Checkbutton(parent, text=label, variable=var).grid(
                     row=row, column=col, columnspan=2, sticky="w", padx=6, pady=2)
+            elif kind in ("radio", "one_of"):
+                # radio: one of the choices [(value, label)]; one_of: check boxes of which at
+                # most one is on (the value is None when none is).
+                var = tk.StringVar()
+                box = ttk.Frame(parent)
+                box.grid(row=row, column=col, columnspan=2, sticky="w", padx=6, pady=2)
+                if label:
+                    ttk.Label(box, text=label).pack(side="left", padx=(0, 6))
+                for value, text in choices:
+                    if kind == "radio":
+                        ttk.Radiobutton(box, text=text, value=value, variable=var).pack(
+                            side="left", padx=(0, 8))
+                        continue
+                    check = tk.BooleanVar()
+
+                    def toggled(var=var, check=check, value=value):
+                        var.set(value if check.get() else "")
+                    ttk.Checkbutton(box, text=text, variable=check, command=toggled).pack(
+                        side="left", padx=(0, 8))
+
+                    def follow(*_a, var=var, check=check, value=value):
+                        check.set(var.get() == value)
+                    var.trace_add("write", follow)
             else:
                 var = tk.StringVar()
                 lab = ttk.Label(parent, text=label)
@@ -182,6 +236,26 @@ class Form:
                         if path:
                             var.set(path)
                     ttk.Button(w, text="Browse...", command=browse).pack(side="left", padx=2)
+                elif kind == "points":
+                    w = ttk.Spinbox(parent, textvariable=var, width=24)
+
+                    def step(direction, var=var, path=path, size=choices[0]):
+                        value = parse_points(var.get())
+                        if value is None:
+                            start = self.points_start.get(path)
+                            value = start() if start else 72
+                        else:
+                            value = max(0, value + direction * size)
+                        var.set(format_points(value))
+                        return "break"
+
+                    def tidy(_e=None, var=var):
+                        if var.get().strip():
+                            var.set(format_points(parse_points(var.get())))
+                    w.bind("<<Increment>>", lambda e, s=step: s(1))
+                    w.bind("<<Decrement>>", lambda e, s=step: s(-1))
+                    w.bind("<FocusOut>", tidy)
+                    w.bind("<Return>", tidy)
                 elif kind == "font":
                     w = ttk.Combobox(parent, textvariable=var, width=24, height=20,
                                      values=["(reading the installed fonts...)"])
@@ -190,6 +264,13 @@ class Form:
                     w = ttk.Entry(parent, textvariable=var, width=26)
                 w.grid(row=row, column=col + 1, sticky="we", padx=6, pady=2)
             self.vars[path] = (var, kind)
+
+    def _unit(self, path):
+        """The unit a points field is saved in ("pt" or "in")."""
+        for p, _label, kind, choices in self.fields:
+            if p == path and kind == "points":
+                return (choices or (6, "pt"))[1]
+        return "pt"
 
     def set_fonts(self, lists):
         """Fill the font dropdowns: lists = {None: all families, "hebrew": [...], ...}."""
@@ -201,6 +282,9 @@ class Form:
             v = _get(data, path)
             if kind == "bool":
                 var.set(bool(v))
+            elif kind == "points":
+                scale = 72 if self._unit(path) == "in" else 1
+                var.set(format_points(None if v is None else v * scale))
             else:
                 var.set("" if v is None else (("%g" % v) if isinstance(v, float) else str(v)))
 
@@ -212,6 +296,12 @@ class Form:
                 value = _num(var.get(), "number") or 11
             elif kind == "int_choice":
                 value = _num(var.get(), "int") or 0
+            elif kind == "one_of":
+                value = var.get() or None
+            elif kind == "points":
+                value = parse_points(var.get())
+                if value is not None and self._unit(path) == "in":
+                    value = round(value / 72, 4)
             elif kind in ("number", "int"):
                 value = _num(var.get(), kind)
                 if value is None and kind == "int":
@@ -430,7 +520,6 @@ class App(BookTabMixin):
         except profiles.ProfileError:
             self.profile_name, self.profile = None, profiles.default_profile()
         root.title("%s %s" % (TITLE, __version__))
-        root.geometry("1040x720")
         root.minsize(760, 520)
         self._menus()
         self._build(dnd)
@@ -479,17 +568,13 @@ class App(BookTabMixin):
         self.profile_box.bind("<<ComboboxSelected>>", self._profile_chosen)
         self._refresh_profile_list()
 
-        self.tabs = ttk.Notebook(self.root)
-        self.tabs.pack(fill="both", expand=True, padx=8, pady=8)
-        self._files_tab(dnd)
-        self._book_tab()
-        self._heads_tab()
-        self._layout_tab()
-        self._styles_tab()
-        self._report_tab()
-
+        # The status line and the export row are packed before the tabs, at the bottom, so a
+        # short window shrinks the tabs, not them.
+        self.status = tk.StringVar(value="Add the manuscript's .docx files to begin.")
+        ttk.Label(self.root, textvariable=self.status, padding=(10, 0, 10, 6)).pack(
+            side="bottom", fill="x")
         bottom = ttk.Frame(self.root, padding=(8, 0, 8, 8))
-        bottom.pack(fill="x")
+        bottom.pack(side="bottom", fill="x")
         ttk.Label(bottom, text="Save the export in:").pack(side="left")
         self.out_var = tk.StringVar(value=self.settings.get("out_dir") or str(Path.home()))
         ttk.Entry(bottom, textvariable=self.out_var, width=50).pack(side="left", padx=6,
@@ -499,8 +584,26 @@ class App(BookTabMixin):
         self.export_btn.pack(side="left", padx=(12, 0))
         self.progress = ttk.Progressbar(bottom, mode="indeterminate", length=120)
         self.progress.pack(side="left", padx=6)
-        self.status = tk.StringVar(value="Add the manuscript's .docx files to begin.")
-        ttk.Label(self.root, textvariable=self.status, padding=(10, 0, 10, 6)).pack(fill="x")
+
+        self.tabs = ttk.Notebook(self.root)
+        self.tabs.pack(fill="both", expand=True, padx=8, pady=8)
+        self._files_tab(dnd)
+        self._book_tab()
+        self._heads_tab()
+        self._layout_tab()
+        self._styles_tab()
+        self._report_tab()
+        self._fit_window()
+
+    def _fit_window(self):
+        """Open large enough for the tallest tab and the export row (Windows scales text,
+        so a fixed size cut off the bottom), within the screen."""
+        self.root.update_idletasks()
+        w = max(1040, self.root.winfo_reqwidth())
+        h = max(720, self.root.winfo_reqheight())
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        w, h = min(w, sw - 40), min(h, sh - 80)
+        self.root.geometry("%dx%d+%d+%d" % (w, h, max(0, (sw - w) // 2), max(0, (sh - h) // 3)))
 
     def _files_tab(self, dnd):
         tab = ttk.Frame(self.tabs, padding=8)
@@ -549,7 +652,16 @@ class App(BookTabMixin):
         self.heads_form = Form(form, HEAD_FIELDS, columns=2)
         box = ttk.LabelFrame(tab, text="Running Head Style", padding=6)
         box.pack(fill="x", pady=(8, 0))
-        self.head_style_form = Form(box, HEAD_STYLE_FIELDS, columns=2)
+        case = ttk.LabelFrame(box, text="Case", padding=4)
+        case.pack(fill="x")
+        self.head_case_form = Form(case, HEAD_CASE_FIELDS)
+        ttk.Label(case, foreground="#555", text=(
+            "Title and sentence case change the letters of every head (sentence case keeps the "
+            "names the manuscript capitalizes); the capitals below set the type.")).grid(
+            row=1, column=0, columnspan=2, sticky="w", padx=6)
+        font = ttk.LabelFrame(box, text="Font", padding=4)
+        font.pack(fill="x", pady=(6, 0))
+        self.head_style_form = Form(font, HEAD_FONT_FIELDS, columns=2)
         ttk.Label(tab, text="Units of the book (double-click a running head to give a short "
                             "title, or a kind to change what the unit is; \"too long\" means "
                             "the head won't fit the page):").pack(anchor="w", pady=(10, 2))
@@ -560,6 +672,14 @@ class App(BookTabMixin):
             self.heads.column(c, width=w)
         self.heads.pack(fill="both", expand=True)
         self.heads.bind("<Double-1>", self._edit_head)
+
+    def _auto_drop(self):
+        """The automatic opener drop (six body lines) for the profile as the forms set it."""
+        from .export import body_size, leading_for
+        prof = copy.deepcopy(self.profile)
+        for form in self.profile_forms:
+            form.save(prof)
+        return round(leading_for(prof, body_size(prof)) * 6 * 2) / 2
 
     def _layout_tab(self):
         tab = ttk.Frame(self.tabs, padding=8)
@@ -581,6 +701,10 @@ class App(BookTabMixin):
                 self.profile_forms.append(Form(f, fields, columns=2, by_column=True))
                 if name == "Type":
                     typetab, ntype = f, len(fields)
+        for form in self.profile_forms:
+            form.points_start = {("page", "opener_drop"): self._auto_drop}
+            form.points_start.update({("page", "margins", side): (
+                lambda side=side: self.calculated()[0].margins[side]) for side in self.MARGINS})
         # The suggested leading for the size and font, under the Type fields.
         self.leading_note = tk.StringVar()
         ttk.Label(typetab, textvariable=self.leading_note, wraplength=820, justify="left").grid(
@@ -642,6 +766,7 @@ class App(BookTabMixin):
         for form in self.profile_forms:
             form.load(self.profile)
         self.heads_form.load(self.profile)
+        self.head_case_form.load(self.profile)
         self.head_style_form.load(self.profile)
         self._margins_later()
         self.notice_list.delete(0, "end")
@@ -705,23 +830,25 @@ class App(BookTabMixin):
         form = self._form_of(("page", "margins", "top"))
         for side in self.MARGINS:
             lab, text = form.labels[("page", "margins", side)]
-            lab.configure(text="%s, calculated %.2f" % (text, g.margins[side] / 72))
+            lab.configure(text="%s (calculated %s)" % (text, format_points(g.margins[side])))
         # What the multiple comes to: 30 x 11 pt = 330 pt = 27.5 picas = 4.58 in.
         lab, text = form.labels[("page", "measure")]
-        lab.configure(text="%s: %.2f in (%.1f picas)" % (text, g.measure / 72, g.measure / 12))
+        lab.configure(text="%s: %s, %g picas" % (text, format_points(g.measure),
+                                                   round(g.measure / 12, 1)))
         from . import fonts
         font = (self.pvar(("fonts", "body")).get() or "").strip() or \
             fonts.book_font()
         basis = ("%s, measured" % font) if found else \
             "%s isn't installed: an average book font" % font
         self.margin_note.set(
-            "Calculated margins (in): top %.2f, bottom %.2f, inside %.2f, outside %.2f, for "
-            "about %d pages (%s). Line length %.2f in (%.1f picas), %d characters per line at "
+            "Calculated margins: top %s, bottom %s, inside %s, outside %s, for "
+            "about %d pages (%s). Line length %s, %g picas, %d characters per line at "
             "%g pt. Blank margin fields use "
             "the calculated values, which follow the page count (KDP's inside minimum grows "
             "with it); a value typed in is used as it is."
-            % (g.margins["top"] / 72, g.margins["bottom"] / 72, g.margins["inside"] / 72,
-               g.margins["outside"] / 72, pages, basis, g.measure / 72, g.measure / 12,
+            % (format_points(g.margins["top"]), format_points(g.margins["bottom"]),
+               format_points(g.margins["inside"]), format_points(g.margins["outside"]),
+               pages, basis, format_points(g.measure), round(g.measure / 12, 1),
                round(g.cpl),
                _num(self.pvar(("body_size",)).get(), "number") or 11))
 
@@ -753,7 +880,7 @@ class App(BookTabMixin):
         for side in self.MARGINS:
             var = self.pvar(("page", "margins", side))
             if not var.get().strip():
-                var.set("%.3g" % (g.margins[side] / 72))
+                var.set(format_points(g.margins[side]))
         self.status.set("Calculated margins filled in; they are now fixed for this profile "
                         "(clear a field to let it follow the page count again).")
 
@@ -763,6 +890,7 @@ class App(BookTabMixin):
         if getattr(self, "mapping", None) is not None:
             self.mapping.save()          # mapping changes not yet applied
         self.heads_form.save(self.profile)
+        self.head_case_form.save(self.profile)
         self.head_style_form.save(self.profile)
 
     def _profile_chosen(self, _event=None):
