@@ -108,7 +108,8 @@ def test_preflight_export_and_book_file():
         assert app.front_form.vars[("title",)][0].get() == "The Covenant Formula"
         sources = app.front_sources.get()
         assert "Title: \u201cThe Covenant Formula\u201d, from style Title in 00 Front.docx" in sources
-        assert "Author: \u201cA. N. Author\u201d, from title page text" in sources
+        assert "Contributors: \u201cA. N. Author (author)\u201d, from title page text" in sources
+        assert app.creators == [{"role": "author", "name": "A. N. Author"}]
         # A profile setting from the form.
         app.pvar(("page", "trim")).set("5.5x8.5")
         out = os.path.join(TMP, "out")
@@ -342,6 +343,46 @@ def test_formatting_groups_in_style_map():
         assert "[bold]" not in app.book.settings["format_map"]
     finally:
         app.quit(force=True)
+
+
+def test_contributors_in_order():
+    """Contributors are a list with roles, in title-page order; editors found on a copyright
+    page come in as editors; old books' single author is upgraded."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from test_outline import front_matter_book
+    from docx2idml.book import Book
+    app, root = _app()
+    try:
+        app._add([d.path for d in front_matter_book()])
+        app.fill_front()
+        _wait(app, root)
+        assert app.creators == [{"role": "editor", "name": "Nicolas Ellen"},
+                                {"role": "editor", "name": "Josh Stephens"}]
+        app.creator_role.set("translator")
+        app.creator_name.set("Ana Traductora")
+        app.add_creator()
+        app.creator_tree.selection_set("2")
+        app.move_creator(-1)
+        assert [c["name"] for c in app.creators] == ["Nicolas Ellen", "Ana Traductora",
+                                                     "Josh Stephens"]
+        app._forms_to_book()
+        assert app.book.settings["front"]["creators"][1] == {"role": "translator",
+                                                             "name": "Ana Traductora"}
+        path = os.path.join(TMP, "creators.json")
+        app.book_path = path
+        assert app.save_book()
+        assert Book.load(path).settings["front"]["creators"] == app.creators
+    finally:
+        app.quit(force=True)
+    # A book saved before contributors: its author becomes an author entry.
+    old = os.path.join(TMP, "old-book.json")
+    with open(old, "w") as f:
+        f.write('{"book_version": 1, "files": [], "settings": {"front": '
+                '{"author": "A. Writer and B. Writer"}}}')
+    front = Book.load(old).settings["front"]
+    assert front["creators"] == [{"role": "author", "name": "A. Writer"},
+                                 {"role": "author", "name": "B. Writer"}]
+    assert "author" not in front
 
 
 def test_tabs_in_title_case_and_head_style():

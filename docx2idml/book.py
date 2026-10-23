@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-BOOK_VERSION = 1
+BOOK_VERSION = 2       # 2: book details' single "author" became a list of creators
 
 
 def natural_key(path):
@@ -111,7 +111,22 @@ class Book:
         base = path.parent
         files = [os.path.normpath(str(base / f)) if not Path(f).is_absolute() else f
                  for f in data.get("files", [])]
-        return cls(files=files, profile=data.get("profile"), settings=data.get("settings", {}))
+        return cls(files=files, profile=data.get("profile"),
+                   settings=migrate_settings(data.get("settings", {}),
+                                             data.get("book_version", 1)))
+
+
+def migrate_settings(settings, version):
+    """Book settings saved by an older version, brought up to BOOK_VERSION."""
+    settings = dict(settings or {})
+    if version < 2:
+        front = dict(settings.get("front") or {})
+        author = front.pop("author", None)
+        if author and not front.get("creators"):
+            from .frontmatter import split_names
+            front["creators"] = [{"role": "author", "name": n} for n in split_names(author)]
+        settings["front"] = front
+    return settings
 
 
 def apply_saved_order(saved, found):

@@ -54,6 +54,7 @@ keep it up to date when decisions change.
 | `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
 | `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile`; no arguments opens the window |
 | `docx2idml/gui.py` | Step 7, the window (ttk): Files, Book Details, Running Heads, Layout Profile, Style Map, Report tabs; forms declared as field tables bound to the profile and book settings; work in threads, results through a queue polled by the window |
+| `docx2idml/gui_book.py` | `BookTabMixin` of the window (moved out of gui.py, 0.6.0): the Book Details tab, filling from the manuscript, the notice library |
 | `docx2idml/updates.py`, `appsettings.py` | Update check and install (as Indicat's: versioned .exe beside the running one, SHA-256 digest, Downloads fallback, older copies offered for deletion); the program's own settings.json |
 | `run_app.py`, `build_exe.bat`, `.github/workflows/build.yml` | The .exe (PyInstaller, one file, "docx-to-idml-X.Y.Z.exe", with `docx2idml/idml/base`); the workflow builds and releases on a `vX.Y.Z` tag, or by hand |
 | `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `images.py` (image size and resolution from file headers), `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
@@ -249,6 +250,15 @@ keep it up to date when decisions change.
   instead of the generated page; "Edited by ..." gives the author. A whole-file unit whose
   first line isn't a title gets `outline.file_title(name)`. classify reads "Foreword by X" as a
   foreword; "contributors" is front matter.
+- Book details (Beaux, 0.6.0): `front` is a bibliographic record (Zotero's Book fields, our
+  own code: Zotero is AGPL and none of it is copied): `creators` [{"role", "name"}] in
+  title-page order (roles `frontmatter.ROLES`; bylines for author/editor/translator via
+  `frontmatter.bylines`, wording in `frontmatter.TEXT[lang]`, the profile's
+  `front_matter.language`); `info["author"]` = authors else editors else translators (holder,
+  verso head). series/series_number (half-title, Series style), volume/volumes (title page,
+  Volume style), call_number (copyright page; blank = none). `book.BOOK_VERSION` 2:
+  `book.migrate_settings` turns the old "author" into creators. GUI: `gui_book.BookTabMixin`
+  (`app.creators`, `add/change/remove/move_creator`).
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);
   `stylemap.display_name` gives the name as Word shows it.
 

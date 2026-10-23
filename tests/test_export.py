@@ -542,6 +542,37 @@ def test_manuscript_copyright_page_not_duplicated():
         ex.cleanup()
 
 
+def test_bylines_and_book_record():
+    """Title-page bylines by role in the contributors' order (Chicago: serial comma); volume,
+    series and call number lines; wording per language."""
+    from docx2idml import frontmatter as fm
+    from docx2idml.outline import Outline
+    assert fm.split_names("Nicolas Ellen, Josh Stephens, and Brett Williams") == [
+        "Nicolas Ellen", "Josh Stephens", "Brett Williams"]
+    assert fm.split_names("John Smith, Jr. and Ann Lee") == ["John Smith, Jr.", "Ann Lee"]
+    front = {"title": "T", "creators": [
+        {"role": "editor", "name": "A. One"}, {"role": "editor", "name": "B. Two"},
+        {"role": "editor", "name": "C. Three"}, {"role": "translator", "name": "D. Four"},
+        {"role": "contributor", "name": "E. Five"}],
+        "volume": "2", "volumes": "3", "series": "Studies in Soul Care", "series_number": "4",
+        "call_number": "BV4012.2 .T44 2026", "isbn_print": "978-0"}
+    info, notes = fm.book_info(Outline(), front)
+    assert info["bylines"] == ["Edited by A. One, B. Two, and C. Three", "Translated by D. Four"]
+    assert info["author"] == "A. One, B. Two, and C. Three" == info["holder"]   # editors
+    lines = [("".join(r.text for r in p.runs), p.style) for p in fm.title_page(info)]
+    assert lines[1] == ("Volume 2 of 3", "Volume") and lines[2][1] == "Author"
+    assert ("Studies in Soul Care 4", "Series") in [
+        ("".join(r.text for r in p.runs), p.style) for p in fm.half_title(info)]
+    cp = "\n".join("".join(r.text for r in p.runs) for p in fm.copyright_page(info, "en")[0])
+    assert "Call number: BV4012.2 .T44 2026" in cp
+    del front["call_number"]
+    info, _ = fm.book_info(Outline(), front)
+    assert "Call number" not in "".join(
+        "".join(r.text for r in p.runs) for p in fm.copyright_page(info, "en")[0])
+    assert fm.bylines(info["creators"], "es") == ["Edici\u00f3n de A. One, B. Two y C. Three",
+                                                 "Traducci\u00f3n de D. Four"]
+
+
 def test_regular_face_by_its_own_name():
     """InDesign wants a face's own name: the Culmus Hebrew fonts' upright face is "Medium"."""
     from docx2idml import fonts

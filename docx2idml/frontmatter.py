@@ -6,11 +6,19 @@ bracketed placeholder ("[ISBN]") and reported, so nothing is left out silently. 
 no notice wording of its own: notices come from the user's library in the profile, ticked per
 book.
 
-Book settings (Book.settings["front"]):
-    half_title (True), title, subtitle, author, short_title (verso running head),
-    publisher, publisher_address, year, holder, edition, isbn_print, isbn_ebook, credits,
-    printed_in, notices (names from the profile's library), contents (True),
-    contents_pages (None = estimated)
+Book settings (Book.settings["front"]), modelled on a bibliographic record for a book (as
+Zotero's Book item) plus the switches a book needs:
+    title, subtitle, short_title (verso running head), creators (an ordered list of
+    {"role": author/editor/translator/contributor/series_editor, "name": "First Last"}),
+    series, series_number, volume, volumes, edition, publisher, publisher_address (place),
+    year, holder (rights; blank = the authors, else the editors), isbn_print, isbn_ebook,
+    call_number (blank = no line), credits, printed_in, notices (names from the profile's
+    library), half_title (True), contents (True), contents_pages (None = estimated).
+    (Before book version 2 a single "author" string; Book.load upgrades it.)
+
+The title page has a byline per role, in the creators' order: authors' names alone, then
+"Edited by ...", "Translated by ..." (wording per language in TEXT, so another language is a
+table entry). Contributors and series editors don't go on the title page.
 """
 
 import datetime
@@ -21,25 +29,111 @@ from .idml.model import Paragraph, Run
 TEXT = {
     "en": {"contents": "Contents", "rights": "All rights reserved.",
            "copyright": "Copyright © {year} by {holder}", "printed": "Printed in {country}",
-           "isbn_print": "ISBN {isbn} (paperback)", "isbn_ebook": "ISBN {isbn} (ebook)"},
+           "isbn_print": "ISBN {isbn} (paperback)", "isbn_ebook": "ISBN {isbn} (ebook)",
+           "editor": "Edited by {names}", "translator": "Translated by {names}",
+           "and": "and", "serial_comma": True, "volume": "Volume {n}",
+           "volume_of": "Volume {n} of {total}", "series": "{series}",
+           "series_number": "{series} {number}", "call_number": "Call number: {number}"},
     "es": {"contents": "Contenido", "rights": "Todos los derechos reservados.",
            "copyright": "© {year} {holder}", "printed": "Impreso en {country}",
-           "isbn_print": "ISBN: {isbn} (rústica)", "isbn_ebook": "ISBN: {isbn} (libro electrónico)"},
+           "isbn_print": "ISBN: {isbn} (rústica)", "isbn_ebook": "ISBN: {isbn} (libro electrónico)",
+           "editor": "Edición de {names}", "translator": "Traducción de {names}",
+           "and": "y", "serial_comma": False, "volume": "Volumen {n}",
+           "volume_of": "Volumen {n} de {total}", "series": "{series}",
+           "series_number": "{series} {number}", "call_number": "Signatura: {number}"},
 }
+
+# Contributor roles, in the order the window offers them; those with a title-page byline.
+ROLES = ("author", "editor", "translator", "contributor", "series_editor")
+ROLE_LABELS = {"author": "author", "editor": "editor", "translator": "translator",
+               "contributor": "contributor", "series_editor": "series editor"}
+BYLINE_ROLES = ("author", "editor", "translator")
+_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "phd", "ph.d.", "dmin", "d.min.",
+             "thd", "th.d.", "md", "m.d."}
+
+
+def split_names(text):
+    """Names in a line: "Nicolas Ellen, Josh Stephens, and Brett Williams" -> three names;
+    "John Smith, Jr." stays one."""
+    import re
+    parts = [x.strip() for x in re.split(r",\s*(?:and\s+|&\s*)?|\s+(?:and|&|y)\s+|;\s*",
+                                           text or "") if x and x.strip()]
+    names = []
+    for part in parts:
+        if names and part.casefold() in _SUFFIXES:
+            names[-1] += ", " + part
+        else:
+            names.append(part)
+    return names
+
+
+def join_names(names, lang="en"):
+    """"A", "A and B", "A, B, and C" (Chicago's serial comma; none in Spanish)."""
+    t = texts(lang)
+    names = [n for n in names if n]
+    if len(names) <= 2:
+        return (" %s " % t["and"]).join(names)
+    last = (", " if t["serial_comma"] else " ") + t["and"] + " " + names[-1]
+    return ", ".join(names[:-1]) + last
+
+
+def creators(front, outline=None):
+    """The book's creators: the settings' list, else an old single "author", else what the
+    manuscript showed (outline.creators, or its author line)."""
+    listed = [c for c in (front or {}).get("creators") or [] if (c.get("name") or "").strip()]
+    if listed:
+        return [{"role": c.get("role") or "author", "name": c["name"].strip()} for c in listed]
+    if (front or {}).get("author"):
+        return [{"role": "author", "name": n} for n in split_names(front["author"])]
+    if outline is not None and getattr(outline, "creators", None):
+        return list(outline.creators)
+    if outline is not None and outline.author:
+        return [{"role": "author", "name": n} for n in split_names(outline.author)]
+    return []
+
+
+def bylines(people, lang="en"):
+    """Title-page lines: one per byline role, in the order the roles first appear."""
+    t = texts(lang)
+    order, names = [], {}
+    for c in people:
+        if c["role"] in BYLINE_ROLES:
+            if c["role"] not in names:
+                order.append(c["role"])
+            names.setdefault(c["role"], []).append(c["name"])
+    lines = []
+    for role in order:
+        joined = join_names(names[role], lang)
+        lines.append(joined if role == "author" else t[role].format(names=joined))
+    return lines
 
 def texts(lang):
     return TEXT.get(lang, TEXT["en"])
 
 
-def book_info(outline, front=None):
+def book_info(outline, front=None, lang="en"):
     """The book's details: the settings first, then what was detected. Returns (info, notes);
     notes name what had to be left as a placeholder."""
     front = dict(front or {})
+    people = creators(front, outline)
+    by_role = {}
+    for c in people:
+        by_role.setdefault(c["role"], []).append(c["name"])
+    # "The author" where one name is wanted (copyright holder, a running head): the authors,
+    # else the editors, else the translators.
+    lead = next((by_role[r] for r in BYLINE_ROLES if by_role.get(r)), [])
     info = {
         "half_title": front.get("half_title", True),
         "title": front.get("title") or outline.title,
         "subtitle": front.get("subtitle") or outline.subtitle,
-        "author": front.get("author") or outline.author,
+        "creators": people,
+        "bylines": bylines(people, lang),
+        "author": join_names(lead, lang),
+        "series": front.get("series") or "",
+        "series_number": front.get("series_number") or "",
+        "volume": front.get("volume") or "",
+        "volumes": front.get("volumes") or "",
+        "call_number": front.get("call_number") or "",
         "short_title": front.get("short_title"),
         "publisher": front.get("publisher") or "",
         "publisher_address": front.get("publisher_address") or "",
@@ -61,22 +155,36 @@ def book_info(outline, front=None):
                      "in the book settings.")
     if not info["author"]:
         info["author"] = "[Author]"
-        notes.append("No author was found: the title page says [Author]. Enter the author in "
-                     "the book settings.")
+        info["bylines"] = ["[Author]"]
+        notes.append("No author or editor was found: the title page says [Author]. Add the "
+                     "contributors in Book Details.")
     if not info["holder"]:
         info["holder"] = info["author"]
     return info, notes
 
 
-def half_title(info):
-    return [Paragraph("Half Title", [Run(info["title"])])]
+def half_title(info, lang="en"):
+    """The half-title: the title, and the series (with its number) when there is one."""
+    paras = [Paragraph("Half Title", [Run(info["title"])])]
+    if info.get("series"):
+        t = texts(lang)
+        line = t["series_number"].format(series=info["series"], number=info["series_number"]) \
+            if info.get("series_number") else t["series"].format(series=info["series"])
+        paras.append(Paragraph("Series", [Run(line)]))
+    return paras
 
 
-def title_page(info):
+def title_page(info, lang="en"):
+    t = texts(lang)
     paras = [Paragraph("Book Title", [Run(info["title"])])]
     if info["subtitle"]:
         paras.append(Paragraph("Book Subtitle", [Run(info["subtitle"])]))
-    paras.append(Paragraph("Author", [Run(info["author"])]))
+    if info.get("volume"):
+        line = t["volume_of"].format(n=info["volume"], total=info["volumes"]) \
+            if info.get("volumes") else t["volume"].format(n=info["volume"])
+        paras.append(Paragraph("Volume", [Run(line)]))
+    for line in info.get("bylines") or [info["author"]]:
+        paras.append(Paragraph("Author", [Run(line)]))
     if info["publisher"]:
         paras.append(Paragraph("Publisher", [Run(info["publisher"])]))
     return paras
@@ -109,6 +217,8 @@ def copyright_page(info, lang, library=()):
         isbns.append(t["isbn_print"].format(isbn="[ISBN]"))
         notes.append("The copyright page has [ISBN] where the ISBN goes. Enter it in the book "
                      "settings (or delete the line if the book has none).")
+    if info.get("call_number"):
+        isbns.append(t["call_number"].format(number=info["call_number"]))
     paras.append(Paragraph("Copyright", [Run("\n".join(isbns))]))
     last = [x for x in (t["printed"].format(country=info["printed_in"])
                         if info["printed_in"] else "", info["edition"]) if x]

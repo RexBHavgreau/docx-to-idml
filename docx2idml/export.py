@@ -504,6 +504,9 @@ class Exporter(PaginationMixin):
               leading=_half(size * 2)),
             S("Publisher", "Book Title", {"PointSize": size, "SpaceBefore": lead * 6},
               leading=lead),
+            S("Series", "Half Title", {"PointSize": size, "SpaceBefore": lead * 2,
+                                       "FontStyle": "Italic"}, leading=lead),
+            S("Volume", "Book Subtitle", {"SpaceBefore": lead}),
             S("Copyright", "Body", {"PointSize": size - 2, "FirstLineIndent": 0,
                                     "Justification": "LeftAlign", "Hyphenation": False,
                                     "SpaceAfter": _half(lead / 2)}, leading=note_lead),
@@ -1215,10 +1218,10 @@ class Exporter(PaginationMixin):
         manuscript's display pages, the reserved contents, then front matter, text and back
         matter. Returns [Block]."""
         front = self.settings.get("front", {})
-        info, notes = frontmatter.book_info(self.outline, front)
+        lang = self.profile["front_matter"].get("language", "en")
+        info, notes = frontmatter.book_info(self.outline, front, lang)
         self.info = info
         self.report += notes
-        lang = self.profile["front_matter"].get("language", "en")
         display, front_units, rest, praise = [], [], [], []
         ms_copyright, extras = [], []
         for unit, paras in stories:
@@ -1246,8 +1249,8 @@ class Exporter(PaginationMixin):
         g = lambda kind, title, typ: Unit(kind, typ, title, "", -1, "generated")  # noqa: E731
         if info["half_title"]:
             blocks.append(Block(g("display", "Half title", "half title"),
-                                frontmatter.half_title(info), sink=_half(self.text_height / 4)))
-        blocks.append(Block(g("display", "Title page", "title page"), frontmatter.title_page(info),
+                                frontmatter.half_title(info, lang), sink=_half(self.text_height / 4)))
+        blocks.append(Block(g("display", "Title page", "title page"), frontmatter.title_page(info, lang),
                             sink=_half(self.text_height / 5)))
         if ms_copyright:
             # The manuscript's own copyright page, used as it is: no generated one beside it.

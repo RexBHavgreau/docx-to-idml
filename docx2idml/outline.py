@@ -157,6 +157,7 @@ class Outline:
     subtitle_source: str = None
     author: str = None
     author_source: str = None
+    creators: list = field(default_factory=list)   # [{"role", "name"}] when the role is known
     file_creator: str = None        # docProps creator: usually whoever made the file
     copyright_found: bool = False
     toc_field: bool = False         # a Word contents field (it will be replaced)
@@ -406,8 +407,10 @@ def _copyright_file(out, fo, units):
         line = " ".join(p.text.split())
         m = _EDITED.match(line)
         if m and not out.author and len(line) < 160:
+            from .frontmatter import split_names
             out.author, out.author_source = m.group(2).strip(), \
-                'the copyright page ("%s")' % line[:40]
+                "the copyright page's \u201c%s\u201d line" % m.group(1).strip().capitalize()
+            out.creators = [{"role": "editor", "name": n} for n in split_names(m.group(2))]
     return True
 
 

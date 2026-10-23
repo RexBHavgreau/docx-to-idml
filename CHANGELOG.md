@@ -2,6 +2,19 @@
 
 ## 0.6.0 (not yet released)
 
+- Book Details is now a bibliographic record for the book (modelled on Zotero's Book item):
+  title, subtitle, short title; contributors; series and number in the series, volume and
+  number of volumes, edition, publisher, place, copyright year and holder, ISBNs, call number
+  (blank: no line), credits, printed in. Contributors are a list in title-page order, each an
+  author, editor, translator, contributor or series editor (Add, Change, Remove, Move up,
+  Move down). The title page has a byline per role in that order: the authors' names, "Edited
+  by ...", "Translated by ..." (Chicago style: "A, B, and C"); the wording comes from the
+  book's language (English, and Spanish, so other languages can be added). The copyright
+  holder and the "author" running head use the authors, else the editors. The series goes on
+  the half-title, the volume ("Volume 2 of 3") on the title page, the call number on the
+  copyright page. "Fill from the manuscript" fills the contributors (editors from a copyright
+  page's "Edited by" line). Saved books are upgraded: the old Author field becomes an author.
+  The tab is in sections: Title, Contributors, Pages, Publication.
 - Headings set by formatting: a manuscript without heading styles (headings made bigger,
   bold, centered or in capitals by hand) has its headings found by their look. Paragraphs
   that look alike form a group ("[16 pt bold centered]", "[bold]"...), ranked by prominence:
