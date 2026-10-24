@@ -13,7 +13,8 @@ new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md)
 - **0.8.0** (in progress): Hebrew or Greek in running heads gets masters of its own by
   default when the head font lacks it, with a pop-up saying so; the "Open the export folder"
   button is back after an export; long web addresses (in footnotes) break at Chicago's break
-  points instead of being spaced out; the report names the last pages to check.
+  points instead of being spaced out; the report names the last pages to check; other
+  programs can run the converter (`convert` command, docs/ENGINE.md).
 - **0.7.0** (October 23, 2026, latest release): chapter openings lowered by their style
   (the drop moves with the title; adjustable), full-height text frames; running heads in
   title or sentence case, with boldface and underline; the title on the copyright page; a
@@ -52,6 +53,12 @@ What has been tried with the exported IDML, so you can decide whether it fits yo
 | **Affinity** | **Works**, with limits (tested) | Hebrew is reversed (Affinity can't set it right to left), so use InDesign for Hebrew. Tables don't break across pages. Affinity doesn't add pages when a chapter runs long; add them by hand. The contents is placed by hand from the Contents style. |
 | **DesignCraft** (0.12.0) | **Works** (tested on a 0.6.0 export) | Pages, footnotes, chapters on right-hand pages, front matter and page numbers come through, and Hebrew in the text reads right to left. A running head can use only one font, so since 0.8.0 a chapter whose head has Hebrew the head font lacks gets a master of its own with the head as text. Like Affinity, DesignCraft doesn't add pages when a chapter runs long; add them by hand. |
 | **Scribus** (1.6.1) | **Not recommended** (tested) | The pages, masters, running heads, page numbers, images and tables come through, but every font is replaced by Scribus's default (so italic and bold are lost too) and the **footnotes are dropped entirely**. Scribus does the same with files InDesign itself writes, so this is a limit of Scribus's IDML import. |
+
+## Use from other programs
+
+Other programs (such as Ectype OCR) run the installed .exe with the `convert` command and read
+the result from a JSON file; the converter keeps updating itself, so they always use the latest
+version. See [docs/ENGINE.md](docs/ENGINE.md).
 
 ## The window
 
@@ -125,6 +132,8 @@ python tests/test_writer.py
 python tests/test_export.py
 python tests/test_layout.py
 python tests/test_updates.py
+python tests/test_service.py  # the convert command for other programs
+python tests/test_golden.py   # the output against tests/golden/ (--update after an intended change)
 python tests/test_gui.py      # needs a display (xvfb-run on Linux)
 ```
 

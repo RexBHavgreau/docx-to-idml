@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<idPkg:Story xmlns:idPkg="http://ns.adobe.com/AdobeInDesign/idml/1.0/packaging" DOMVersion="21.5">
+<Story Self="u104a" AiGeneratedStory="false" AiModelName="$ID/" AiDigitalSourceType="$ID/" AiFirstParty="false" AiTextContent="$ID/" AppliedTOCStyle="n" UserText="true" IsEndnoteStory="false" TrackChanges="false" StoryTitle="$ID/" AppliedNamedGrid="n">
+<StoryPreference OpticalMarginAlignment="true" OpticalMarginSize="11" FrameType="TextFrameType" StoryOrientation="Horizontal" StoryDirection="LeftToRightDirection"/>
+<InCopyExportOption IncludeGraphicProxies="true" IncludeAllResources="false"/>
+<ParagraphStyleRange AppliedParagraphStyle="ParagraphStyle/Chapter Title">
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]">
+<Content>Preface</Content>
+<Br/>
+</CharacterStyleRange>
+</ParagraphStyleRange>
+<ParagraphStyleRange AppliedParagraphStyle="ParagraphStyle/Body First">
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]">
+<Content>The covenant formula recurs throughout the prophets with small but telling changes. Each change of wording marks a shift in the relationship the text describes. Readers in the early church heard these passages through the Greek translation. That translation smooths some difficulties of the Hebrew and sharpens others. A careful edition keeps both voices audible without forcing them into agreement. The apparatus at the foot of the page records where the witnesses part ways. Some of these differences are accidents of copying; others are deliberate. Distinguishing the two requires attention to the habits of each scribe. The argument of this chapter proceeds from the clearer cases to the harder ones. Office workers, affluent patrons and fifty-five official scribes all appear in the record. This book uses </Content>
+</CharacterStyleRange>
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/Italic">
+<Content>italic</Content>
+</CharacterStyleRange>
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]">
+<Content> for titles such as </Content>
+</CharacterStyleRange>
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/Italic">
+<Content>Biblia Hebraica Stuttgartensia</Content>
+</CharacterStyleRange>
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]">
+<Content>.</Content>
+</CharacterStyleRange>
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/Footnote Reference">
+<Footnote>
+<ParagraphStyleRange AppliedParagraphStyle="ParagraphStyle/Footnote">
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]" FontStyle="Regular" PointSize="9" FirstLineIndent="9" Justification="LeftJustified">
+<Properties>
+<AppliedFont type="string">Golden Test Font</AppliedFont>
+<Leading type="unit">11</Leading>
+</Properties>
+<Content>
+<?ACE 4?>. </Content>
+</CharacterStyleRange>
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]" FontStyle="Regular" PointSize="9" FirstLineIndent="9" Justification="LeftJustified">
+<Properties>
+<AppliedFont type="string">Golden Test Font</AppliedFont>
+<Leading type="unit">11</Leading>
+</Properties>
+<Content>Abbreviations follow the SBL </Content>
+</CharacterStyleRange>
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/No Break" FontStyle="Regular" PointSize="9" FirstLineIndent="9" Justification="LeftJustified">
+<Properties>
+<AppliedFont type="string">Golden Test Font</AppliedFont>
+<Leading type="unit">11</Leading>
+</Properties>
+<Content>Handbook of Style.</Content>
+</CharacterStyleRange>
+</ParagraphStyleRange>
+</Footnote>
+</CharacterStyleRange>
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]">
+<Br/>
+</CharacterStyleRange>
+</ParagraphStyleRange>
+<ParagraphStyleRange AppliedParagraphStyle="ParagraphStyle/Body">
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/$ID/[No character style]">
+<Content>That translation smooths some difficulties of the Hebrew and sharpens others. A careful edition keeps both voices audible without forcing them into agreement. The apparatus at the foot of the page records where the witnesses part ways. Some of these differences are accidents of copying; others are deliberate. Distinguishing the two requires attention to the habits of each scribe. The argument of this chapter proceeds from the clearer cases to the harder ones. Office workers, affluent patrons and fifty-five official scribes all appear in the record. The covenant formula recurs throughout the prophets with small but telling changes. Each change of wording marks a shift in the relationship the text describes. Readers in the early church heard these passages through the Greek translation. That translation smooths some difficulties of the Hebrew and sharpens others. A careful edition keeps both voices audible without forcing them into agreement. The apparatus at the foot of the page records where the witnesses </Content>
+</CharacterStyleRange>
+<CharacterStyleRange AppliedCharacterStyle="CharacterStyle/No Break">
+<Content>part ways.</Content>
+</CharacterStyleRange>
+</ParagraphStyleRange>
+</Story>
+</idPkg:Story>

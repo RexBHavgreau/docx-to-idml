@@ -2,6 +2,16 @@
 
 ## 0.8.0 (not yet released)
 
+- Other programs (Ectype OCR first) can use the converter: the .exe takes a `convert` command
+  (no window), writes the result as JSON (the IDML's path, the report, pop-up alerts, or a
+  plain error), and records its own location in `program.json` in the settings folder at
+  every start, so callers find the current version. The first `convert` of each day starts a
+  silent update check in a separate copy of the program; a newer release is downloaded beside
+  it and becomes the one callers use. An `update` command does the same on demand. Described
+  in docs/ENGINE.md. The build checks the .exe's `convert` on Windows.
+- Golden tests (tests/golden/): two exports (the sample book and a paper with Hebrew heads,
+  Greek, footnotes and headings by formatting) compared part by part, so no change to the
+  output goes unnoticed.
 - The export report names the chapters (and other units) whose last page the estimate
   leaves nearly full (over 80%: they may run past it in Affinity and DesignCraft, which
   don't add pages) or nearly empty (under 20%: the page may be left blank), with the page,

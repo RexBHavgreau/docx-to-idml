@@ -53,9 +53,10 @@ keep it up to date when decisions change.
 | `docx2idml/frontmatter.py` | Step 6: book details (settings, then detected, else bracketed placeholders), half-title, title, copyright (English/Spanish, notices from the profile's library), contents entries and reserved pages |
 | `docx2idml/textcase.py`, `preview.py` | Title and sentence case for running heads (Chicago); the generated front pages as lines with sizes, for the window's preview (0.7.0) |
 | `docx2idml/fonts.py` | Installed fonts (system and user folders) and a font's average character width (fontTools), for the measure |
-| `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile`; no arguments opens the window |
+| `docx2idml/cli.py` | `python -m docx2idml preflight / export / profile / convert / update` (the .exe takes the same; no arguments opens the window) |
 | `docx2idml/gui.py` | Step 7, the window (ttk): Files, Book Details, Running Heads, Layout Profile, Style Map, Report tabs; forms declared as field tables bound to the profile and book settings; work in threads, results through a queue polled by the window |
 | `docx2idml/gui_book.py` | `BookTabMixin` of the window (moved out of gui.py, 0.6.0): the Book Details tab, filling from the manuscript, the notice library |
+| `docx2idml/service.py`, `docs/ENGINE.md` | The converter as a tool for other programs (0.8.0): `convert` (JSON result), `program.json` (the .exe's location, rewritten at every start by `cli.main`), the silent daily update (`daily_check` starts a detached `update --quiet`); the contract for callers, API version 1 |
 | `docx2idml/updates.py`, `appsettings.py` | Update check and install (as Indicat's: versioned .exe beside the running one, SHA-256 digest, Downloads fallback, older copies offered for deletion); the program's own settings.json |
 | `run_app.py`, `build_exe.bat`, `.github/workflows/build.yml` | The .exe (PyInstaller, one file, "docx-to-idml-X.Y.Z.exe", with `docx2idml/idml/base`); the workflow builds and releases on a `vX.Y.Z` tag, or by hand |
 | `docx2idml/idml/` | The IDML writer: `model.py` (the book as pages, styles, stories, sections), `writer.py`, `images.py` (image size and resolution from file headers), `base/` (InDesign's own settings and root styles, made by `tools/make_base.py` from reference 01; `snippets.xml` holds elements the writer clones) |
@@ -296,6 +297,13 @@ keep it up to date when decisions change.
   `fill` (raw estimate, `_estimate(..., raw=True)`, minus the full pages);
   `PaginationMixin._fit_note` reports fill > FULL (0.8) or < EMPTY (0.2) with the folio
   (`writer.page_names(doc)`).
+- Other programs (0.8.0, Beaux: a separate tool, not a library): `run_app.py` calls
+  `cli.main` (no arguments = the window). Keep `convert`'s arguments and the result's fields
+  working within API version 1 (`service.API_VERSION`); raise it only for breaking changes and
+  update docs/ENGINE.md. When the tool is renamed (APP_NAME), keep writing `program.json` in
+  the old settings folder too, or callers lose the program. Golden files (`tests/golden/`,
+  LF line endings by .gitattributes) use fonts installed nowhere and a fixed year; any change
+  to the output shows there.
 - Web addresses (0.8.0): `export.url_breaks` puts zero-width spaces at Chicago 6.8's break
   points in every run's text (after `_merge_runs`), so justified lines with long links
   don't letter-space.
@@ -337,6 +345,8 @@ python tests/test_writer.py
 python tests/test_export.py
 python tests/test_layout.py
 python tests/test_updates.py
+python tests/test_service.py
+python tests/test_golden.py          # --update after an intended change to the output (say so in the commit)
 python tests/test_gui.py             # needs a display: on Linux, xvfb-run (and python3-tk)
 ```
 

@@ -155,14 +155,16 @@ def install(asset, version, progress=None, folder=None, fallback=None, opener=No
         return download(asset, fb / exe_name(version), progress, opener=opener), True
 
 
-def launch(exe):
-    """Start another copy of the program, independent of this one."""
+def launch(exe, args=()):
+    """Start another copy of the program, independent of this one (with command-line
+    arguments, e.g. a silent update check)."""
     env = dict(os.environ)
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"   # the new copy must not reuse this one's files
     flags = 0
     if sys.platform == "win32":
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-    subprocess.Popen([str(exe)], cwd=str(Path(exe).parent), env=env, close_fds=True,
+    subprocess.Popen([str(exe)] + list(args), cwd=str(Path(exe).parent), env=env,
+                     close_fds=True,
                      creationflags=flags)
 
 

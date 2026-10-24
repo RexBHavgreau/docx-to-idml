@@ -1,6 +1,9 @@
-"""Command line: python -m docx2idml preflight|export|profile ..."""
+"""Command line: python -m docx2idml preflight|export|profile|convert|update ... (the built .exe
+takes the same commands; with none it opens the window). `convert` and `update` are for other
+programs calling the converter (docs/ENGINE.md)."""
 
 import argparse
+import os
 import sys
 
 from . import __version__
@@ -88,8 +91,36 @@ def cmd_profile(args):
     return 0
 
 
+def cmd_convert(args):
+    """For other programs: export, write the result as JSON, and once a day start a silent
+    update check (docs/ENGINE.md)."""
+    from . import service
+    result = service.convert(args.files, args.out, args.profile, args.name, args.book)
+    service.write_result(result, args.result)
+    try:
+        service.daily_check()
+    except Exception:
+        pass                          # never let the update check spoil a conversion
+    return 0 if result["ok"] else 2
+
+
+def cmd_update(args):
+    from . import service
+    outcome = service.quiet_update()
+    if not args.quiet:
+        print(outcome)
+    return 0 if not outcome.startswith("error") else 2
+
+
 def main(argv=None):
-    if (sys.argv[1:] if argv is None else argv) == []:
+    argv = sys.argv[1:] if argv is None else argv
+    # The built .exe has no console: give print and argparse somewhere to write.
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name) is None:
+            setattr(sys, name, open(os.devnull, "w"))
+    from . import service
+    service.record_location()
+    if argv == []:
         from .gui import main as gui_main      # no arguments: open the window
         return gui_main()
     ap = argparse.ArgumentParser(prog="docx2idml", description="Word manuscript to IDML book.")
@@ -116,6 +147,21 @@ def main(argv=None):
     ex.add_argument("--book", help="book settings file (keeps the file order)")
     ex.add_argument("--sort", action="store_true", help="sort the files by name (natural order)")
     ex.set_defaults(func=cmd_export)
+
+    cv = sub.add_parser("convert", help="for other programs: export and write the result as "
+                                         "JSON (see docs/ENGINE.md)")
+    cv.add_argument("files", nargs="*", help=".docx files or folders, in book order")
+    cv.add_argument("--result", required=True, help="JSON file to write the result to")
+    cv.add_argument("--out", default=".", help="folder to put the export folder in")
+    cv.add_argument("--name", help="name of the export folder and IDML (default: the book title)")
+    cv.add_argument("--profile", help="profile name or .json file")
+    cv.add_argument("--book", help="book settings file")
+    cv.set_defaults(func=cmd_convert)
+
+    up = sub.add_parser("update", help="check for a newer version and download it beside this "
+                                       "one, without asking")
+    up.add_argument("--quiet", action="store_true", help="print nothing")
+    up.set_defaults(func=cmd_update)
 
     pr = sub.add_parser("profile", help="list, show, create, export or import profiles")
     pr.add_argument("action", choices=["list", "show", "new", "export", "import"])
