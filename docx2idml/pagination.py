@@ -26,6 +26,10 @@ from .layout import _half
 from .idml.model import Frame, Master, Paragraph, Run, Section, Story, TOCStyle
 
 
+# A unit's last page by the estimate: fuller than this may run past it, emptier than this may
+# be left blank (`_fit_note`).
+FULL, EMPTY = 0.8, 0.2
+
 # Styles that carry an opener's drop (`_sinks`).
 SINK_STYLES = ("Chapter Title", "Contents Title", "Book Title", "Half Title")
 
@@ -86,6 +90,11 @@ class PaginationMixin:
             spare = b.spare if b.spare is not None else \
                 (0 if kind in ("display", "part") else self._spare())
             est = b.pages or self._estimate(b.paras, b.sink)
+            # How full the estimate leaves the last page, for the report (texts only; set
+            # page counts and display pages are as they are).
+            b.est, b.fill = est, None
+            if not b.pages and kind not in ("display", "part"):
+                b.fill = self._estimate(b.paras, b.sink, raw=True) - (est - 1)
             items.append((kind, est, spare, b.opens))
         placed, count, masters, first_body = layout.plan_pages(
             items, self.profile.get("chapters_open", "recto"))
@@ -123,6 +132,7 @@ class PaginationMixin:
                 script_heads.append((marker, part if body else None, pages))
         doc.page_count = max(count, 1)
         doc.page_masters = masters
+        self._fit_note(blocks, placed)
         if not doc.sections:
             doc.sections = [Section(0, start=1)]
         self._masters(part_masters)
@@ -180,6 +190,36 @@ class PaginationMixin:
         page.opener_drop in points, else six body lines."""
         drop = (self.profile.get("page") or {}).get("opener_drop")
         return _half(drop) if drop else _half(self.body_lead * 6)
+
+    def _fit_note(self, blocks, placed):
+        """Name the units whose estimated last page is nearly full (they may run past it in
+        Affinity and DesignCraft, which don't add pages; InDesign adds them itself) or nearly
+        empty (the page may be left blank). The estimate can't know every program's line
+        breaks, nor a font substituted on another computer."""
+        from .idml.writer import page_names
+        names = page_names(self.doc)
+        full, empty = [], []
+        for b, pl in zip(blocks, placed):
+            fill = b.fill
+            if fill is None or not pl.pages:
+                continue
+            last = names[min(pl.start + b.est - 1, len(names) - 1)]
+            title = b.title if not b.title.startswith("(") else b.kind
+            if fill > FULL:
+                full.append("%s (to page %s)" % (title, last))
+            elif fill < EMPTY and b.est > 1:
+                empty.append("%s (page %s)" % (title, last))
+        if full:
+            self.report.append(
+                "Check where these end: their last page is nearly full by the estimate, so "
+                "they may run past it: %s. InDesign adds a page itself; in Affinity or "
+                "DesignCraft, add a page if the text frame shows more text." % "; ".join(full))
+        if empty:
+            self.report.append(
+                "Check these last pages: by the estimate they hold only a line or two, and may "
+                "be left empty: %s. Leave an empty page in place, with the E-Blank master "
+                "applied so it has no running head; deleting a single page moves every later "
+                "chapter to the other side." % "; ".join(empty))
 
     def _sinks(self, blocks):
         """Lower each opener's first paragraph by its block's sink, in the paragraph style

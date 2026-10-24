@@ -292,6 +292,10 @@ keep it up to date when decisions change.
   Volume style), call_number (copyright page; blank = none). `book.BOOK_VERSION` 2:
   `book.migrate_settings` turns the old "author" into creators. GUI: `gui_book.BookTabMixin`
   (`app.creators`, `add/change/remove/move_creator`).
+- Last pages to check (0.8.0): `_paginate` keeps each estimated block's `Block.est` and
+  `fill` (raw estimate, `_estimate(..., raw=True)`, minus the full pages);
+  `PaginationMixin._fit_note` reports fill > FULL (0.8) or < EMPTY (0.2) with the folio
+  (`writer.page_names(doc)`).
 - Web addresses (0.8.0): `export.url_breaks` puts zero-width spaces at Chicago 6.8's break
   points in every run's text (after `_merge_runs`), so justified lines with long links
   don't letter-space.

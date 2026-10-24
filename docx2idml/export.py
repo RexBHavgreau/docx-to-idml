@@ -94,6 +94,8 @@ class Block:
     sink: float = None            # None = by kind
     pages: int = None             # fixed page count (reserved contents), else estimated
     valign: str = None            # e.g. "BottomAlign" (copyright page)
+    est: int = None               # pages estimated for the text (set when paginating)
+    fill: float = None            # how full the estimate leaves its last page (0-1)
 
     @property
     def kind(self):
@@ -1190,8 +1192,9 @@ class Exporter(PaginationMixin):
                                (n_end, "" if n_end == 1 else "s"))
         return [(u, p) for u, p in stories if p]
 
-    def _estimate(self, paras, sink):
-        """Pages a story needs: lines of text at the styles' sizes, notes, tables, images."""
+    def _estimate(self, paras, sink, raw=False):
+        """Pages a story needs: lines of text at the styles' sizes, notes, tables, images.
+        raw: the estimate as a fraction of pages, before the slack and rounding up."""
         def lines(p, measure):
             attrs, _font, leading = self.doc.resolved(p.style)
             size = attrs.get("PointSize", self.body_size)
@@ -1223,6 +1226,8 @@ class Exporter(PaginationMixin):
         per_page = (fn.get("space_above") or 0) + \
             ((fn.get("space_below_rule") or 0) + 0.5 if fn.get("rule") else 0)
         height += min(notes, math.ceil(height / self.text_height)) * per_page
+        if raw:
+            return height / self.text_height
         # Lines lost at page feet (keeps, widows, notes that can't split) grow with the
         # length: SLACK of each page. A story whose text runs past its pages makes InDesign's
         # Smart Text Reflow add a page, out of place among the chapters' spreads.

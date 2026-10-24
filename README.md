@@ -13,7 +13,7 @@ new versions itself. The full list of changes is in [CHANGELOG.md](CHANGELOG.md)
 - **0.8.0** (in progress): Hebrew or Greek in running heads gets masters of its own by
   default when the head font lacks it, with a pop-up saying so; the "Open the export folder"
   button is back after an export; long web addresses (in footnotes) break at Chicago's break
-  points instead of being spaced out.
+  points instead of being spaced out; the report names the last pages to check.
 - **0.7.0** (October 23, 2026, latest release): chapter openings lowered by their style
   (the drop moves with the title; adjustable), full-height text frames; running heads in
   title or sentence case, with boldface and underline; the title on the copyright page; a

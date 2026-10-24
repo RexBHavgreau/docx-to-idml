@@ -70,6 +70,34 @@ def _num(v):
     return str(v)
 
 
+def page_numbers(doc):
+    """[(page number, its section)] for every page."""
+    out = []
+    sections = sorted(doc.sections, key=lambda s: s.page)
+    number = 0
+    for i in range(doc.page_count):
+        sec = [s for s in sections if s.page <= i][-1]
+        if sec.page == i:
+            number = sec.start if sec.start is not None else number + 1
+        else:
+            number += 1
+        out.append((number, sec))
+    return out
+
+
+def page_names(doc):
+    """Each page's folio as printed: "iv", "12"."""
+    names = []
+    for number, sec in page_numbers(doc):
+        if sec.numbering == "LowerRoman":
+            names.append(roman(number))
+        elif sec.numbering == "UpperRoman":
+            names.append(roman(number, True))
+        else:
+            names.append(str(number))
+    return names
+
+
 def roman(n, upper=False):
     vals = [(1000, "m"), (900, "cm"), (500, "d"), (400, "cd"), (100, "c"), (90, "xc"), (50, "l"),
             (40, "xl"), (10, "x"), (9, "ix"), (5, "v"), (4, "iv"), (1, "i")]
@@ -372,30 +400,10 @@ class Writer:
         return groups
 
     def _page_numbers(self):
-        """[(page number, its section)] for every page."""
-        doc = self.doc
-        out = []
-        sections = sorted(doc.sections, key=lambda s: s.page)
-        number = 0
-        for i in range(doc.page_count):
-            sec = [s for s in sections if s.page <= i][-1]
-            if sec.page == i:
-                number = sec.start if sec.start is not None else number + 1
-            else:
-                number += 1
-            out.append((number, sec))
-        return out
+        return page_numbers(self.doc)
 
     def _page_names(self):
-        names = []
-        for number, sec in self._page_numbers():
-            if sec.numbering == "LowerRoman":
-                names.append(roman(number))
-            elif sec.numbering == "UpperRoman":
-                names.append(roman(number, True))
-            else:
-                names.append(str(number))
-        return names
+        return page_names(self.doc)
 
     def _descriptor(self, page, number, sec):
         """Page number information, as InDesign records it on each page: prefix, numbering

@@ -2,6 +2,11 @@
 
 ## 0.8.0 (not yet released)
 
+- The export report names the chapters (and other units) whose last page the estimate
+  leaves nearly full (over 80%: they may run past it in Affinity and DesignCraft, which
+  don't add pages) or nearly empty (under 20%: the page may be left blank), with the page,
+  and says what to do. The estimate can't know each program's line breaks or a font
+  substituted on another computer, so these are the pages to look at first.
 - Running heads with Hebrew or Greek the running-head font lacks now get separate masters by
   default (Beaux): each such chapter has a master of its own with its head written as text,
   so the Hebrew and Greek are set in their fonts in every program instead of printing as

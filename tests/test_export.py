@@ -454,6 +454,31 @@ def test_openers_lowered_by_style():
         ex.cleanup()
 
 
+def test_last_pages_to_check():
+    """The report names units whose estimated last page is nearly full (may run past it in
+    Affinity and DesignCraft) or nearly empty (may be left blank), with the page."""
+    from types import SimpleNamespace as NS
+    from docx2idml.layout import Placed
+    ex = Exporter(_files(), default_profile())
+    try:
+        ex.build()
+        ex.report = []
+        blocks = [NS(title="Full One", kind="chapter", est=2, fill=0.95),
+                  NS(title="Empty One", kind="chapter", est=3, fill=0.05),
+                  NS(title="Fine", kind="chapter", est=2, fill=0.5),
+                  NS(title="(title page)", kind="display", est=1, fill=None)]
+        placed = [Placed(6, 2), Placed(8, 3), Placed(11, 2), Placed(0, 1)]
+        ex._fit_note(blocks, placed)
+        full = [l for l in ex.report if l.startswith("Check where these end")]
+        empty = [l for l in ex.report if l.startswith("Check these last pages")]
+        names = __import__("docx2idml.idml.writer", fromlist=["page_names"]).page_names(ex.doc)
+        assert len(full) == 1 and "Full One (to page %s)" % names[7] in full[0]
+        assert len(empty) == 1 and "Empty One (page %s)" % names[10] in empty[0]
+        assert "Fine" not in full[0] + empty[0]
+    finally:
+        ex.cleanup()
+
+
 def test_opener_drop_from_profile():
     prof = default_profile()
     prof["page"]["opener_drop"] = 72
