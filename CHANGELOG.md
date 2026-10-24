@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.0 (not yet released)
+## 0.8.0 (October 24, 2026)
 
 - Other programs (Ectype OCR first) can use the converter: the .exe takes a `convert` command
   (no window), writes the result as JSON (the IDML's path, the report, pop-up alerts, or a
