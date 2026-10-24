@@ -1,7 +1,13 @@
 # Changelog
 
-## 0.7.1 (not yet released)
+## 0.8.0 (not yet released)
 
+- Running heads with Hebrew or Greek the running-head font lacks now get separate masters by
+  default (Beaux): each such chapter has a master of its own with its head written as text,
+  so the Hebrew and Greek are set in their fonts in every program instead of printing as
+  empty boxes (DesignCraft). A pop-up after the export says what was done and why, and how
+  to keep one master instead. When the head font has the letters, nothing changes. Profile
+  version 10 turns the option on in saved profiles too (off had only been the default).
 - Fixed: the "Open the export folder" button didn't appear after an export (0.7.0 gave the
   tabs all the room it was placed in). It now appears in the export row, beside Export IDML.
 - Fixed: a long web address in justified text (a footnote's EBSCO or JSTOR link) had no

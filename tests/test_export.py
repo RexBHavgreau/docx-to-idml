@@ -551,29 +551,34 @@ def test_title_and_sentence_case():
 
 
 def test_hebrew_running_head_master():
-    """A running head with Hebrew: by default only a note; with script_masters on, the
-    chapter gets R1-Body (A-Body's frames, the head as text in the Hebrew style) and other
-    chapters keep A-Body and the section marker."""
+    """A running head with Hebrew the head font lacks (or can't be checked): by default the
+    chapter gets R1-Body (A-Body's frames, the head as text in the Hebrew style) and the
+    report says so in an Alert (a pop-up in the window); other chapters keep A-Body and the
+    section marker. With script_masters off, only a warning."""
     from idml_check import check
     from docx2idml.idml.writer import write_idml
+    from docx2idml.pagination import Alert
     long = [para("Text of the chapter goes on for a while. " * 30)] * 8
     path = make_docx(os.path.join(TMP, "heb-head.docx"),
                      [para("Book", "Title"), para("One: " + HEB, "Heading1")] + long +
                      [para("Two", "Heading1")] + long)
-    # Off (the default): no extra master; the report says the head's font may lack Hebrew
-    # (a font not installed anywhere, so it couldn't be checked: the same on every machine).
+    # Off: no extra master; the report warns (a font not installed anywhere, so it couldn't
+    # be checked: the same on every machine).
     prof = default_profile()
     prof["running_heads"]["style"]["font"] = "No Such Font"
+    prof["running_heads"]["script_masters"] = False
     ex = Exporter([path], prof)
     try:
         doc = ex.build()
         assert not [m for m in doc.masters if m.name.startswith("R")]
         assert any("A running head can use only one font" in line and HEB in line and
                    "couldn't be checked" in line for line in ex.report)
+        assert not [line for line in ex.report if isinstance(line, Alert)]
     finally:
         ex.cleanup()
     prof = default_profile()
-    prof["running_heads"]["script_masters"] = True
+    prof["running_heads"]["style"]["font"] = "No Such Font"
+    assert prof["running_heads"]["script_masters"] is True          # the default
     ex = Exporter([path], prof)
     try:
         doc = ex.build()
@@ -587,6 +592,8 @@ def test_hebrew_running_head_master():
         assert [f for f in a.frames if f.key == "rhead"][0].paragraphs[0].runs[0].special == \
             "section_marker"
         assert not check(write_idml(doc, os.path.join(TMP, "heb-head.idml")))
+        alerts = [line for line in ex.report if isinstance(line, Alert)]
+        assert len(alerts) == 1 and "R1-Body" in alerts[0] and HEB in alerts[0]
     finally:
         ex.cleanup()
 

@@ -206,10 +206,12 @@ keep it up to date when decisions change.
 - Hebrew/Greek in generated text (0.5.0): `Exporter._generated_scripts` runs after the
   build over every story and master frame, splitting runs not yet in the Hebrew/Greek styles
   (`_script_runs`, the same split as the manuscript's runs). Section markers can't carry a
-  character style. By default (Beaux, 0.6.0) the report warns when the running-head font
-  lacks a head's Hebrew/Greek (`pagination._script_heads_note`); with profile
-  `running_heads.script_masters` on, such a unit gets a copy of its master (R1-Body,
-  R1-Front...) with the head as text (`_script_head_masters`). Profile version 7.
+  character style. Since 0.8.0 (Beaux, after DesignCraft printed boxes): when a head has
+  Hebrew/Greek the running-head font lacks or can't be checked (`_script_head_lack`), the
+  unit gets a copy of its master (R1-Body, R1-Front...) with the head as text
+  (`_script_head_masters`, profile `running_heads.script_masters`, on by default, version
+  10), and the report line is a `pagination.Alert` (a str), which the window also shows in a
+  pop-up after the export. Off: a warning only.
 - Faces (0.5.0): FontStyle for the body and notes styles is `fonts.regular_face()`, the
   installed face's own name (Culmus fonts: "Medium"); "Regular" when not installed here. The
   Hebrew style sets no face (0.6.0, Beaux): Hebrew takes the face around it, and
@@ -290,7 +292,7 @@ keep it up to date when decisions change.
   Volume style), call_number (copyright page; blank = none). `book.BOOK_VERSION` 2:
   `book.migrate_settings` turns the old "author" into creators. GUI: `gui_book.BookTabMixin`
   (`app.creators`, `add/change/remove/move_creator`).
-- Web addresses (0.7.1): `export.url_breaks` puts zero-width spaces at Chicago 6.8's break
+- Web addresses (0.8.0): `export.url_breaks` puts zero-width spaces at Chicago 6.8's break
   points in every run's text (after `_merge_runs`), so justified lines with long links
   don't letter-space.
 - Styles are matched by name (Word writes built-in names in English, lower case, in the file);

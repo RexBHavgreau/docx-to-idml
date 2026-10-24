@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import APP_NAME
 
-PROFILE_VERSION = 9
+PROFILE_VERSION = 10
 
 DEFAULT_PROFILE = {
     "profile_version": PROFILE_VERSION,
@@ -48,9 +48,9 @@ DEFAULT_PROFILE = {
         "suppress_on_openers": True,
         "suppress_on_display": True,
         "suppress_on_blanks": True,
-        # A head with Hebrew or Greek on a master of its own, as text in their fonts (a
-        # section marker takes one font); off: the report says when the font lacks them.
-        "script_masters": False,
+        # A head with Hebrew or Greek the head font lacks: on a master of its own, as text
+        # in their fonts (a section marker takes one font); off: the report only warns.
+        "script_masters": True,
         # The Running Head paragraph style.
         "style": {
             "case": "as_typed",        # as_typed, title, sentence (the letters of the text)
@@ -203,8 +203,16 @@ def _from_8(data):
     return data
 
 
+def _from_9(data):
+    """Version 9: separate masters for Hebrew/Greek running heads were off by default and
+    only a warning was given (heads printed as boxes); 0.8.0 turns them on, also in saved
+    profiles (where off was only the old default)."""
+    data.setdefault("running_heads", {})["script_masters"] = True
+    return data
+
+
 MIGRATIONS = {0: _from_0, 1: _from_1, 2: _from_2, 3: _from_3, 4: _from_4, 5: _from_5,
-              6: _from_6, 7: _from_7, 8: _from_8}   # version n -> function that upgrades it to n + 1
+              6: _from_6, 7: _from_7, 8: _from_8, 9: _from_9}   # version n -> function that upgrades it to n + 1
 
 
 def migrate(data):

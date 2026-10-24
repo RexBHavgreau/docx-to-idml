@@ -501,6 +501,33 @@ def app_auto(app):
     return format_points(app._auto_drop())
 
 
+def test_hebrew_head_alert_after_export():
+    """A chapter head with Hebrew the head font lacks gets a master of its own, and the
+    window says so in a pop-up after the export."""
+    from docx_builder import make_docx, para
+    from docx2idml import gui
+    heb = "\u05e0\u05e9\u05c2\u05d9\u05d0"
+    long = [para("Text of the chapter goes on for a while. " * 30)] * 4
+    path = make_docx(os.path.join(TMP, "heb-alert.docx"),
+                     [para("Book", "Title"), para(heb + " in Ezekiel", "Heading1")] + long)
+    shown = []
+    real = gui.messagebox.showinfo
+    gui.messagebox.showinfo = lambda title, message, **kw: shown.append(message)
+    app, root = _app()
+    try:
+        app._add([path])
+        app.head_style_form.vars[("running_heads", "style", "font")][0].set("No Such Font")
+        out = os.path.join(TMP, "heb-out")
+        os.makedirs(out, exist_ok=True)
+        app.out_var.set(out)
+        app.export()
+        _wait(app, root)
+        assert len(shown) == 1 and "R1-Body" in shown[0] and heb in shown[0]
+    finally:
+        gui.messagebox.showinfo = real
+        app.quit(force=True)
+
+
 def test_cleanup_after_update():
     """The new version offers to delete older copies and retarget shortcuts; declined copies
     aren't asked about again."""
