@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<idPkg:MasterSpread xmlns:idPkg="http://ns.adobe.com/AdobeInDesign/idml/1.0/packaging" DOMVersion="21.5">
+<MasterSpread Self="u100e" ItemTransform="1 0 0 1 0 0" OverriddenPageItemProps="" Name="D-Display" NamePrefix="D" BaseName="Display" ShowMasterItems="true" PageCount="2" PrimaryTextFrame="n">
+<Page Self="u1033" AppliedAlternateLayout="n" LayoutRule="ObjectBased" SnapshotBlendingMode="IgnoreLayoutSnapshots" OptionalPage="false" GeometricBounds="0 0 648 432" ItemTransform="1 0 0 1 -432 -324" Name="D" AppliedTrapPreset="TrapPreset/$ID/kDefaultTrapStyleName" OverrideList="" AppliedMaster="n" MasterPageTransform="1 0 0 1 0 0" TabOrder="" GridStartingPoint="TopOutside" UseMasterGrid="true">
+<Properties>
+<PageColor type="enumeration">UseMasterColor</PageColor>
+</Properties>
+<MarginPreference ColumnCount="1" ColumnGutter="12" Top="43.5" Bottom="58.5" Left="59" Right="43" ColumnDirection="Horizontal" ColumnsPositions="0 330"/>
+<GridDataInformation FontStyle="Regular" PointSize="12" CharacterAki="0" LineAki="9" HorizontalScale="100" VerticalScale="100" LineAlignment="LeftOrTopLineJustify" GridAlignment="AlignEmCenter" CharacterAlignment="AlignEmCenter">
+<Properties>
+<AppliedFont type="string">Minion Pro</AppliedFont>
+</Properties>
+</GridDataInformation>
+</Page>
+<Page Self="u1034" AppliedAlternateLayout="n" LayoutRule="ObjectBased" SnapshotBlendingMode="IgnoreLayoutSnapshots" OptionalPage="false" GeometricBounds="0 0 648 432" ItemTransform="1 0 0 1 0 -324" Name="D" AppliedTrapPreset="TrapPreset/$ID/kDefaultTrapStyleName" OverrideList="" AppliedMaster="n" MasterPageTransform="1 0 0 1 0 0" TabOrder="" GridStartingPoint="TopOutside" UseMasterGrid="true">
+<Properties>
+<PageColor type="enumeration">UseMasterColor</PageColor>
+</Properties>
+<MarginPreference ColumnCount="1" ColumnGutter="12" Top="43.5" Bottom="58.5" Left="59" Right="43" ColumnDirection="Horizontal" ColumnsPositions="0 330"/>
+<GridDataInformation FontStyle="Regular" PointSize="12" CharacterAki="0" LineAki="9" HorizontalScale="100" VerticalScale="100" LineAlignment="LeftOrTopLineJustify" GridAlignment="AlignEmCenter" CharacterAlignment="AlignEmCenter">
+<Properties>
+<AppliedFont type="string">Minion Pro</AppliedFont>
+</Properties>
+</GridDataInformation>
+</Page>
+</MasterSpread>
+</idPkg:MasterSpread>

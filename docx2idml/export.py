@@ -25,6 +25,7 @@ What it does:
 """
 
 import math
+import re
 from dataclasses import dataclass, replace
 import os
 import shutil
@@ -93,6 +94,8 @@ class Block:
     sink: float = None            # None = by kind
     pages: int = None             # fixed page count (reserved contents), else estimated
     valign: str = None            # e.g. "BottomAlign" (copyright page)
+    est: int = None               # pages estimated for the text (set when paginating)
+    fill: float = None            # how full the estimate leaves its last page (0-1)
 
     @property
     def kind(self):
@@ -853,7 +856,11 @@ class Exporter(PaginationMixin):
                 continue
             style, local = self._run_attrs(cr, para_style, docx, note)
             out += self._script_runs(cr.text, style, local, para_style)
-        return _merge_runs(out)
+        out = _merge_runs(out)
+        for r in out:
+            if r.text and ("//" in r.text or "www." in r.text):
+                r.text = url_breaks(r.text)
+        return out
 
     def _script_runs(self, text, style, local, para_style=None):
         """A run's text split into runs: Hebrew and Greek in their character styles, keeping
@@ -1185,8 +1192,9 @@ class Exporter(PaginationMixin):
                                (n_end, "" if n_end == 1 else "s"))
         return [(u, p) for u, p in stories if p]
 
-    def _estimate(self, paras, sink):
-        """Pages a story needs: lines of text at the styles' sizes, notes, tables, images."""
+    def _estimate(self, paras, sink, raw=False):
+        """Pages a story needs: lines of text at the styles' sizes, notes, tables, images.
+        raw: the estimate as a fraction of pages, before the slack and rounding up."""
         def lines(p, measure):
             attrs, _font, leading = self.doc.resolved(p.style)
             size = attrs.get("PointSize", self.body_size)
@@ -1218,6 +1226,8 @@ class Exporter(PaginationMixin):
         per_page = (fn.get("space_above") or 0) + \
             ((fn.get("space_below_rule") or 0) + 0.5 if fn.get("rule") else 0)
         height += min(notes, math.ceil(height / self.text_height)) * per_page
+        if raw:
+            return height / self.text_height
         # Lines lost at page feet (keeps, widows, notes that can't split) grow with the
         # length: SLACK of each page. A story whose text runs past its pages makes InDesign's
         # Smart Text Reflow add a page, out of place among the chapters' spreads.
@@ -1359,6 +1369,42 @@ class Exporter(PaginationMixin):
             attrs["Underline"] = True
         return Style("Running Head", font=rs.get("font") or self.fonts["body"], leading=lead,
                      attrs=attrs)
+
+_URL = re.compile(r"(?:https?://|www\.|doi\.org/)[^\s<>\"\u201c\u201d]+", re.I)
+ZWSP = "\u200b"
+
+
+def url_breaks(text):
+    """Web addresses with places to break a line (a zero-width space, no hyphen), as Chicago
+    6.8 has them: after a colon or a double slash; before a single slash, a period, a comma,
+    a hyphen, an underscore, a tilde, a question mark, a number sign or a percent sign; before
+    or after an equals sign or an ampersand. Without them a long address in justified text
+    (a footnote's database link) is spaced out letter by letter. A closing period or comma
+    stays outside the address."""
+    def breaks(m):
+        url = m.group(0)
+        tail = ""
+        while url and url[-1] in ".,;:)":
+            url, tail = url[:-1], url[-1] + tail
+        out, i = [], 0
+        while i < len(url):
+            c = url[i]
+            if url.startswith("//", i):
+                out.append("//" + ZWSP)
+                i += 2
+                continue
+            if c in "/.,-_~?#%" and i > 0 and out and not out[-1].endswith(ZWSP):
+                out.append(ZWSP + c)
+            elif c in "=&":
+                out.append((ZWSP if out and not out[-1].endswith(ZWSP) else "") + c + ZWSP)
+            elif c == ":" and not url.startswith("//", i + 1):
+                out.append(c + ZWSP)
+            else:
+                out.append(c)
+            i += 1
+        return "".join(out).replace(ZWSP + ZWSP, ZWSP) + tail
+    return _URL.sub(breaks, text)
+
 
 def _merge_runs(out):
     """Neighbouring text runs with the same style and settings as one."""

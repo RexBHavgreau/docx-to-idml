@@ -39,6 +39,8 @@ jobs:
           python tests/test_export.py
           python tests/test_layout.py
           python tests/test_updates.py
+          python tests/test_service.py
+          python tests/test_golden.py
           python tests/test_gui.py
 
       - name: Read the version (and check it matches the tag)
@@ -70,6 +72,31 @@ jobs:
           for need in ("designmap.xml", "snippets.xml", "Styles.xml", "Preferences.xml"):
               assert need in names, need + " missing from the .exe"
           print("base files present")
+          PY
+
+      - name: Run the .exe as other programs do (convert, result in JSON)
+        shell: pwsh
+        run: |
+          # No update check here: it would download the latest release into dist.
+          python -c "from docx2idml import appsettings; d = appsettings.load(); d['check_updates'] = False; appsettings.save(d)"
+          $exe = "dist/docx-to-idml-${{ env.VERSION }}.exe"
+          $p = Start-Process -FilePath $exe -Wait -PassThru -ArgumentList @(
+            "convert", "--result", "$env:RUNNER_TEMP/result.json", "--out", "$env:RUNNER_TEMP/out",
+            "--name", "e01", "reference/manuscript")
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP/result.json"; exit 1 }
+
+      - name: Check the result and the program's location record
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          tmp = os.environ["RUNNER_TEMP"]
+          r = json.load(open(os.path.join(tmp, "result.json"), encoding="utf-8"))
+          assert r["ok"] and os.path.exists(r["idml"]), r
+          from docx2idml import service
+          loc = json.load(open(service.locator_path(), encoding="utf-8"))
+          assert loc["exe"].endswith("docx-to-idml-${{ env.VERSION }}.exe"), loc
+          print("convert ok:", r["idml"], "; program.json:", loc)
           PY
 
       - uses: actions/upload-artifact@v4

@@ -5,10 +5,16 @@ gives each unit its story and section (recto rules, roman/arabic numbering, sect
 the running heads) and builds the masters: A-Body, B-Opener, C-Front with their primary text
 frames and folios, D-Display, E-Blank, and a copy of A-Body per part when the verso head is the
 part's title. A running head from the section marker can carry only one font: when a head has
-Hebrew or Greek the running-head font lacks, the report says so; with the profile's
-running_heads.script_masters on, such a unit gets a copy of its master (R1-Body, R2-Front...)
-with the head as text, which takes the Hebrew and Greek styles.
+Hebrew or Greek the running-head font lacks (or can't be checked), such a unit gets a copy of
+its master (R1-Body, R2-Front...) with the head as text, which takes the Hebrew and Greek
+styles, and the window says so in a pop-up (an Alert line of the report). With the profile's
+running_heads.script_masters off, the report only warns.
 """
+
+
+class Alert(str):
+    """A report line the window also shows in a pop-up after the export (something the
+    export did on its own that the user should know about)."""
 
 
 def _has_script(text):
@@ -19,6 +25,10 @@ from .docx_reader import is_greek, is_hebrew
 from .layout import _half
 from .idml.model import Frame, Master, Paragraph, Run, Section, Story, TOCStyle
 
+
+# A unit's last page by the estimate: fuller than this may run past it, emptier than this may
+# be left blank (`_fit_note`).
+FULL, EMPTY = 0.8, 0.2
 
 # Styles that carry an opener's drop (`_sinks`).
 SINK_STYLES = ("Chapter Title", "Contents Title", "Book Title", "Half Title")
@@ -80,6 +90,11 @@ class PaginationMixin:
             spare = b.spare if b.spare is not None else \
                 (0 if kind in ("display", "part") else self._spare())
             est = b.pages or self._estimate(b.paras, b.sink)
+            # How full the estimate leaves the last page, for the report (texts only; set
+            # page counts and display pages are as they are).
+            b.est, b.fill = est, None
+            if not b.pages and kind not in ("display", "part"):
+                b.fill = self._estimate(b.paras, b.sink, raw=True) - (est - 1)
             items.append((kind, est, spare, b.opens))
         placed, count, masters, first_body = layout.plan_pages(
             items, self.profile.get("chapters_open", "recto"))
@@ -117,6 +132,7 @@ class PaginationMixin:
                 script_heads.append((marker, part if body else None, pages))
         doc.page_count = max(count, 1)
         doc.page_masters = masters
+        self._fit_note(blocks, placed)
         if not doc.sections:
             doc.sections = [Section(0, start=1)]
         self._masters(part_masters)
@@ -174,6 +190,36 @@ class PaginationMixin:
         page.opener_drop in points, else six body lines."""
         drop = (self.profile.get("page") or {}).get("opener_drop")
         return _half(drop) if drop else _half(self.body_lead * 6)
+
+    def _fit_note(self, blocks, placed):
+        """Name the units whose estimated last page is nearly full (they may run past it in
+        Affinity and DesignCraft, which don't add pages; InDesign adds them itself) or nearly
+        empty (the page may be left blank). The estimate can't know every program's line
+        breaks, nor a font substituted on another computer."""
+        from .idml.writer import page_names
+        names = page_names(self.doc)
+        full, empty = [], []
+        for b, pl in zip(blocks, placed):
+            fill = b.fill
+            if fill is None or not pl.pages:
+                continue
+            last = names[min(pl.start + b.est - 1, len(names) - 1)]
+            title = b.title if not b.title.startswith("(") else b.kind
+            if fill > FULL:
+                full.append("%s (to page %s)" % (title, last))
+            elif fill < EMPTY and b.est > 1:
+                empty.append("%s (page %s)" % (title, last))
+        if full:
+            self.report.append(
+                "Check where these end: their last page is nearly full by the estimate, so "
+                "they may run past it: %s. InDesign adds a page itself; in Affinity or "
+                "DesignCraft, add a page if the text frame shows more text." % "; ".join(full))
+        if empty:
+            self.report.append(
+                "Check these last pages: by the estimate they hold only a line or two, and may "
+                "be left empty: %s. Leave an empty page in place, with the E-Blank master "
+                "applied so it has no running head; deleting a single page moves every later "
+                "chapter to the other side." % "; ".join(empty))
 
     def _sinks(self, blocks):
         """Lower each opener's first paragraph by its block's sink, in the paragraph style
@@ -271,27 +317,22 @@ class PaginationMixin:
             out += self._head_frames(verso_runs, recto_runs)
         return out
 
-    def _script_heads_note(self, heads):
-        """Running heads with Hebrew or Greek, set from the section marker in the running-head
-        font: say so when that font lacks the letters (or can't be checked here)."""
+    def _script_head_lack(self, heads):
+        """Whether the running-head font lacks the Hebrew or Greek in these heads (or isn't
+        installed here, so it couldn't be checked). Returns None when it has them, else
+        (scripts, font, lack): "Hebrew", the font's name and why, for the messages."""
         font = self.doc.style("Running Head").font or self.fonts["body"]
         found = fonts.find_font(font)
         chars = {c for h in heads for c in h if is_hebrew(c) or is_greek(c)}
         missing = [c for c in chars if not (found and fonts.has_char(found, ord(c)))]
         if found and not missing:
-            return                            # the font has the letters: nothing to say
+            return None                       # the font has the letters
         scripts = " and ".join(n for n, test in (("Hebrew", is_hebrew), ("Greek", is_greek))
                                if any(test(c) for c in (missing or chars)))
-        listed = "; ".join("\u201c%s\u201d" % h for h in heads)
         lack = ("doesn't have the %s letters" % scripts) if found else \
             ("isn't installed on this computer, so whether it has the %s letters couldn't be "
              "checked" % scripts)
-        self.report.append(
-            "Running heads with %s: %s. A running head can use only one font, and the "
-            "running-head font (%s) %s. Choose a running-head font that has them (Running "
-            "Heads > Running Head Style), or turn on \u201cSeparate masters for heads with "
-            "Hebrew or Greek\u201d there, which gives each such chapter a master of its own "
-            "with the head in the %s font." % (scripts, listed, font, lack, scripts))
+        return scripts, font, lack
 
     def _script_head_masters(self, units, masters):
         """Units whose running head has Hebrew or Greek: a copy of their A-Body (or part's
@@ -300,8 +341,19 @@ class PaginationMixin:
         if not units:
             return
         doc, rh, info = self.doc, self.profile["running_heads"], self.info
+        heads = [u[0] for u in units]
+        lack = self._script_head_lack(heads)
+        if lack is None:
+            return                            # the head font has the letters: one master
+        scripts, font, why = lack
+        listed = "; ".join("\u201c%s\u201d" % h for h in heads)
         if not rh.get("script_masters"):
-            self._script_heads_note([u[0] for u in units])
+            self.report.append(
+                "Running heads with %s: %s. A running head can use only one font, and the "
+                "running-head font (%s) %s, so these heads may print as empty boxes. Choose a "
+                "running-head font that has them (Running Heads > Running Head Style), or "
+                "turn on \u201cSeparate masters for heads with Hebrew or Greek\u201d there."
+                % (scripts, listed, font, why))
             return
         verso_kind = rh.get("verso", "book_title")
         custom_recto = rh.get("recto") == "custom"
@@ -328,7 +380,13 @@ class PaginationMixin:
                         names.append(made[kind].name)
                 masters[i] = made[kind].name
         if names:
-            self.report.append(
-                "Running heads with Hebrew or Greek are written as text on masters of their "
-                "own (%s), so the Hebrew and Greek get their fonts. To change such a head, "
-                "edit it on that master." % ", ".join(names))
+            self.report.append(Alert(
+                "Running heads with %s: %s. The running-head font (%s) %s, and a running "
+                "head can use only one font, so these heads would print as empty boxes. "
+                "Instead, each of these chapters got a master of its own (%s) with its head "
+                "written as text, so the %s is set in the %s font. To change such a head, "
+                "edit it on its master. To keep one master for every chapter, choose a "
+                "running-head font that has the %s letters (Running Heads > Running Head "
+                "Style), or turn off \u201cSeparate masters for heads with Hebrew or "
+                "Greek\u201d there." % (scripts, listed, font, why, ", ".join(names), scripts,
+                                         scripts, scripts)))

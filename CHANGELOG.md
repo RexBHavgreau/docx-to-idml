@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.8.0 (October 24, 2026)
+
+- Other programs (Ectype OCR first) can use the converter: the .exe takes a `convert` command
+  (no window), writes the result as JSON (the IDML's path, the report, pop-up alerts, or a
+  plain error), and records its own location in `program.json` in the settings folder at
+  every start, so callers find the current version. The first `convert` of each day starts a
+  silent update check in a separate copy of the program; a newer release is downloaded beside
+  it and becomes the one callers use. An `update` command does the same on demand. Described
+  in docs/ENGINE.md. The build checks the .exe's `convert` on Windows.
+- Golden tests (tests/golden/): two exports (the sample book and a paper with Hebrew heads,
+  Greek, footnotes and headings by formatting) compared part by part, so no change to the
+  output goes unnoticed.
+- The export report names the chapters (and other units) whose last page the estimate
+  leaves nearly full (over 80%: they may run past it in Affinity and DesignCraft, which
+  don't add pages) or nearly empty (under 20%: the page may be left blank), with the page,
+  and says what to do. The estimate can't know each program's line breaks or a font
+  substituted on another computer, so these are the pages to look at first.
+- Running heads with Hebrew or Greek the running-head font lacks now get separate masters by
+  default (Beaux): each such chapter has a master of its own with its head written as text,
+  so the Hebrew and Greek are set in their fonts in every program instead of printing as
+  empty boxes (DesignCraft). A pop-up after the export says what was done and why, and how
+  to keep one master instead. When the head font has the letters, nothing changes. Profile
+  version 10 turns the option on in saved profiles too (off had only been the default).
+- Fixed: the "Open the export folder" button didn't appear after an export (0.7.0 gave the
+  tabs all the room it was placed in). It now appears in the export row, beside Export IDML.
+- Fixed: a long web address in justified text (a footnote's EBSCO or JSTOR link) had no
+  place to break, so its line was spaced out letter by letter (found in DesignCraft). Web
+  addresses now carry invisible break points (zero-width spaces) where Chicago 6.8 allows a
+  break: after a colon or double slash; before a single slash, period, comma, hyphen,
+  underscore, tilde, question mark, number or percent sign; before or after = and &.
+
 ## 0.7.0 (October 23, 2026)
 
 - Running Head Style is in two parts. Case: As typed, Title Case (Chicago: articles,

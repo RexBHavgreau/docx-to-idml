@@ -454,6 +454,31 @@ def test_openers_lowered_by_style():
         ex.cleanup()
 
 
+def test_last_pages_to_check():
+    """The report names units whose estimated last page is nearly full (may run past it in
+    Affinity and DesignCraft) or nearly empty (may be left blank), with the page."""
+    from types import SimpleNamespace as NS
+    from docx2idml.layout import Placed
+    ex = Exporter(_files(), default_profile())
+    try:
+        ex.build()
+        ex.report = []
+        blocks = [NS(title="Full One", kind="chapter", est=2, fill=0.95),
+                  NS(title="Empty One", kind="chapter", est=3, fill=0.05),
+                  NS(title="Fine", kind="chapter", est=2, fill=0.5),
+                  NS(title="(title page)", kind="display", est=1, fill=None)]
+        placed = [Placed(6, 2), Placed(8, 3), Placed(11, 2), Placed(0, 1)]
+        ex._fit_note(blocks, placed)
+        full = [l for l in ex.report if l.startswith("Check where these end")]
+        empty = [l for l in ex.report if l.startswith("Check these last pages")]
+        names = __import__("docx2idml.idml.writer", fromlist=["page_names"]).page_names(ex.doc)
+        assert len(full) == 1 and "Full One (to page %s)" % names[7] in full[0]
+        assert len(empty) == 1 and "Empty One (page %s)" % names[10] in empty[0]
+        assert "Fine" not in full[0] + empty[0]
+    finally:
+        ex.cleanup()
+
+
 def test_opener_drop_from_profile():
     prof = default_profile()
     prof["page"]["opener_drop"] = 72
@@ -509,6 +534,27 @@ def test_running_head_style_from_profile():
             ex.cleanup()
 
 
+def test_web_addresses_can_break():
+    """Chicago 6.8 break points in web addresses (zero-width spaces), so a justified line
+    with a long link isn't spaced out letter by letter."""
+    from docx2idml.export import url_breaks
+    z = "\u200b"
+    assert url_breaks("See https://search.ebscohost.com/login.aspx?db=rfh&AN=1.") == (
+        "See https://" + z + "search" + z + ".ebscohost" + z + ".com" + z + "/login" + z +
+        ".aspx" + z + "?db" + z + "=" + z + "rfh" + z + "&" + z + "AN" + z + "=" + z + "1.")
+    assert url_breaks("no address here: a/b.") == "no address here: a/b."
+    path = make_docx(os.path.join(TMP, "url.docx"), [para("Book", "Title"),
+                     para("Chapter", "Heading1"),
+                     para("Available at www.jstor.org/stable/1234 in full. " * 3)])
+    ex = Exporter([path], default_profile())
+    try:
+        doc = ex.build()
+        text = "".join(r.text for st in doc.stories for p in st.paragraphs for r in p.runs)
+        assert "www" + z + ".jstor" + z + ".org" + z + "/stable" + z + "/1234 in" in text
+    finally:
+        ex.cleanup()
+
+
 def test_title_and_sentence_case():
     from docx2idml import textcase as t
     assert t.title_case("the objectives of soul care: a look into the church") == \
@@ -530,29 +576,34 @@ def test_title_and_sentence_case():
 
 
 def test_hebrew_running_head_master():
-    """A running head with Hebrew: by default only a note; with script_masters on, the
-    chapter gets R1-Body (A-Body's frames, the head as text in the Hebrew style) and other
-    chapters keep A-Body and the section marker."""
+    """A running head with Hebrew the head font lacks (or can't be checked): by default the
+    chapter gets R1-Body (A-Body's frames, the head as text in the Hebrew style) and the
+    report says so in an Alert (a pop-up in the window); other chapters keep A-Body and the
+    section marker. With script_masters off, only a warning."""
     from idml_check import check
     from docx2idml.idml.writer import write_idml
+    from docx2idml.pagination import Alert
     long = [para("Text of the chapter goes on for a while. " * 30)] * 8
     path = make_docx(os.path.join(TMP, "heb-head.docx"),
                      [para("Book", "Title"), para("One: " + HEB, "Heading1")] + long +
                      [para("Two", "Heading1")] + long)
-    # Off (the default): no extra master; the report says the head's font may lack Hebrew
-    # (a font not installed anywhere, so it couldn't be checked: the same on every machine).
+    # Off: no extra master; the report warns (a font not installed anywhere, so it couldn't
+    # be checked: the same on every machine).
     prof = default_profile()
     prof["running_heads"]["style"]["font"] = "No Such Font"
+    prof["running_heads"]["script_masters"] = False
     ex = Exporter([path], prof)
     try:
         doc = ex.build()
         assert not [m for m in doc.masters if m.name.startswith("R")]
         assert any("A running head can use only one font" in line and HEB in line and
                    "couldn't be checked" in line for line in ex.report)
+        assert not [line for line in ex.report if isinstance(line, Alert)]
     finally:
         ex.cleanup()
     prof = default_profile()
-    prof["running_heads"]["script_masters"] = True
+    prof["running_heads"]["style"]["font"] = "No Such Font"
+    assert prof["running_heads"]["script_masters"] is True          # the default
     ex = Exporter([path], prof)
     try:
         doc = ex.build()
@@ -566,6 +617,8 @@ def test_hebrew_running_head_master():
         assert [f for f in a.frames if f.key == "rhead"][0].paragraphs[0].runs[0].special == \
             "section_marker"
         assert not check(write_idml(doc, os.path.join(TMP, "heb-head.idml")))
+        alerts = [line for line in ex.report if isinstance(line, Alert)]
+        assert len(alerts) == 1 and "R1-Body" in alerts[0] and HEB in alerts[0]
     finally:
         ex.cleanup()
 

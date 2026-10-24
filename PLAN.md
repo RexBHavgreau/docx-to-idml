@@ -338,6 +338,19 @@ A hand-built IDML was generated for a bilingual Latin/Spanish edition (Augustine
 - Results of the compatibility tests (decides the running-head mechanism, the TOC approach, and parent masters).
 - The tool's name (also sets the EXE filename and the GitHub repository name).
 
+## Use by other programs (decided October 24)
+
+Ectype OCR (and other programs) need the conversion. Beaux's engine-split plan (a separate
+`idml_engine` package with its own document model, src/ layout and versioning) was assessed
+against the app: the engine already has no window code, and the cheapest robust way is to use
+docx-to-idml as a **separate installed tool**: the caller writes a .docx (character styles
+such as "Check OCR" or "Page Marker" carry over by name), runs the .exe's `convert` command,
+and reads a JSON result; the .exe records its location in `program.json`; the first call of
+the day starts a silent update. So callers always use the latest version, and the two
+programs share only files (no license ties). Golden files guard the output. A DOCX-free
+input model is deferred until the .docx route proves too limiting. Contract: docs/ENGINE.md
+(API version 1).
+
 ## Separate project (tabled)
 
 A **page-layout engine** that can build and edit IDML itself, assembled from existing open-source components (text shaping, line breaking, hyphenation, rendering). It's a separate tool and project, not part of this converter, and isn't planned yet. The converter's plan doesn't depend on it.

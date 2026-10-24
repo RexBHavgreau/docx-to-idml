@@ -111,7 +111,7 @@ HEAD_FIELDS = [
     (("running_heads", "suppress_on_display"), "No heads on display pages", "bool", None),
     (("running_heads", "suppress_on_blanks"), "No heads on blank pages", "bool", None),
     (("running_heads", "script_masters"),
-     "Separate masters for heads with Hebrew or Greek (each gets its own font)", "bool", None),
+     "Separate masters for heads with Hebrew or Greek the head font lacks", "bool", None),
 ]
 HEAD_CASE_FIELDS = [
     (("running_heads", "style", "case"), "", "radio",
@@ -584,6 +584,9 @@ class App(BookTabMixin):
         self.export_btn.pack(side="left", padx=(12, 0))
         self.progress = ttk.Progressbar(bottom, mode="indeterminate", length=120)
         self.progress.pack(side="left", padx=6)
+        # Shown in the export row after an export (packed then, so it never lacks room).
+        self.open_btn = ttk.Button(bottom, text="Open the export folder",
+                                   command=self.open_export)
 
         self.tabs = ttk.Notebook(self.root)
         self.tabs.pack(fill="both", expand=True, padx=8, pady=8)
@@ -751,8 +754,6 @@ class App(BookTabMixin):
         self.text.configure(yscrollcommand=sb.set)
         self.text.pack(side="left", fill="both", expand=True)
         sb.pack(side="left", fill="y")
-        self.open_btn = ttk.Button(self.root, text="Open the export folder",
-                                   command=self.open_export)
         self.last_export = None
 
     # ---- profile ----
@@ -1300,7 +1301,12 @@ class App(BookTabMixin):
             self.last_export = os.path.dirname(path)
             self._show("Wrote %s\n\n%s" % (path, "\n".join("- " + line for line in report)))
             self.status.set("Exported: %s" % path)
-            self.open_btn.pack(side="bottom", anchor="e", padx=10, pady=(0, 6))
+            self.open_btn.pack(side="left", padx=(6, 0))
+            # What the export did on its own that the user should know about.
+            from .pagination import Alert
+            alerts = [line for line in report if isinstance(line, Alert)]
+            if alerts:
+                messagebox.showinfo(TITLE, "\n\n".join(alerts), parent=self.root)
         self._run(lambda: export(files, out, prof, None, settings), done, "Exporting...")
 
     def open_export(self):

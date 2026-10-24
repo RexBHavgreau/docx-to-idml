@@ -8,7 +8,7 @@ import os
 from .profile import settings_dir
 
 DEFAULTS = {"profile": None, "out_dir": None, "last_book": None, "check_updates": True,
-            "last_update_check": 0}
+            "last_update_check": 0, "last_service_check": None}
 
 
 def path():
